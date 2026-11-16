@@ -171,15 +171,16 @@ body {
   gap: 6px;
 }
 .tabs button {
-  width: 46px;
+  width: 44px;
   height: 46px;
+  padding: 0;
   border-radius: 12px;
   border: 1.5px solid color-mix(in srgb, var(--ui-text) 35%, transparent);
   background: transparent;
   color: var(--ui-text);
   font: inherit;
   font-weight: 700;
-  font-size: 18px;
+  font-size: 17px;
 }
 .tabs button.on {
   background: var(--ui-accent);

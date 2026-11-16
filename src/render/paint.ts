@@ -289,20 +289,26 @@ void main() {
   #endif
 
   #ifdef ROLE_EGG
+  float eggCrack = 0.0;
   {
     // speckles and the crack are drawn here so the crack can grow during the chase
-    vec3 q = vObj * 9.0;
-    float sp = smoothstep(0.62, 0.72, vnoise3(q * 1.7)) * 0.45 + smoothstep(0.7, 0.78, vnoise3(q * 4.3 + 9.0)) * 0.5;
-    albedo = mix(albedo, albedo * vec3(0.55, 0.62, 0.7), sp);
-    albedo *= 0.92 + 0.16 * vnoise3(q * 0.6);
+    vec3 q = vObj * 5.0;
+    float sp = smoothstep(0.6, 0.7, vnoise3(q * 1.3)) * 0.55 + smoothstep(0.68, 0.76, vnoise3(q * 3.1 + 9.0)) * 0.45;
+    albedo = mix(albedo, albedo * vec3(0.5, 0.6, 0.72), sp);
+    albedo *= 0.9 + 0.2 * vnoise3(q * 0.5);
     // the egg's long axis is Y in model space
     float along = vObj.y;
     float ang = atan(vObj.z, vObj.x);
-    float zig = 0.16 + 0.05 * sin(ang * 5.0) + 0.035 * sin(ang * 13.0 + 1.3) + 0.02 * sin(ang * 29.0);
+    float zig = 0.14 + 0.06 * sin(ang * 5.0) + 0.04 * sin(ang * 11.0 + 1.3);
     float reach = smoothstep(-3.2 + 6.4 * uCrack, -3.2 + 6.4 * uCrack - 0.6, ang);
-    float crack = (1.0 - smoothstep(0.004, 0.011, abs(along - zig))) * reach;
-    float branch = (1.0 - smoothstep(0.003, 0.008, abs(ang - 0.6 - (along - zig) * 2.5))) * step(zig, along) * step(along, zig + 0.11) * step(0.35, uCrack);
-    albedo = mix(albedo, vec3(0.05, 0.07, 0.08), max(crack, branch));
+    float crack = (1.0 - smoothstep(0.012, 0.026, abs(along - zig))) * reach;
+    // where the chick has pecked through, with two short cracks running up from it
+    vec2 hp = vec2((ang - 0.6) * 0.26, along - zig - 0.03);
+    float hole = (1.0 - smoothstep(0.045, 0.062, length(hp))) * step(0.3, uCrack);
+    float up1 = (1.0 - smoothstep(0.009, 0.02, abs(hp.x - hp.y * 0.5))) * step(0.0, hp.y) * step(hp.y, 0.2);
+    float up2 = (1.0 - smoothstep(0.009, 0.02, abs(hp.x + 0.09 + hp.y * 0.35))) * step(0.0, hp.y) * step(hp.y, 0.14);
+    eggCrack = max(max(crack, hole), max(up1, up2) * step(0.3, uCrack));
+    albedo = mix(albedo, vec3(0.03, 0.05, 0.06), eggCrack);
   }
   #endif
 
@@ -359,7 +365,15 @@ void main() {
   #endif
 
   #ifdef ROLE_EGG
-  col += uGlow * (0.10 + 0.5 * fres);
+  {
+    // The egg is the thing you chase, so it carries its own soft light from above the camera:
+    // pale on top, deeper underneath, with a clean highlight. It reads as a solid shell in any light.
+    vec3 Lv = normalize(vec3(0.0, 1.0, 0.0) * 0.95 - E * 0.55 + cross(E, vec3(0.0, 1.0, 0.0)) * 0.3);
+    float form = dot(Ng, Lv);
+    col *= mix(0.6, 1.34, smoothstep(-0.45, 0.85, form));
+    col += uGlow * (0.02 + 0.16 * fres) * (1.0 - eggCrack);
+    col += vec3(1.0, 0.98, 0.92) * pow(max(dot(reflect(E, Ng), Lv), 0.0), 18.0) * 0.5 * (1.0 - eggCrack);
+  }
   #endif
 
   #ifdef ROLE_AMBER

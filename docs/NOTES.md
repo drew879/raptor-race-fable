@@ -1,10 +1,10 @@
 # Raptor Race: working notes
 
-Decisions and progress. Read `raptor-race-brief.md` first; it's the source of truth for what the game is and how Drew likes to work. The brief stays on the laptop and out of this public repo for now (it has family details), along with anything in `docs/local/`.
+Decisions and progress. Read `raptor-race-brief.md` first; it's the source of truth for what the game is and how Drew likes to work. The brief is committed at the repo root (Drew OK'd that on 2026-11-16). Anything in `docs/local/` stays off the repo.
 
 ## Where things stand
 
-- **Milestone 1 (setup and concept art): waiting on Drew's pick.** The live build is the concept viewer: one frozen moment of the chase in three style directions (A Field Journal, B Painted Diorama, C Ink and Mist). Tap A, B or C to switch, tap the picture to hide the controls, and "fit check" shows how the page fills the phone plus the frame rate.
+- **Milestone 1 (setup and concept art): waiting on Drew's pick between A and A+.** The live build is the concept viewer: one frozen moment of the chase in four looks (A Field Journal, A+ Golden Journal which is A's ink and paper under B's light, B Painted Diorama, C Ink and Mist). A is Drew's favorite of the first three; he asked to see A+ before deciding. Tap a letter to switch, tap the picture to hide the controls, and "fit check" shows how the page fills the phone plus the frame rate.
 - Live build: https://drew879.github.io/raptor-race-fable/
 - Next after the pick: milestone 2, a rough playable run (controls, speed, camera, bends, the downhill).
 
@@ -31,16 +31,29 @@ Decisions and progress. Read `raptor-race-brief.md` first; it's the source of tr
 - The hero, egg and obstacles get less shade than the scenery on purpose, so they never get lost.
 - Triangle budget matters: the first pass drew about 4.7 million triangles a frame. With light models for the distance and planting only what the frame sees, it's about 0.9 million and 6 ms a frame on the M1 Pro. The real game needs chunked streaming and the same light models.
 - The egg is drawn much larger than life during the chase so it reads from a distance. Bring it back to a believable size for the nest and hatching scenes.
+- In round 1 the egg read as "a little puddle": it lay flat on the trail with a round glow under it. It now sits mid-bounce, tipped up, with its own soft top light, speckles, a pecked hole and a tight shadow beneath. Lesson: the egg needs a clear egg silhouette and air under it; never let it rest flat with a glow.
 
 ## Decisions
 
 - **Platform:** a web app (Three.js, TypeScript, Vite), played in Chrome on iPhone and from the Home Screen. Every push to `main` deploys to GitHub Pages through `.github/workflows/deploy.yml`. Native was considered and set aside: slower loop, needs Xcode and a paid developer account.
 - **Art:** every model is built by Blender scripts in `art/` and exported to glTF. No store-bought or generated art, so the whole world shares one hand. Run `npm run art` to rebuild models.
 - **Concept art:** shown as live 3D frames in the real engine (same frozen moment, three styles), so what gets picked is what ships.
-- **Hero colors (first pass, open to change):** blue-black body, cream and dark banded tail and arm fans (banding is preserved in the fossils), a gold collar and gold eye. With forest green, amber gold and the blue-green egg, the game's palette lands on the player's four favorite colors without forcing it.
+- **Hero colors (approved 2026-11-16, "keep, they're beautiful"):** blue-black body, cream and dark banded tail and arm fans (banding is preserved in the fossils), a gold collar and gold eye. With forest green, amber gold and the blue-green egg, the game's palette lands on the player's four favorite colors without forcing it.
 - **Music:** written as MIDI in code, rendered through Ableton Live 12 (LABS and Kontakt 7 are installed). To start, I deliver and Drew reacts. Drew may get hands-on later, and may bring riffs of his own for future levels.
 - **Build number** = number of commits, shown on screen. `version.json` is checked at launch and on return to the foreground; a newer build triggers a reload (`src/app/build.ts`). The service worker (`src/sw.js`) fetches the page fresh every launch and caches the rest per build.
 - **Commits:** small, pushed often, with no AI model names or attribution lines.
+
+## Obstacles approved for Level 1 (2026-11-16)
+
+These are the kinds, not a count. They repeat and combine along the course; expect roughly 30 decision moments in about 70 seconds.
+
+1. Go around: a standing conifer with root flare and low dead branches.
+2. Go around: a mossy boulder.
+3. Jump: a fallen log.
+4. Jump: a narrow creek with bright water.
+5. Slide: a hollow log seen end-on as a big round opening.
+6. Slide: a giant fallen trunk propped on boulders, with a clean, roomy arch.
+7. Go around (optional): a dozing Psittacosaurus, played calm.
 
 ## About the player and the hardware
 

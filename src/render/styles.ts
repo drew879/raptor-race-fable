@@ -9,6 +9,7 @@ import { fxUniforms } from '../world/fx';
 
 export interface Style {
   id: string;
+  tab: string; // short label on the picker
   name: string;
   blurb: string;
   sun: { color: string; power: number };
@@ -33,6 +34,7 @@ export interface Style {
 export const STYLES: Style[] = [
   {
     id: 'journal',
+    tab: 'A',
     name: 'Field Journal',
     blurb: 'Ink line and watercolor wash on paper',
     sun: { color: '#fff0cc', power: 1.0 },
@@ -61,7 +63,37 @@ export const STYLES: Style[] = [
     ui: { ink: '#3b2a20', panel: '#f3ead8', accent: '#e39a2d', text: '#3b2a20' },
   },
   {
+    // A's ink line, paper and crisp washes, lit like B: low golden sun, cooler and deeper shade,
+    // blue-green mist that warms toward the sun.
+    id: 'goldjournal',
+    tab: 'A+',
+    name: 'Golden Journal',
+    blurb: "A's ink and paper, B's morning sun",
+    sun: { color: '#ffd9a0', power: 1.28 },
+    skyAmb: '#b3cad2',
+    groundAmb: '#9b9b7d',
+    shadeTint: '#b6cbf0',
+    band: [0.46, 0.07, 0.2, 0.3],
+    fog: { color: '#a6c9c0', sun: '#ffd596', density: 0.026, base: -38, falloff: 0.04, max: 0.95, haze: 0.0042, glowPower: 4.5, glow: 0.95, ridgeMist: 1.0 },
+    dapple: [0.82, 0.2, 0.06, 0.58],
+    brush: [0.22, 0.36, 0.2, 0],
+    grade: [1.06, 1.04, 1.15],
+    sky: { zenith: '#78afc0', horizon: '#f6e2b2', glow: '#ffd9a0', params: [2.1, 6, 0.85, 0.4] },
+    mist: 0.55,
+    shafts: { amount: 0.5, color: '#ffe2a6' },
+    line: { strength: 0.9, width: 0.9, sensitivity: 0.028, wobble: 1.2, color: '#33241b' },
+    paper: { grain: 0.17, size: 1.9, edge: 0.5, pool: 0.18, color: '#f3e8d2' },
+    final: [1.02, 1.04, 0.1],
+    roles: {
+      ridge: { tint: '#7fa5a0', val: 1.05 },
+      feather: { val: 1.2 },
+      bark: { val: 1.05 },
+    },
+    ui: { ink: '#33241b', panel: '#f3e8d2', accent: '#e39a2d', text: '#33241b' },
+  },
+  {
     id: 'diorama',
+    tab: 'B',
     name: 'Painted Diorama',
     blurb: 'Gouache shapes, golden light, deep mist',
     sun: { color: '#ffd9a0', power: 1.3 },
@@ -87,6 +119,7 @@ export const STYLES: Style[] = [
   },
   {
     id: 'inkmist',
+    tab: 'C',
     name: 'Ink and Mist',
     blurb: 'Ridges stacked in mist, color saved for amber and egg',
     sun: { color: '#fff4dc', power: 0.9 },

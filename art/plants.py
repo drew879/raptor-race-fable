@@ -566,10 +566,10 @@ def egg():
 
     def rad(t, ang):
         x = t * 2 - 1
-        # slightly blunter at the bottom end
-        r = 0.235 * math.sqrt(max(0.0, 1 - abs(x) ** 2.25)) * (1.0 - 0.06 * x)
+        # a long oval, fuller toward the lower end so it reads as an egg from far away
+        r = 0.275 * math.sqrt(max(0.0, 1 - abs(x) ** 2.2)) * (1.0 - 0.13 * x)
         return max(r, 0.002), max(r, 0.002)
 
-    geo.tube(path, rad, lambda t, ang, p: srgb('#58b9aa'), 'egg', around=around,
+    geo.tube(path, rad, lambda t, ang, p: srgb('#7fd3c4'), 'egg', around=around,
              uv_fn=lambda t, ang, p: (ang / (2 * math.pi), t))
     return geo

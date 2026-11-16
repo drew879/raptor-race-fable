@@ -40,7 +40,7 @@ export function makeViewerUI(root: HTMLElement, styles: Style[], onPick: (index:
 
   styles.forEach((style, i) => {
     const b = document.createElement('button');
-    b.textContent = `${'ABC'[i]}`;
+    b.textContent = style.tab;
     b.setAttribute('aria-label', style.name);
     b.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -53,7 +53,7 @@ export function makeViewerUI(root: HTMLElement, styles: Style[], onPick: (index:
     setStyle(index: number) {
       current = index;
       const style = styles[index];
-      title.textContent = `${'ABC'[index]}. ${style.name}`;
+      title.textContent = `${style.tab}. ${style.name}`;
       blurb.textContent = style.blurb;
       [...tabs.children].forEach((el, i) => el.classList.toggle('on', i === index));
       root.style.setProperty('--ui-ink', style.ui.ink);

@@ -240,26 +240,23 @@ export async function buildLookdev(): Promise<Lookdev> {
   };
   ground(HERO_S + 0.08, -0.03, 0.95, 1.35, 0.46);
 
-  const EGG_S = HERO_S + 7.6;
+  const EGG_S = HERO_S + 6.4;
   const egg = instance(props, 'egg');
-  const eggScale = 0.5;
+  const eggScale = 0.56;
   egg.scale.setScalar(eggScale);
-  egg.position.copy(terrain.place(EGG_S, 0.12, 0.235 * eggScale + 0.07));
+  // caught mid-bounce: off the ground and tipped up, so it reads as a solid egg, not a pool
+  egg.position.copy(terrain.place(EGG_S, 0.1, 0.4));
   orient(egg, EGG_S);
-  // lay the long axis across the trail and catch it part-way through a roll
-  egg.rotateY(0.5);
-  egg.rotateZ(Math.PI / 2 + 0.12);
-  egg.rotateY(2.2);
+  egg.rotateZ(-0.85);
+  egg.rotateX(0.35);
+  egg.rotateY(-0.98); // turn the pecked hole toward the camera
   scene.add(egg);
   materialFor('egg').uniforms.uGlow.value.set('#3fd0c0');
-  ground(EGG_S, 0.12, 0.85, 0.6, 0.5);
-  const eggGlow = makeGlow('#6fe6d6', 1.3, 0.16);
-  eggGlow.position.copy(egg.position);
-  scene.add(eggGlow);
-  // dust kicked up behind the rolling egg
-  for (let i = 0; i < 4; i++) {
-    const puff = makeGlow('#f0d9aa', 0.5 + i * 0.22, 0.2 - i * 0.035);
-    puff.position.copy(terrain.place(EGG_S - 0.35 - i * 0.42, 0.12 + (i % 2 ? 0.1 : -0.08), 0.1 + i * 0.05));
+  ground(EGG_S + 0.05, 0.1, 0.7, 0.52, 0.6);
+  // dust kicked up where it last hit the trail
+  for (let i = 0; i < 3; i++) {
+    const puff = makeGlow('#f0d9aa', 0.42 + i * 0.2, 0.15 - i * 0.035);
+    puff.position.copy(terrain.place(EGG_S - 0.5 - i * 0.4, 0.1 + (i % 2 ? 0.1 : -0.08), 0.1 + i * 0.05));
     scene.add(puff);
   }
 
