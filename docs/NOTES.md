@@ -4,11 +4,11 @@ Decisions and progress. Read `raptor-race-brief.md` first; it's the source of tr
 
 ## Where things stand
 
-- **Milestone 1 (style): down to AB or B.** Drew is torn ("AB is more artistic and B looks more like a video game") and will decide with Aidan. Still undecided on 2026-11-16. A+ is still in the code until he picks.
-- **Milestone 2 (rough playable run): done.** Three playtests on the phone. Swipes, speed 8, the Lively egg, the lanes ("perfect"), the longer stride, the Home Screen fit and the top row all got a yes.
-- **Frame rate: holding 60 on the phone.** Build 15, Home Screen app, late in a full run: 60 fps, 2% late frames, longest frame 33 ms. See "Frame rate" below.
-- **Next is milestone 3** (hero, egg and chick up close). A short plan goes to Drew first.
-- Live build: https://drew879.github.io/raptor-race-fable/
+- **Milestone 1 (style): B, with touches of the inked looks kept.** On 2026-11-16 Aidan picked B. Drew agrees B's color and softness look good but called it "the least memorable from an artistic point of view" and asked to keep some of A+/AB. My answer is a new look, **B+ (Inked Diorama)**: B's world untouched, with a thin warm ink line on the living things and the things you play with (runner, egg, amber, obstacles), a little paper tooth, and journal-paper menus. It is the default now. AB and B are still on the pickers for comparison; A+ is retired. Waiting on Drew's reaction to B+.
+- **Milestone 2 (rough playable run): done.** Three playtests on the phone. Swipes, speed 8, the Lively egg, the lanes ("perfect"), the longer stride, the Home Screen fit, the top row and the sun rays ("looked good") all got a yes.
+- **Milestone 3 (runner, egg and chick up close): built, waiting on Drew's review.** The turntable is at `?mode=close`. See "The close-up" below.
+- **Frame rate: holding 60 on the phone.** See "Frame rate" below. The sharpness governor was still dipping to 70% on build 16 and has been rebuilt again.
+- Live build: https://drew879.github.io/raptor-race-fable/ (close-up: add `?mode=close`; rough run: `?mode=run`)
 - Hero colors are approved. All seven obstacle kinds are approved (they are kinds, to be repeated and combined).
 
 ### What the rough run has
@@ -17,7 +17,7 @@ Decisions and progress. Read `raptor-race-brief.md` first; it's the source of tr
 - Swipe and arrow-key controls, jump buffering, fast-fall into slide. One touch makes one move.
 - Four obstacle kinds so far: boulder and lane tree (go around), log (jump), propped trunk arch (slide). Creek, hollow log and Psittacosaurus are still to build.
 - The egg tumbles ahead; clean running closes the gap (down to 4.8 m), a hit adds 3.2 m, capped at 17 m with a warning. Losing the egg is not in yet.
-- Amber lines and arcs, a count, first-time hints, a pause sheet (resume, start over, look A+/AB/B, speed 4 to 11 m/s, egg Steady/Wobbly/Lively), a finish sheet with "Run again" that resets everything.
+- Amber lines and arcs, a count, first-time hints, a pause sheet (resume, start over, look AB/B+/B, speed 4 to 11 m/s, egg Steady/Wobbly/Lively), a finish sheet with "Run again" that resets everything.
 - The camera ducks under arches a moment after the hero.
 - Lane hints: each lane is a slightly paler worn track, with a thin broken seam of moss and litter between lanes. Drawn in the ground shader from trail coordinates (no grass: it had not evolved yet).
 - Forest is laid out in 13 m chunks at four levels of detail (`src/game/flora.ts`) and drawn with one call per model part for the whole view. Ground is one mesh showing only the stretch near the runner; amber, mist and sun shafts are one call each. About 50 draw calls and 0.4 to 0.6 million triangles a frame.
@@ -50,29 +50,56 @@ Build numbers here are the ones shown on the phone.
   - The speed test itself adds something to every reading (it waits on the graphics chip every six frames), so the floor is lower than it looks.
 - **In play (build 15, pause sheet late in a run):** 60 fps, late frames 2%, longest 33 ms, 51 draws. That is the number that matters, and it is good.
 - **What changed between 13 and 15:** each plant model drawn once for the whole view; ground, ridges, amber, mist and sun shafts one call each; shadow map redrawn every 2.5 m of trail, not every fifth frame.
-- **The sharpness governor** (`src/app/quality.ts`) has been wrong twice on this phone. Build 12's version walked sharpness to 50% for nothing. Build 15's version ran a trial after a burst of late frames, saw the next second was calm, took that as proof and sat at 70%. It now waits for three slow seconds in a row before a trial, treats a climb all the way back to full as a failed trial, and gives up for the session after two. The saved setting uses a new key each time the logic changed (`rr-scale3` now), so the phone starts at full sharpness.
+- **The sharpness governor** (`src/app/quality.ts`) has been wrong on this phone four times. Build 12's version walked sharpness to 50% for nothing. Build 15's ran a trial after a burst of late frames, saw the next second was calm, took that as proof and sat at 70%. Build 16's waited for three slow seconds first and still ended a run at 70%. The current one (build 18) is built to doubt:
+  - It only judges frames during play (`view.steady()`), never while the start, pause or finish sheet is up. The sheets blur the picture behind them, and whatever that costs says nothing about how fast the forest draws. This is my best guess at what fooled build 16, not a proven cause.
+  - After three slow seconds it tries half sharpness for a second. If that looks better, it goes back to the old sharpness for a second; only if the slowness comes back does it settle low and climb. A hitch that passes on its own ends at full sharpness.
+  - It keeps a short history, printed in the pause sheet's small print as "sharpness log: ...", so the next screenshot says what it did and why. No more guessing.
+  - Simulated on made-up phones (healthy, short and long hitches, slow under a sheet, always slow, truly bound by pixels): all end where they should.
+  - The saved setting's key is `rr-scale4`, so the phone starts at full sharpness.
 - **Headroom:** about 8 ms of a 16.7 ms budget by the speed test. If the real level needs more, the lever is forest triangles (lighter middle-distance models, fewer far plants).
 
+### The close-up (milestone 3, built 2026-11-16)
+`?mode=close` is a turntable: drag to spin, pinch to zoom. Subjects: Runner (Stand, Run, Sit), Egg, Chick (Stand, Hatched; three colors), Family (all three at true size). The animals blink, breathe, glance at the camera and call now and then. Code in `src/closeup/scene.ts`.
+
+**The runner was rebuilt for close range** (`art/hero.py`). What changed, and where it comes from:
+- A real head: short and deep with a large eye (the skull is 76 mm in the first skeleton found; ours is about 86 mm with feathers and beak, a small stylization). Upper beak and a lower jaw on its own bone, so the beak opens. A drawn gold eye with pupil, iris, a catchlight and lids that blink.
+- Four small teeth on each side at the very tip of the upper jaw, pointing forward, the first the largest. That is what the fossils show; the lower jaw had none. The horny beak itself is inferred, not preserved.
+- Fourteen feathers on each hand, on the second finger, shortest at the fingertip (about 30, 64 and 95 mm from the tip inward in the fossils; the longest known is 182 mm). Three fingers, claws on the first two; the third was a small splint and is hidden.
+- Eleven tail feathers a side (eleven are preserved on one side of the first skeleton). They are 20 to 26 cm here, a little shorter than before; the fossils' own lengths are not well published (15 to 20 cm in popular sources).
+- Toes: third longest, then second, then fourth, with a small first toe held off the ground on the inner side (whether it pointed backward is debated).
+- Body feathers in the fossils are short and downy, up to 14 mm. So the coat is now mostly drawn by the shader as rows of small feathers, with a thin scatter of real ones to keep the outline soft. This replaced the big feather cards, which looked like cut paper up close. The model went from 15,000 triangles to about 20,000 even with the new head, hands and feet.
+- The blue-black body has some support: pigment studies found black feathers across the body, plus the banded tail. Not a full color map.
+- Two new bones: `jaw`, and `fanL`/`fanR` (the hand that carries the fan). 22 in all.
+
+**The rig** (`src/hero/rig.ts`) gained: `sit` (folded legs like a bird on a nest, arms and fans spread), `lookYaw` / `lookPitch`, `beak`, `blink` (with `blinkAt(time)` for a natural rhythm), `idle` (breathing). `new HeroRig(model, scale)` takes the legs' size against the parent's, so the chick uses the same poses.
+
+**The chick** is the same script with a different `Form` (proportions, down in place of fans, colors), so it shares the skeleton. Nothing is known about a real hatchling: no Caudipteryx egg or chick has been found. Its relatives' embryos have well-formed bones, so chicks were probably up and walking soon after hatching; the down and colors are our choice. Three colors are offered for Drew and Aidan: Striped (buff with dark stripes, my pick: it stands out against the blue-green shell and the blue-black parent, and ground-nesting chicks really are striped), Slate (the parent's colors gone soft), Gold. Once one is picked, delete the other two models (1.9 MB each).
+
+**The egg up close** is its own model (`egg_true`, 2.2 times as long as wide, about 8 cm), matte and finely speckled with a faint lengthwise grain, plus two broken shell pieces. Size and shape come from oviraptorosaur eggs (always at least twice as long as wide; the smallest well-known kind is 9 to 11 cm; one kind has blue-green pigment). The chase egg stays short, fat and oversized so it reads from far away.
+
+**For the story scenes later** (from the same fact check): oviraptorosaur nests held many eggs in pairs, in rings, blunt ends up; adults have been found sitting on them with arms spread round the edge; which parent sat is unknown (possibly the father). The game says "parent", which is right. Ask Drew whether the opening nest holds one egg or a clutch.
+
 ### Not yet verified on the real phone
-- That sharpness now stays at full through a whole run (the pause sheet's small print says).
-- The slightly softer sun rays.
+- The new sharpness governor (the pause sheet should say "full sharpness" and show no log, or a log that ends back at full).
+- The close-up page: looks, touch controls, loading time (the runner is 1.6 MB, each chick 1.9 MB).
+- It does run in the iPhone simulator (Safari, iOS 26.3), so the new shader code compiles on Apple's engine.
 
 ### Next
-- Send Drew a short plan for milestone 3 (hero, egg and chick up close) and wait for his yes.
-- Lock the look once Drew and Aidan have picked.
+- Drew's review of the close-up: the runner's face and feathers, B+, the chick's color.
 - Then a course map for sign-off before building the real level (milestone 4).
+- Known rough spots on the runner, to fix with his feedback: the sitting pose is a first pass; the chick's down is still made of flat cards (fine at its size, visible when zoomed right in); a few real feathers sit oddly where two colors meet.
 
 ## How the code is laid out
 
-- `art/` Blender scripts. `art/lib/geo.py` is the modeling toolkit (lofted tubes, leaf and feather blades, painted vertex color, baked occlusion). `art/hero.py`, `art/plants.py` build the models; `art/build_all.py` exports them to `src/assets/models/` (`npm run art`, or `npm run art -- -- flora` for one kit). `art/icon.py` renders the app icon (a placeholder for now).
-- `src/render/paint.ts` the one shader family for the whole world. Models carry painted color and occlusion in a vertex attribute and wind data in UV; each face's material name is a "role" (bark, foliage_fern, feather...) that picks a shader variant.
+- `art/` Blender scripts. `art/lib/geo.py` is the modeling toolkit (lofted tubes, leaf and feather blades, painted vertex color, baked occlusion, and a second set of "detail" coordinates the shader draws fine detail from). `art/hero.py` (the runner and the chick), `art/plants.py` (plants, props, eggs) build the models; `art/build_all.py` exports them to `src/assets/models/` (`npm run art`, or `npm run art -- -- flora` for one kit). `art/icon.py` renders the app icon (a placeholder for now).
+- `src/render/paint.ts` the one shader family for the whole world. Models carry painted color and occlusion in a vertex attribute and wind data in UV; each face's material name is a "role" (bark, foliage_fern, feather...) that picks a shader variant. Feather, skin and eye roles also read `uv1` (detail coordinates) and draw barbs and shafts, rows of plumage, foot scales, and the eye from them, so that detail costs no triangles and stays crisp at any distance.
 - `src/render/styles.ts` a style direction is a full set of values for the paint shader, sky, soft effects and finishing pass. Geometry never changes between styles.
 - `src/render/post.ts` finishing pass: ink outlines found from depth, paper grain, final grade.
 - `src/render/noisetex.ts` one small tiling noise texture, read by the paint shader, the finishing pass, mist and shafts.
 - `src/render/shadow.ts` sun shadow map. Trunks, tree ferns and everything low cast real shadows; the high canopy's shade is painted as dappled light so it can be art-directed.
 - `src/world/` track (the trail's centerline from segments of length, turn and slope), terrain (a hillside ribbon in trail space: s along, u across), assets (model kits, instancing), sky (ridges, volcano), fx (mist, shafts, glows, contact shadows).
 - `src/game/` the run: `course.ts` (the test course), `run.ts` (state, rules, camera), `flora.ts` (forest streaming), `input.ts` (swipes), `hud.ts` (controls and sheets).
-- `src/hero/rig.ts` poses the hero's skeleton in code. `src/herolab/` is its test view.
+- `src/hero/rig.ts` poses the hero's skeleton in code. `src/herolab/` is its test view. `src/closeup/` is the turntable for the runner, egg and chick.
 - `src/lookdev/` the concept viewer scene and its controls. This goes away or moves behind a debug flag once the game proper starts.
 - `src/app/` build number and self-update, full-screen sizing, the sharpness governor (`quality.ts`) and the on-device speed test (`bench.ts`).
 
@@ -93,6 +120,10 @@ Build numbers here are the ones shown on the phone.
 - Drawing all the mist before all the sun shafts makes the shafts read much stronger than sorting them together did.
 - Timing frames: `requestAnimationFrame` can't see anything faster than the screen. To time drawing, draw N frames then read one pixel back (that waits for the graphics chip) and divide. Reading back after every frame adds several milliseconds and misleads. Short bursts also read slow because the chip speeds up under load: warm up for a third of a second first.
 - Thin outlines on far trees made the distant forest scratchy on the phone. In AB the scenery's lines fade out between 14 and 46 m, while the runner, egg, amber and obstacles keep theirs at any distance, so ink also marks what matters.
+- **Draw fine detail, don't model it.** Feather cards big enough to see read as cut paper up close, and enough small ones would cost tens of thousands of triangles. Rows of feathers drawn by the shader on a smooth skin look finer and cost nothing; a thin scatter of real feathers keeps the outline soft. Each drawn row needs a whole number of feathers round it, so the model passes that count per strip of the mesh.
+- Blender's glTF export flips the second number of every UV pair (v becomes 1 - v), including the second UV layer. The shader flips it back.
+- An eye drawn in the shader (pupil, iris, catchlight, lids) gives a blink for one number and stays round at any zoom.
+- Editing Python from a shell here-document: never nest the same triple quotes inside the script's own strings. It fails before anything is written.
 - Triangle budget matters: the first pass drew about 4.7 million triangles a frame. With light models for the distance and planting only what the frame sees, it's about 0.9 million and 6 ms a frame on the M1 Pro. The real game needs chunked streaming and the same light models.
 - The Browser pane used for testing throttles animation when the Claude window isn't in view. Test the run with fixed time steps instead (stop the animation loop, call `rr.view.update(t, rr.renderer)` in a loop, then `rr.post.render(...)`); `?nopause=1` keeps the run from pausing itself when the page is hidden. `window.rrGame` exposes state, `act()`, `reset()`.
 - In a slide the camera has to duck too, or the arch fills the screen as it passes.
@@ -138,10 +169,13 @@ These are the kinds, not a count. They repeat and combine along the course; expe
 
 - MacBook Pro, M1 Pro, 16 GB, macOS 15.7. Node, git, GitHub CLI, Blender 5.3 and ffmpeg are installed (the last two through Homebrew).
 - Audio: Ableton Live 12 Standard, Spitfire LABS, Kontakt 7. It's fine to control Live on this laptop.
-- Xcode 26.3 went in on 2026-11-16 with the iOS 26.2 simulator. That is one version behind Drew's phone (iOS 27.2), so the simulator is a first check for Home Screen layout and the phone is still the final word. `xcode-select` still pointed at the Command Line Tools when last checked; the simulator tools need `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`, which only Drew can run.
+- Xcode 26.3 is installed and selected (`xcode-select -p` gives the Xcode path). The simulator runtime is iOS 26.3, one version behind Drew's phone (iOS 27.2), so it is a first check and the phone is the final word. It is no use for judging speed. To test: `xcrun simctl boot <id>` (the iPhone 17 Pro Max is 440 by 956 points, same as the phone), wait for `xcrun simctl bootstatus <id>`, then open `http://localhost:5173/...` in it with the dev server running.
 
 ## Open questions
 
-- Which look: AB or B? Drew is deciding with Aidan.
-- Milestone 3 plan: waiting on Drew's yes.
+- B+: is this the right way to keep some of A+/AB in B? (Drew)
+- Chick color: Striped, Slate or Gold? (Drew and Aidan)
+- The runner up close: anything about the face, feathers, hands or feet that looks off?
+- The four small teeth at the tip of the beak: keep them? They are real, and a nice journal fact.
+- The opening nest: one egg, or a clutch with ours on top?
 - Should a slide be holdable by swiping down again? Drew is on the fence.
