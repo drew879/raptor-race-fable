@@ -4,9 +4,9 @@ Decisions and progress. Read `raptor-race-brief.md` first; it's the source of tr
 
 ## Where things stand
 
-- **Milestone 1 (style): close.** Drew ruled out plain A ("A+ is definitely better") and asked for something between A+ and B. That is now "AB, Painted Journal": B's deeper paint and mist, with A's ink kept for what is near and for the things you play with. Waiting on his pick between A+, AB and B. The old A and C are gone from the code (they are in git history and in `docs/concept-round-1/`).
-- **Milestone 2 (rough playable run): second version.** Drew played build 8 on his phone on 2026-11-16: camera, hero size, the downhill, jump, slide and obstacle reads all passed. His fixes are in (see "Round 2" below). Waiting on a second playtest and on a screenshot of the speed test.
-- **Frame rate is the open risk.** Build 8 ran at 22 fps on the iPhone 16 Pro Max (in Chrome). See "Frame rate" below.
+- **Milestone 1 (style): down to AB or B.** Drew is torn ("AB is more artistic and B looks more like a video game") and will decide with Aidan. A+ is still in the code until he picks.
+- **Milestone 2 (rough playable run): passed its second playtest** (build 13, on the phone, 2026-11-16). Swipes, speed 8, the Lively egg, the lanes, the longer stride, the Home Screen fit and the top row all got a yes. Open: the look, and a re-run of the speed test on build 14.
+- **Frame rate: the cause is found.** See "Frame rate" below.
 - Live build: https://drew879.github.io/raptor-race-fable/
 - Hero colors are approved. All seven obstacle kinds are approved (they are kinds, to be repeated and combined).
 
@@ -19,7 +19,7 @@ Decisions and progress. Read `raptor-race-brief.md` first; it's the source of tr
 - Amber lines and arcs, a count, first-time hints, a pause sheet (resume, start over, look A+/AB/B, speed 4 to 11 m/s, egg Steady/Wobbly/Lively), a finish sheet with "Run again" that resets everything.
 - The camera ducks under arches a moment after the hero.
 - Lane hints: each lane is a slightly paler worn track, with a thin broken seam of moss and litter between lanes. Drawn in the ground shader from trail coordinates (no grass: it had not evolved yet).
-- Forest streams in 13 m chunks at four levels of detail (`src/game/flora.ts`); ground is cut into 26 m sections and amber into 40 m batches, so only what is near is drawn. About 0.36 to 0.55 million triangles a frame.
+- Forest is laid out in 13 m chunks at four levels of detail (`src/game/flora.ts`) and drawn with one call per model part for the whole view. Ground is one mesh showing only the stretch near the runner; amber, mist and sun shafts are one call each. About 50 draw calls and 0.4 to 0.6 million triangles a frame.
 
 ### Round 2 (2026-11-16), from Drew's playtest of build 8
 - Default speed 8 (he first thought 10, settled on 8 for an introductory level). The saved speed was reset (`rr-speed2`).
@@ -28,27 +28,30 @@ Decisions and progress. Read `raptor-race-brief.md` first; it's the source of tr
 - The egg rolled backwards and at a fixed 45 degrees. It now always turns forward. Three ways of rolling are on the pause sheet so he can compare: Steady (end over end), Wobbly (the axis swings with its path), Lively (wobbly, and each bounce depends on how it lands: on an end it kicks up high, on its side it skips low). Lively is the default and my pick. It is a few lines of rules, not a physics engine.
 - The torn-paper edge around the screen is gone from play: he wants the world to reach the edges. It could come back on pages that are pages (Field Journal, results).
 - Top row moved down 14 points in the Home Screen app, out of the blur band.
-- Bottom strip in the Home Screen app: see "Things learned".
+- Bottom strip in the Home Screen app: see "Things learned". Drew confirmed on build 13 that the strip is gone and the top row is clear ("Both perfect!"). The pause sheet read view 440x956, window 440x956, top 62, bottom 34.
+- Lanes: "great, and if anything could be slightly more subtle". Softened a little in build 14.
+- Egg: he loves Lively. The other two ways stay on the pause sheet for now.
+- **For the real level, from Drew:** in the test run he caught up to the egg quickly, so it felt like being stuck behind it, not chasing it. In the level, the egg should get well ahead after the opening scene and the runner should close on it slowly across the whole run.
 - **Longer stride (build 13).** Drew said the legs moved "impossibly fast, almost like a hummingbird's wings" and asked for slightly longer strides at a slightly lower step rate. Built in a side session, shown to him as a before and after clip, and approved ("Yes, use it"). Stride length now follows the rule used to read speed from fossil trackways (stride / hip height = 2.3 x (speed squared / (g x hip height)) to the 0.3, hip height 0.45 m), times 1.15. At speed 8 that is 2.65 m a stride and 6.0 steps a second, down from 1.9 m and 8.4. Each foot is planted for about 0.57 m of ground at any speed and the rest is float, so a planted foot barely slides. `STRIDE_STRETCH` in `src/hero/rig.ts` is the one number to turn if he wants it longer or shorter.
 - Part of the hummingbird look was the frame rate, not the gait: at 22 fps and 8.4 steps a second the phone drew fewer than 3 frames per step. Judge the stride again once the phone runs smoothly.
 
 ### Frame rate
-- Build 8: 22 fps on the phone. On the M1 Pro the same frame took 5.7 ms at the phone's size (880 by 1912), so the phone was roughly 8 times slower than this Mac, more than its chip alone explains. Cause not yet known.
-- Done so far: shader noise now comes from a small tiling texture instead of being worked out per pixel (paint shader, ink pass, mist, shafts); sun shadows take 4 filtered taps, not 9; lighter far-distance models; ground and amber drawn only near the runner. The Mac frame is now about 3.4 ms, with the same look.
-- On the Mac what is left is mostly edge smoothing (4x MSAA, about 1 ms) and the extra full-screen pass (about 0.5 ms). Triangle count barely matters on the Mac. Whether that holds on the phone is unknown.
-- `src/app/quality.ts` watches for late frames and lowers render sharpness in steps (down to half), raising it again when there is room. The pause sheet's small print shows the current sharpness.
-- `?mode=bench` (the "Speed test" link on the pause sheet) times the frame nine ways on the device itself. **Next step: get Drew's screenshot of it and decide from real numbers** (drop or change smoothing, cut more geometry, or lower the sharpness cap).
-- Known gap: with the phone in Low Power Mode (30 frames a second at most) the governor will walk down to half sharpness for nothing. It climbs back once the cap is gone.
+- **Build 8: 22 fps on the phone.** The paint shader worked noise out per pixel, and the phone was bound by that. Moving noise to a texture (build 12) fixed it: the phone's speed test on build 13 drew a frame in 10.8 ms.
+- **Build 13 speed test on the iPhone 16 Pro Max (Chrome, 880 by 1530):** as played 10.8 ms; no edge smoothing 10.8; no ink and paper pass 12.3; three quarters sharp 12.7; half sharp 10.6; no forest 7.9; no sun shadows 12.5; half sharp and no forest 7.7; half sharp and no smoothing 11.3. Readings wobble by a millisecond or two.
+- **What that says:** on the phone, pixels cost nothing that matters now. Sharpness, smoothing, the ink pass and shadows make no difference. Taking the forest away saves 3 ms, and 7.7 ms is left with almost nothing on screen. My reading is that the cost follows the number of separate draw calls (about 250 a frame in build 13), which a phone's browser charges for one by one. This Mac barely notices them, which would explain why it ran the same frame so much faster. Build 14's speed test will confirm or sink that reading.
+- **The governor made things worse.** With late frames it walked sharpness down to 50% and stayed there (his pause sheet said "44 fps, sharpness 50%"), softening the picture for no gain. A likely source of the late frames: the shadow map was redrawn every fifth frame, many extra draw calls on that frame.
+- **Build 14:** each plant model is drawn once for the whole view; ground, ridges, amber, mist and sun shafts are one call each. About 50 draw calls a frame, down from about 250. The shadow map is redrawn every 2.5 m of trail (about every 19 frames), not every fifth frame, and costs about 30 calls when it is. On the Mac the frame went from 4.6 ms to 2.4 ms by the speed test's own measure.
+- **The governor now proves itself.** Late frames trigger a trial: half sharpness for a second. If late frames don't clearly fall, sharpness goes back and, after two such trials, is left alone for the session. If they do fall, it stays low and climbs back a step at a time. The saved setting uses a new key, so Drew's phone starts again at full sharpness.
+- The pause sheet's small print now shows late frames over the last ten seconds, the longest frame, and draw calls.
+- **Next:** Drew re-runs the speed test and sends the pause sheet after a full run. If frames are still late, the next lever is fewer draw calls again (bark and leaves of a tree in one call).
 
 ### Not yet verified on the real phone
-- The Home Screen bottom-strip fix and the new top-row position.
-- Frame rate after this round's work.
-- The lane hints, the egg's three ways of rolling and the AB look in motion.
+- Build 14's frame rate and late frames. Everything else from round 2 was checked by Drew on build 13.
 - The run was tested here with a scripted bot at fixed time steps and with real clicks on the sheets: the course can be finished with no hits at speed 8, hits register and slow you, and "Run again" restores every piece of state.
 
 ### Next
-- Read the speed test numbers and get to a steady 60 on the phone.
-- Lock the look.
+- Confirm on the phone that build 14 holds 60 (new speed test, pause sheet after a full run).
+- Lock the look once Drew and Aidan have picked.
 - Hero up close (milestone 3), then a course map for sign-off before building the real level (milestone 4).
 
 ## How the code is laid out
@@ -71,9 +74,13 @@ Decisions and progress. Read `raptor-race-brief.md` first; it's the source of tr
 - A crest hides what is behind it. For gameplay, keep hidden stretches at least 3 seconds ahead of the runner, or flatten the crest (brief rule: nothing hides behind a crest).
 - Solid canopy shadows made the trail and hero muddy. Dappled light with a coverage dial reads better and stays controllable.
 - The hero, egg and obstacles get less shade than the scenery on purpose, so they never get lost.
-- **The Home Screen strip.** On iOS 26 and later, a Home Screen app that draws under the status bar gets a viewport short by the status bar's height (62 points on this phone) and paints nothing below it, however tall you make a fixed element (WebKit bug 301108). Forcing the 3D view to the screen's height, which build 8 did, only cut the picture's bottom off. The viewport is short only while the page is shorter than the screen, so the fix other projects use is a page-level rule in standalone mode: `html { min-height: min(100lvh, calc(100% + env(safe-area-inset-top))) }`. That is in `style.css`; the 3D view is now plain `position: fixed; inset: 0` and `viewport.ts` just reads its size. Not yet confirmed on Drew's phone. There is no simulator on this Mac (Xcode is not installed), so Home Screen layout can't be tested here.
+- **The Home Screen strip.** On iOS 26 and later, a Home Screen app that draws under the status bar gets a viewport short by the status bar's height (62 points on this phone) and paints nothing below it, however tall you make a fixed element (WebKit bug 301108). Forcing the 3D view to the screen's height, which build 8 did, only cut the picture's bottom off. The viewport is short only while the page is shorter than the screen, so the fix other projects use is a page-level rule in standalone mode: `html { min-height: min(100lvh, calc(100% + env(safe-area-inset-top))) }`. That is in `style.css`; the 3D view is now plain `position: fixed; inset: 0` and `viewport.ts` just reads its size. Confirmed on Drew's phone (iOS 27.2). There is no simulator on this Mac (Xcode is not installed), so Home Screen layout can't be tested here.
 - The blur band under the status bar comes with drawing under it; it can't be turned off. The only way to lose it is the opaque status bar style, which gives up the top 62 points. We keep drawing under it and start the top row 14 points lower.
 - Procedural noise in a fragment shader is expensive on a phone. Read it from a texture.
+- **Draw calls look like what a phone's browser charges for.** Once the shader was cheap, nothing about pixels moved the phone's frame time; removing the forest (most of the draw calls) did. Draw each model once for the whole view (shared instance lists, refilled when a chunk changes level), and give soft effects one instanced mesh each. Never one mesh per chunk per model.
+- Measure on the phone before tuning for it. The Mac said edge smoothing was the biggest cost left; the phone said it was free.
+- Noise baked on a grid peaks on the grid, so a threshold through it (dapples, pebbles) shows dots in rows. The baked texture is read through a gentle wrapping warp, with each layer offset by part of a cell.
+- A sharpness governor must check that fewer pixels actually helps before keeping a lower setting.
 - Timing frames: `requestAnimationFrame` can't see anything faster than the screen. To time drawing, draw N frames then read one pixel back (that waits for the graphics chip) and divide. Reading back after every frame adds several milliseconds and misleads. Short bursts also read slow because the chip speeds up under load: warm up for a third of a second first.
 - Thin outlines on far trees made the distant forest scratchy on the phone. In AB the scenery's lines fade out between 14 and 46 m, while the runner, egg, amber and obstacles keep theirs at any distance, so ink also marks what matters.
 - Triangle budget matters: the first pass drew about 4.7 million triangles a frame. With light models for the distance and planting only what the frame sees, it's about 0.9 million and 6 ms a frame on the M1 Pro. The real game needs chunked streaming and the same light models.
@@ -124,8 +131,7 @@ These are the kinds, not a count. They repeat and combine along the course; expe
 
 ## Open questions
 
-- Which look: A+, AB or B? (My pick is AB.)
-- Which way should the egg roll: Steady, Wobbly or Lively? (My pick is Lively.)
-- Are the lane hints right: too strong, about right, too faint?
+- Which look: AB or B? Drew is deciding with Aidan.
+- Does build 14 hold 60 on the phone? Waiting on a new speed test and pause sheet.
 - Should a slide be holdable by swiping down again? Drew is on the fence.
-- Would Drew install Xcode (free, about 12 GB) so Home Screen layout can be tested here in a simulator?
+- Xcode: Drew said yes to installing it, so Home Screen layout can be checked here in a simulator. Until it is installed there is still no simulator on this Mac.
