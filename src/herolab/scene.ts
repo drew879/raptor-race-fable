@@ -1,9 +1,9 @@
 // Hero lab: the hero on a bare patch of ground, for checking the rig and its poses.
 // URL options: cam=side|behind|front|three, state=run|jump|slide|stand, phase=0..1 (freezes the stride),
-// slow=<factor>.
+// slow=<factor>, speed=<meters per second>, travel=0 (run on the spot instead of along the ground).
 
 import * as THREE from 'three';
-import { HeroRig, type HeroState } from '../hero/rig';
+import { HeroRig, strideLength, type HeroState } from '../hero/rig';
 import { world } from '../render/paint';
 import { loadSkinned } from '../world/assets';
 import { makeContactShadow } from '../world/fx';
@@ -31,7 +31,6 @@ export async function buildHeroLab(params: URLSearchParams): Promise<Lookdev> {
   hero.position.copy(terrain.place(30, 0, 0));
   scene.add(hero);
   const blob = makeContactShadow(0.9, 1.3, 0.45);
-  blob.position.copy(hero.position).setY(hero.position.y + 0.02);
   scene.add(blob);
 
   const cam = params.get('cam') ?? 'side';
@@ -45,9 +44,10 @@ export async function buildHeroLab(params: URLSearchParams): Promise<Lookdev> {
   const fixedPhase = params.has('phase') ? Number(params.get('phase')) : null;
   const mode = params.get('state') ?? 'run';
   const slow = Number(params.get('slow')) || 1;
-  const state: HeroState = { phase: 0, run: 1, air: 0, airTilt: 0, slide: 0, lean: 0 };
-  const strideLength = 1.9;
-  const speed = 7;
+  const speed = Number(params.get('speed')) || 8;
+  const state: HeroState = { phase: 0, speed, run: 1, air: 0, airTilt: 0, slide: 0, lean: 0 };
+  // the hero covers real ground, so a foot that slides on the dirt is easy to spot
+  const travel = params.get('travel') !== '0' && mode === 'run' && fixedPhase === null;
 
   return {
     scene,
@@ -59,8 +59,11 @@ export async function buildHeroLab(params: URLSearchParams): Promise<Lookdev> {
     update(time: number) {
       world.uTime.value = time;
       const t = time * slow;
-      state.phase = fixedPhase ?? (t * speed) / strideLength;
+      state.phase = fixedPhase ?? (t * speed) / strideLength(speed);
+      hero.position.copy(terrain.place(travel ? 8 + ((t * speed) % 44) : 30, 0, 0));
+      blob.position.copy(hero.position).setY(hero.position.y + 0.02);
       state.run = mode === 'stand' ? 0 : 1;
+      state.speed = mode === 'stand' ? 0 : speed;
       state.air = mode === 'jump' ? 1 : 0;
       state.airTilt = mode === 'jump' ? Math.sin(t * 2) : 0;
       state.slide = mode === 'slide' ? 1 : 0;

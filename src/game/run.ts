@@ -3,7 +3,7 @@
 
 import * as THREE from 'three';
 import { setReloadGuard } from '../app/build';
-import { HeroRig, type HeroState } from '../hero/rig';
+import { HeroRig, strideLength, type HeroState } from '../hero/rig';
 import type { Lookdev } from '../lookdev/scene';
 import { world } from '../render/paint';
 import { SunShadow } from '../render/shadow';
@@ -42,7 +42,6 @@ export interface RunView extends Lookdev {
 }
 
 const START_S = 3;
-const STRIDE = 1.9; // meters per full stride
 const JUMP_HEIGHT = 0.72;
 const JUMP_TIME = 0.56;
 const GRAVITY = (8 * JUMP_HEIGHT) / (JUMP_TIME * JUMP_TIME);
@@ -267,7 +266,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     clock: 0,
     frame: 0,
   };
-  const heroState: HeroState = { phase: 0, run: 1, air: 0, airTilt: 0, slide: 0, lean: 0 };
+  const heroState: HeroState = { phase: 0, speed: 0, run: 1, air: 0, airTilt: 0, slide: 0, lean: 0 };
 
   const hud = makeHud(ui, {
     styles: hooks.styles,
@@ -411,7 +410,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     const target = st.finished ? 0 : baseSpeed * (st.stumbleT > 0 ? 0.5 : 1) * (ending ? THREE.MathUtils.clamp((END_S - 1.0 - st.s) / 8, 0.12, 1) : 1);
     st.speed += (target - st.speed) * Math.min(1, dt * (st.speed < target ? 2.2 : 6));
     st.s += st.speed * dt;
-    st.phase += (st.speed * dt) / STRIDE;
+    st.phase += (st.speed * dt) / strideLength(st.speed);
     st.stumbleT = Math.max(0, st.stumbleT - dt);
     st.safeT = Math.max(0, st.safeT - dt);
 
@@ -504,6 +503,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     hero.quaternion.copy(basisAt(st.s, 0.8));
     const wobble = st.stumbleT > 0 ? Math.sin(st.clock * 34) * 0.35 * (st.stumbleT / 0.9) : 0;
     heroState.phase = st.phase;
+    heroState.speed = st.speed;
     heroState.run = Math.min(1, st.speed / 3);
     heroState.air = st.air;
     heroState.airTilt = THREE.MathUtils.clamp(st.vy / JUMP_V, -1, 1);

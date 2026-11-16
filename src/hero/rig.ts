@@ -2,6 +2,10 @@
 // function of distance travelled, so the feet keep time with the ground at any speed,
 // and jump and slide blend in on top.
 //
+// Stride length grows with speed the way it does in running animals, so a faster run means
+// longer strides more than quicker steps. Each foot is planted for about the same distance
+// of ground at any speed; the faster the run, the longer the float between footfalls.
+//
 // Angles for the legs are "from straight down, positive = forward", the same convention
 // the Blender script uses to build the model, so poses can be reasoned about in one place.
 
@@ -16,19 +20,41 @@ const TOE = 0.076;
 /** Rest pose of a leg, matching REST_LEG in art/hero.py. */
 const REST_LEG = [26, -34, 18, 88];
 
+const GRAVITY = 9.81;
+/** Standing hip height in meters, from art/hero.py. */
+const HIP_HEIGHT = 0.45;
+/** Strides run this much longer than the trackway estimate, so the legs read clearly at speed. */
+const STRIDE_STRETCH = 1.15;
+/** Meters of ground that pass under the hips while one foot is planted: touchdown to toe-off. */
+const CONTACT = 0.57;
+/** How high the hips rise in the float between footfalls. */
+const FLOAT_HEIGHT = 0.025;
+
+/** Meters per full stride (two steps) at a given speed. This is the rule used to read speed from
+ *  fossil trackways (Alexander 1976), stride / hip height = 2.3 * (speed² / (g * hip height))^0.3,
+ *  with a little added length. */
+export function strideLength(speed: number): number {
+  const froude = Math.max(speed, 0.05) ** 2 / (GRAVITY * HIP_HEIGHT);
+  return STRIDE_STRETCH * 2.3 * HIP_HEIGHT * Math.pow(froude, 0.3);
+}
+
 type Leg = [number, number, number, number];
 
-/** One stride of one leg, eight evenly spaced poses: femur, tibia, metatarsus, toes (degrees). */
+/** One stride of one leg, eight poses: femur, tibia, metatarsus, toes (degrees). The first four
+ *  are the foot on the ground, the last four are the swing. The planted toes cover CONTACT meters
+ *  between the first pose and the fourth, in three even parts, so a planted foot does not slide. */
 const RUN_CYCLE: Leg[] = [
-  [48, -8, 28, 82], // foot lands ahead
-  [26, -38, 14, 90], // weight over the foot
-  [2, -50, -12, 78], // pushing back
-  [-18, -52, -48, 20], // toe-off
-  [-14, -70, -112, -100], // foot kicks up behind
-  [22, -72, -80, -80], // tucked, passing under the body
-  [52, -45, -20, -10], // swinging forward
-  [62, -14, 26, 55], // reaching for the ground
+  [60, 3, 36, 78], // touchdown, foot well ahead
+  [43, -35, 20, 97], // weight over the foot, leg a little folded
+  [-7, -58, 3, 75], // pushing back, heel rising
+  [-36, -58, -34, 18], // toe-off, leg stretched out behind
+  [-16, -74, -112, -100], // foot kicks up behind
+  [50, -40, -80, -70], // folded, passing under the body
+  [85, -50, -5, 15], // knee driving forward, foot held clear of the ground
+  [80, 0, 30, 65], // unfolding toward the ground
 ];
+/** The share of RUN_CYCLE spent on the ground (poses 0 to 3 of 8). */
+const STANCE = 3 / 8;
 const TUCK: Leg = [42, -76, -38, -30]; // in the air
 const TUCK_BACK: Leg = [20, -80, -70, -60];
 const CROUCH: Leg = [78, -96, 58, 86]; // sliding low
@@ -43,9 +69,12 @@ function catmull(p0: number, p1: number, p2: number, p3: number, t: number): num
   return 0.5 * (2 * p1 + (p2 - p0) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (3 * p1 - p0 - 3 * p2 + p3) * t3);
 }
 
-function runLeg(phase: number, out: Leg): Leg {
+/** Leg pose at a point in the stride. `duty` is the share of the stride this foot spends planted;
+ *  the swing takes the rest, so a short duty gives a quick push and a long reach forward. */
+function runLeg(phase: number, duty: number, out: Leg): Leg {
   const n = RUN_CYCLE.length;
-  const x = (((phase % 1) + 1) % 1) * n;
+  const p = ((phase % 1) + 1) % 1;
+  const x = (p < duty ? (p / duty) * STANCE : STANCE + ((p - duty) / (1 - duty)) * (1 - STANCE)) * n;
   const i = Math.floor(x);
   const t = x - i;
   for (let k = 0; k < 4; k++) {
@@ -81,8 +110,10 @@ interface Joint {
 }
 
 export interface HeroState {
-  /** Stride phase, 0..1 per full stride (two steps). Advance it with distance travelled. */
+  /** Stride phase, 0..1 per full stride (two steps). Advance it by distance / strideLength(speed). */
   phase: number;
+  /** Ground speed in meters per second. Sets how long each foot stays planted. */
+  speed: number;
   /** 0 = standing, 1 = full run. */
   run: number;
   /** 0..1, how much the airborne pose takes over. */
@@ -102,6 +133,8 @@ export class HeroRig {
   private joints = new Map<string, Joint>();
   private hipsRestY: number;
   private restDrop = legDrop(REST_LEG as Leg);
+  private toeOffDrop = legDrop(RUN_CYCLE[3]);
+  private touchdownDrop = legDrop(RUN_CYCLE[0]);
   private tmpQ = new THREE.Quaternion();
   private tmpQ2 = new THREE.Quaternion();
   private legL: Leg = [0, 0, 0, 0];
@@ -159,8 +192,9 @@ export class HeroRig {
     const grounded = 1 - s.air;
 
     // ---- legs
-    runLeg(s.phase, this.legL);
-    runLeg(s.phase + 0.5, this.legR);
+    const duty = THREE.MathUtils.clamp(CONTACT / strideLength(s.speed), 0.2, 0.46);
+    runLeg(s.phase, duty, this.legL);
+    runLeg(s.phase + 0.5, duty, this.legR);
     mixLeg(REST_LEG as Leg, this.legL, run, this.legL);
     mixLeg(REST_LEG as Leg, this.legR, run, this.legR);
     if (s.air > 0) {
@@ -175,6 +209,14 @@ export class HeroRig {
     // ---- hips: the lower foot stays on the ground, which gives the run its bounce for free
     const drop = Math.max(legDrop(this.legL), legDrop(this.legR));
     let lift = drop - this.restDrop;
+    // Between footfalls both feet are off the ground for a moment. The hips then follow a low arc
+    // from their height at toe-off to their height at the next touchdown, not the dangling feet.
+    const half = ((s.phase % 0.5) + 0.5) % 0.5;
+    if (half > duty) {
+      const f = (half - duty) / (0.5 - duty);
+      const arc = this.toeOffDrop + (this.touchdownDrop - this.toeOffDrop) * f + FLOAT_HEIGHT * 4 * f * (1 - f);
+      lift += Math.max(0, arc - drop) * run * grounded;
+    }
     const minLift = 0.15 - this.restDrop; // belly on the ground
     if (s.slide > 0) lift = Math.max(lift, minLift);
     this.hipLift = lift;

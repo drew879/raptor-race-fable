@@ -231,7 +231,7 @@ export async function buildLookdev(): Promise<Lookdev> {
 
   // the same rig the game uses, frozen at one moment of its stride
   const rig = new HeroRig(heroModel);
-  rig.pose({ phase: 0.93, run: 1, air: 0, airTilt: 0, slide: 0, lean: 0 });
+  rig.pose({ phase: 0.91, speed: 8, run: 1, air: 0, airTilt: 0, slide: 0, lean: 0 });
   const hero = new THREE.Group();
   hero.add(rig.root);
   hero.position.copy(terrain.place(HERO_S, 0, 0.005));

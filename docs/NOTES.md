@@ -12,7 +12,7 @@ Decisions and progress. Read `raptor-race-brief.md` first; it's the source of tr
 
 ### What the rough run has
 - A 530 m test course (about 66 s at 8 m/s) in `src/game/course.ts`: 25 decision points, never closer than 12 m (1.5 s). Order: lanes, jumps, slides, a steep clear drop with a view, a mixed section, a second drop, a short finish. This is a feel test, not the Level 1 layout.
-- The hero is rigged (19 bones) and posed in code: run cycle tied to distance, jump, slide, lane lean, stumble (`src/hero/rig.ts`). `?mode=hero&cam=side&state=run|jump|slide|stand&phase=0.25` is a test view.
+- The hero is rigged (19 bones) and posed in code: run cycle tied to distance, jump, slide, lane lean, stumble (`src/hero/rig.ts`). Stride length grows with speed (see Round 2). `?mode=hero&cam=side&state=run|jump|slide|stand&phase=0.25&speed=8` is a test view; without `phase` the hero now travels over the ground (`travel=0` runs on the spot).
 - Swipe and arrow-key controls, jump buffering, fast-fall into slide. One touch makes one move.
 - Four obstacle kinds so far: boulder and lane tree (go around), log (jump), propped trunk arch (slide). Creek, hollow log and Psittacosaurus are still to build.
 - The egg tumbles ahead; clean running closes the gap (down to 4.8 m), a hit adds 3.2 m, capped at 17 m with a warning. Losing the egg is not in yet.
@@ -29,6 +29,8 @@ Decisions and progress. Read `raptor-race-brief.md` first; it's the source of tr
 - The torn-paper edge around the screen is gone from play: he wants the world to reach the edges. It could come back on pages that are pages (Field Journal, results).
 - Top row moved down 14 points in the Home Screen app, out of the blur band.
 - Bottom strip in the Home Screen app: see "Things learned".
+- **Longer stride (build 13).** Drew said the legs moved "impossibly fast, almost like a hummingbird's wings" and asked for slightly longer strides at a slightly lower step rate. Built in a side session, shown to him as a before and after clip, and approved ("Yes, use it"). Stride length now follows the rule used to read speed from fossil trackways (stride / hip height = 2.3 x (speed squared / (g x hip height)) to the 0.3, hip height 0.45 m), times 1.15. At speed 8 that is 2.65 m a stride and 6.0 steps a second, down from 1.9 m and 8.4. Each foot is planted for about 0.57 m of ground at any speed and the rest is float, so a planted foot barely slides. `STRIDE_STRETCH` in `src/hero/rig.ts` is the one number to turn if he wants it longer or shorter.
+- Part of the hummingbird look was the frame rate, not the gait: at 22 fps and 8.4 steps a second the phone drew fewer than 3 frames per step. Judge the stride again once the phone runs smoothly.
 
 ### Frame rate
 - Build 8: 22 fps on the phone. On the M1 Pro the same frame took 5.7 ms at the phone's size (880 by 1912), so the phone was roughly 8 times slower than this Mac, more than its chip alone explains. Cause not yet known.
