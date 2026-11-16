@@ -6,3 +6,5 @@ art/_preview
 .claude
 raptor-race-brief.md
 docs/local
+__pycache__
+*.pyc
