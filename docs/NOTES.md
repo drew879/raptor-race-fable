@@ -4,14 +4,40 @@ Decisions and progress. Read `raptor-race-brief.md` first; it's the source of tr
 
 ## Where things stand
 
-- **Milestone 1 (setup and concept art): in progress.**
+- **Milestone 1 (setup and concept art): waiting on Drew's pick.** The live build is the concept viewer: one frozen moment of the chase in three style directions (A Field Journal, B Painted Diorama, C Ink and Mist). Tap A, B or C to switch, tap the picture to hide the controls, and "fit check" shows how the page fills the phone plus the frame rate.
 - Live build: https://drew879.github.io/raptor-race-fable/
+- Next after the pick: milestone 2, a rough playable run (controls, speed, camera, bends, the downhill).
+
+### Not yet verified on the real phone
+- Full-screen fit in the Home Screen app, the blur band under the status bar, and frame rate. The fit check overlay exists to answer these from a screenshot.
+- How the ink outlines in A and C hold up at running speed. So far they've only been seen in a still frame with a gently swaying camera.
+
+## How the code is laid out
+
+- `art/` Blender scripts. `art/lib/geo.py` is the modeling toolkit (lofted tubes, leaf and feather blades, painted vertex color, baked occlusion). `art/hero.py`, `art/plants.py` build the models; `art/build_all.py` exports them to `src/assets/models/` (`npm run art`, or `npm run art -- -- flora` for one kit). `art/icon.py` renders the app icon (a placeholder for now).
+- `src/render/paint.ts` the one shader family for the whole world. Models carry painted color and occlusion in a vertex attribute and wind data in UV; each face's material name is a "role" (bark, foliage_fern, feather...) that picks a shader variant.
+- `src/render/styles.ts` a style direction is a full set of values for the paint shader, sky, soft effects and finishing pass. Geometry never changes between styles.
+- `src/render/post.ts` finishing pass: ink outlines found from depth, paper grain, the ragged wash edge, final grade.
+- `src/render/shadow.ts` sun shadow map. Trunks, tree ferns and everything low cast real shadows; the high canopy's shade is painted as dappled light so it can be art-directed.
+- `src/world/` track (the trail's centerline from segments of length, turn and slope), terrain (a hillside ribbon in trail space: s along, u across), assets (model kits, instancing), sky (ridges, volcano), fx (mist, shafts, glows, contact shadows).
+- `src/lookdev/` the concept viewer scene and its controls. This goes away or moves behind a debug flag once the game proper starts.
+- `src/app/` build number and self-update, full-screen sizing.
+
+## Things learned so far
+
+- Downhill reads when (1) the trail tips over a crest and drops out of sight, (2) a slot is kept clear of tall trees so the valley, stacked ridges and volcano show beyond, and (3) trunks rise from below the crest. A camera 1.45 m up and 2.6 m behind the hero, looking 14 m ahead, puts the horizon about a third of the way down the screen.
+- A crest hides what is behind it. For gameplay, keep hidden stretches at least 3 seconds ahead of the runner, or flatten the crest (brief rule: nothing hides behind a crest).
+- Solid canopy shadows made the trail and hero muddy. Dappled light with a coverage dial reads better and stays controllable.
+- The hero, egg and obstacles get less shade than the scenery on purpose, so they never get lost.
+- Triangle budget matters: the first pass drew about 4.7 million triangles a frame. With light models for the distance and planting only what the frame sees, it's about 0.9 million and 6 ms a frame on the M1 Pro. The real game needs chunked streaming and the same light models.
+- The egg is drawn much larger than life during the chase so it reads from a distance. Bring it back to a believable size for the nest and hatching scenes.
 
 ## Decisions
 
 - **Platform:** a web app (Three.js, TypeScript, Vite), played in Chrome on iPhone and from the Home Screen. Every push to `main` deploys to GitHub Pages through `.github/workflows/deploy.yml`. Native was considered and set aside: slower loop, needs Xcode and a paid developer account.
 - **Art:** every model is built by Blender scripts in `art/` and exported to glTF. No store-bought or generated art, so the whole world shares one hand. Run `npm run art` to rebuild models.
 - **Concept art:** shown as live 3D frames in the real engine (same frozen moment, three styles), so what gets picked is what ships.
+- **Hero colors (first pass, open to change):** blue-black body, cream and dark banded tail and arm fans (banding is preserved in the fossils), a gold collar and gold eye. With forest green, amber gold and the blue-green egg, the game's palette lands on the player's four favorite colors without forcing it.
 - **Music:** written as MIDI in code, rendered through Ableton Live 12 (LABS and Kontakt 7 are installed). To start, I deliver and Drew reacts. Drew may get hands-on later, and may bring riffs of his own for future levels.
 - **Build number** = number of commits, shown on screen. `version.json` is checked at launch and on return to the foreground; a newer build triggers a reload (`src/app/build.ts`). The service worker (`src/sw.js`) fetches the page fresh every launch and caches the rest per build.
 - **Commits:** small, pushed often, with no AI model names or attribution lines.
@@ -32,4 +58,7 @@ Decisions and progress. Read `raptor-race-brief.md` first; it's the source of tr
 
 ## Open questions
 
-- (none yet)
+- Which style direction (A, B or C)? My pick is A with B's golden light, with B as the fallback if the ink lines shimmer in motion.
+- Hero colors: keep or change?
+- Whether the brief and family details can live in the public repo.
+- Obstacle ideas for Level 1 (pitched in chat, waiting on a yes or no per idea).

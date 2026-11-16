@@ -1,0 +1,458 @@
+// The paint shader: one material family for the whole world.
+//
+// Models carry painted color in a vertex attribute (rgb = color, a = baked occlusion)
+// and wind data in uv (x = sway weight, y = phase). Each face's "role" (bark, foliage,
+// feather...) picks a variant here. Lighting is stylized on purpose: a sun term with a
+// controllable terminator, tinted shade, backlit leaves, and mist that warms toward the sun.
+// Every style direction is just a different set of values for these uniforms.
+
+import * as THREE from 'three';
+
+export const world = {
+  uTime: { value: 0 },
+  uSunDir: { value: new THREE.Vector3(0.5, 0.5, -0.7).normalize() },
+  uSunColor: { value: new THREE.Color(1, 0.9, 0.7) },
+  uSkyAmb: { value: new THREE.Color(0.4, 0.5, 0.55) },
+  uGroundAmb: { value: new THREE.Color(0.2, 0.25, 0.2) },
+  // x: where the light/shade edge sits, y: its softness, z: depth of the core shade, w: light wrap
+  uBand: { value: new THREE.Vector4(0.45, 0.2, 0.25, 0.3) },
+  uFogColor: { value: new THREE.Color(0.6, 0.75, 0.75) },
+  uFogSun: { value: new THREE.Color(1.0, 0.85, 0.6) },
+  // x: density, y: base height, z: height falloff, w: max opacity
+  uFog: { value: new THREE.Vector4(0.012, 0, 0.05, 0.95) },
+  // x: distance fog density (uniform haze), y: sun glow power, z: sun glow amount, w: mist on far ridges
+  uHaze: { value: new THREE.Vector4(0.003, 6, 0.8, 0) },
+  // x: strength, y: scale, z: softness, w: how much of the ground the sun reaches (0..1)
+  uDapple: { value: new THREE.Vector4(0.6, 0.22, 0.2, 0.05) },
+  // x, y: direction on the ground plane, z: strength, w: speed
+  uWind: { value: new THREE.Vector4(0.8, 0.6, 0.06, 1.0) },
+  uShadowMap: { value: null as THREE.Texture | null },
+  uShadowMatrix: { value: new THREE.Matrix4() },
+  // x: texel size, y: bias, z: strength, w: 1 when the map is live
+  uShadowParams: { value: new THREE.Vector4(1 / 2048, 0.0015, 1, 0) },
+  // x: painterly value variation, y: its scale, z: brush wobble on the shade edge, w: pigment grain
+  uBrush: { value: new THREE.Vector4(0.12, 0.6, 0.1, 0.0) },
+  // x: global saturation, y: value, z: shade saturation boost, w: unused
+  uGrade: { value: new THREE.Vector4(1, 1, 1, 0) },
+  uShadeTint: { value: new THREE.Color(0.7, 0.8, 1.0) },
+};
+
+export type Role =
+  | 'bark'
+  | 'prop'
+  | 'rock'
+  | 'ground'
+  | 'foliage_conifer'
+  | 'foliage_ginkgo'
+  | 'foliage_fern'
+  | 'foliage_horsetail'
+  | 'feather'
+  | 'skin'
+  | 'eye'
+  | 'egg'
+  | 'amber'
+  | 'ridge';
+
+export interface RoleLook {
+  tint?: THREE.ColorRepresentation;
+  sat?: number;
+  val?: number;
+}
+
+interface RoleBase {
+  defines: Record<string, number>;
+  side: THREE.Side;
+  translucency: number;
+  puff: number; // bend normals toward up, so leaf masses shade as soft volumes
+  sway: number;
+  dapple: number;
+  shadow: number;
+  rim: number;
+  line: number; // how strongly outlines draw on this role (0..1)
+  ao: number;
+}
+
+const solid: RoleBase = {
+  defines: {},
+  side: THREE.FrontSide,
+  translucency: 0,
+  puff: 0,
+  sway: 0,
+  dapple: 1,
+  shadow: 1,
+  rim: 0.15,
+  line: 1,
+  ao: 1,
+};
+const leafy: RoleBase = {
+  ...solid,
+  side: THREE.DoubleSide,
+  translucency: 0.9,
+  puff: 0.55,
+  sway: 1,
+  dapple: 0.5,
+  shadow: 0.7,
+  rim: 0,
+  line: 0.3,
+  ao: 0.9,
+};
+
+const ROLE_BASE: Record<Role, RoleBase> = {
+  bark: { ...solid },
+  prop: { ...solid, dapple: 0.2, shadow: 0.5, rim: 0.4 },
+  rock: { ...solid },
+  ground: { ...solid, defines: { ROLE_GROUND: 1 }, rim: 0, line: 0.5 },
+  foliage_conifer: { ...leafy, translucency: 0.5, dapple: 0.25, puff: 0.5 },
+  foliage_ginkgo: { ...leafy, translucency: 1.2, dapple: 0.35 },
+  foliage_fern: { ...leafy, translucency: 1.0, dapple: 0.85, shadow: 0.85 },
+  foliage_horsetail: { ...leafy, translucency: 0.6, puff: 0.3, dapple: 0.85 },
+  feather: { ...solid, defines: { ROLE_FEATHER: 1 }, side: THREE.DoubleSide, rim: 0.55, dapple: 0.2, shadow: 0.35 },
+  skin: { ...solid, rim: 0.3, dapple: 0.2, shadow: 0.35 },
+  eye: { ...solid, defines: { ROLE_EYE: 1 }, dapple: 0 },
+  egg: { ...solid, defines: { ROLE_EGG: 1 }, rim: 0.7, dapple: 0.1, shadow: 0.4, ao: 0 },
+  amber: { ...solid, defines: { ROLE_AMBER: 1 }, dapple: 0, shadow: 0, ao: 0 },
+  ridge: { ...solid, defines: { ROLE_RIDGE: 1 }, side: THREE.DoubleSide, dapple: 0, shadow: 0, rim: 0, line: 0.6, ao: 0 },
+};
+
+const NOISE = /* glsl */ `
+float hash21(vec2 p) {
+  p = fract(p * vec2(123.34, 456.21));
+  p += dot(p, p + 45.32);
+  return fract(p.x * p.y);
+}
+float hash31(vec3 p) {
+  p = fract(p * vec3(0.1031, 0.1030, 0.0973));
+  p += dot(p, p.yzx + 33.33);
+  return fract((p.x + p.y) * p.z);
+}
+float vnoise2(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash21(i), hash21(i + vec2(1, 0)), f.x),
+             mix(hash21(i + vec2(0, 1)), hash21(i + vec2(1, 1)), f.x), f.y);
+}
+float vnoise3(vec3 p) {
+  vec3 i = floor(p), f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  float a = mix(mix(hash31(i), hash31(i + vec3(1, 0, 0)), f.x),
+                mix(hash31(i + vec3(0, 1, 0)), hash31(i + vec3(1, 1, 0)), f.x), f.y);
+  float b = mix(mix(hash31(i + vec3(0, 0, 1)), hash31(i + vec3(1, 0, 1)), f.x),
+                mix(hash31(i + vec3(0, 1, 1)), hash31(i + vec3(1, 1, 1)), f.x), f.y);
+  return mix(a, b, f.z);
+}
+float fbm2(vec2 p) {
+  return vnoise2(p) * 0.55 + vnoise2(p * 2.13 + 7.1) * 0.3 + vnoise2(p * 4.31 + 3.7) * 0.15;
+}
+`;
+
+const VERT = /* glsl */ `
+attribute vec4 aPaint;
+uniform float uTime;
+uniform vec4 uWind;
+uniform float uSway;
+uniform mat4 uShadowMatrix;
+varying vec4 vPaint;
+varying vec3 vWorld;
+varying vec3 vNormal;
+varying vec3 vObj;
+varying vec4 vShadowCoord;
+#ifdef USE_INSTANCING_COLOR
+varying vec3 vInstColor;
+#endif
+
+void main() {
+  vPaint = aPaint;
+  vObj = position;
+  mat4 m = modelMatrix;
+  #ifdef USE_INSTANCING
+  m = modelMatrix * instanceMatrix;
+  #endif
+  #ifdef USE_INSTANCING_COLOR
+  vInstColor = instanceColor;
+  #endif
+  vec4 wp = m * vec4(position, 1.0);
+  vNormal = normalize(mat3(m) * normal);
+
+  // wind: a slow lean plus a quicker flutter, scaled by the painted sway weight
+  float sway = uv.x * uSway;
+  if (sway > 0.0) {
+    float t = uTime * uWind.w;
+    float phase = uv.y * 6.2832 + dot(wp.xz, vec2(0.11, 0.13));
+    float gust = sin(t * 0.7 + phase) + 0.5 * sin(t * 1.9 + phase * 1.7);
+    float flutter = sin(t * 4.3 + phase * 3.1 + wp.y * 2.0);
+    wp.xz += uWind.xy * (gust * uWind.z * sway);
+    wp.y += flutter * uWind.z * 0.25 * sway;
+  }
+
+  vWorld = wp.xyz;
+  vShadowCoord = uShadowMatrix * wp;
+  gl_Position = projectionMatrix * viewMatrix * wp;
+}
+`;
+
+const FRAG = /* glsl */ `
+precision highp float;
+uniform float uTime;
+uniform vec3 uSunDir;
+uniform vec3 uSunColor;
+uniform vec3 uSkyAmb;
+uniform vec3 uGroundAmb;
+uniform vec4 uBand;
+uniform vec3 uFogColor;
+uniform vec3 uFogSun;
+uniform vec4 uFog;
+uniform vec4 uHaze;
+uniform vec4 uDapple;
+uniform vec4 uWind;
+uniform highp sampler2DShadow uShadowMap;
+uniform vec4 uShadowParams;
+uniform vec4 uBrush;
+uniform vec4 uGrade;
+uniform vec3 uShadeTint;
+
+uniform vec3 uTint;
+uniform float uSat;
+uniform float uTranslucency;
+uniform float uPuff;
+uniform float uDappleAmt;
+uniform float uShadowAmt;
+uniform float uRim;
+uniform float uLine;
+uniform float uAo;
+uniform float uCrack;
+uniform vec3 uGlow;
+
+varying vec4 vPaint;
+varying vec3 vWorld;
+varying vec3 vNormal;
+varying vec3 vObj;
+varying vec4 vShadowCoord;
+#ifdef USE_INSTANCING_COLOR
+varying vec3 vInstColor;
+#endif
+
+${NOISE}
+
+float sunShadow() {
+  if (uShadowParams.w < 0.5) return 1.0;
+  vec3 sc = vShadowCoord.xyz / vShadowCoord.w;
+  vec2 edge = min(sc.xy, 1.0 - sc.xy);
+  float inside = smoothstep(0.0, 0.08, min(edge.x, edge.y)) * step(sc.z, 1.0);
+  if (inside <= 0.0) return 1.0;
+  float z = sc.z - uShadowParams.y;
+  float tx = uShadowParams.x * 1.25;
+  float s = 0.0;
+  for (int y = -1; y <= 1; y++) {
+    for (int x = -1; x <= 1; x++) {
+      s += texture(uShadowMap, vec3(sc.xy + vec2(float(x), float(y)) * tx, z));
+    }
+  }
+  return mix(1.0, s / 9.0, inside);
+}
+
+// Light breaking through a canopy we never have to draw: noise projected along the sun.
+float dapple(vec3 wp) {
+  vec2 p = wp.xz - uSunDir.xz * (wp.y / max(uSunDir.y, 0.15));
+  // a low sun stretches each patch of light along the ground, away from the sun
+  vec2 a = normalize(uSunDir.xz);
+  p = vec2(dot(p, a) * (0.35 + uSunDir.y), dot(p, vec2(-a.y, a.x)));
+  p = p * uDapple.y + uWind.xy * uTime * 0.03;
+  float n = fbm2(p) * 0.7 + vnoise2(p * 3.1 + 11.0) * 0.3;
+  float th = 1.0 - uDapple.w;
+  return smoothstep(th - uDapple.z, th + uDapple.z, n);
+}
+
+vec3 toDisplay(vec3 c) {
+  c = max(c, 0.0);
+  return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));
+}
+
+void main() {
+  vec3 E = normalize(vWorld - cameraPosition); // from the eye to the surface
+  vec3 N = normalize(vNormal);
+  if (!gl_FrontFacing) N = -N;
+  vec3 Ng = N;
+  N = normalize(mix(N, vec3(0.0, 1.0, 0.0), uPuff));
+
+  vec3 albedo = vPaint.rgb;
+  float ao = mix(1.0, vPaint.a, uAo);
+
+  #ifdef ROLE_GROUND
+  {
+    // fine soil and litter detail that vertex paint can't hold
+    float g = fbm2(vWorld.xz * 2.3) * 0.6 + vnoise2(vWorld.xz * 9.0) * 0.4;
+    albedo *= 0.82 + 0.36 * g;
+    float pebble = smoothstep(0.80, 0.86, vnoise2(vWorld.xz * 6.0 + 40.0)) * vPaint.a;
+    albedo = mix(albedo, albedo * 1.35 + 0.03, pebble * 0.5);
+    ao = 1.0;
+  }
+  #endif
+
+  #ifdef ROLE_EGG
+  {
+    // speckles and the crack are drawn here so the crack can grow during the chase
+    vec3 q = vObj * 9.0;
+    float sp = smoothstep(0.62, 0.72, vnoise3(q * 1.7)) * 0.45 + smoothstep(0.7, 0.78, vnoise3(q * 4.3 + 9.0)) * 0.5;
+    albedo = mix(albedo, albedo * vec3(0.55, 0.62, 0.7), sp);
+    albedo *= 0.92 + 0.16 * vnoise3(q * 0.6);
+    // the egg's long axis is Y in model space
+    float along = vObj.y;
+    float ang = atan(vObj.z, vObj.x);
+    float zig = 0.16 + 0.05 * sin(ang * 5.0) + 0.035 * sin(ang * 13.0 + 1.3) + 0.02 * sin(ang * 29.0);
+    float reach = smoothstep(-3.2 + 6.4 * uCrack, -3.2 + 6.4 * uCrack - 0.6, ang);
+    float crack = (1.0 - smoothstep(0.004, 0.011, abs(along - zig))) * reach;
+    float branch = (1.0 - smoothstep(0.003, 0.008, abs(ang - 0.6 - (along - zig) * 2.5))) * step(zig, along) * step(along, zig + 0.11) * step(0.35, uCrack);
+    albedo = mix(albedo, vec3(0.05, 0.07, 0.08), max(crack, branch));
+  }
+  #endif
+
+  // role and style grade
+  float lum = dot(albedo, vec3(0.2126, 0.7152, 0.0722));
+  albedo = mix(vec3(lum), albedo, uSat * uGrade.x) * uTint * uGrade.y;
+  #ifdef USE_INSTANCING_COLOR
+  albedo *= vInstColor;
+  #endif
+
+  // painterly variation: washes of slightly different value across big shapes
+  float wash = fbm2(vWorld.xz * uBrush.y + vWorld.y * 0.37);
+  float wash2 = vnoise3(vWorld * uBrush.y * 3.0);
+  albedo *= 1.0 + (wash - 0.5) * 2.0 * uBrush.x + (wash2 - 0.5) * uBrush.x;
+
+  // sun
+  float ndl = dot(N, uSunDir);
+  float w = (ndl + uBand.w) / (1.0 + uBand.w);
+  float wobble = (vnoise3(vWorld * 2.6) - 0.5) * uBrush.z;
+  float lit = smoothstep(uBand.x - uBand.y, uBand.x + uBand.y, w + wobble);
+  float core = smoothstep(uBand.x - 0.5 - uBand.y, uBand.x - 0.5 + uBand.y, w + wobble);
+
+  float sh = mix(1.0, sunShadow(), uShadowAmt);
+  float dp = mix(1.0, dapple(vWorld), uDappleAmt * uDapple.x);
+  float sun = lit * sh * dp;
+
+  vec3 amb = mix(uGroundAmb, uSkyAmb, N.y * 0.5 + 0.5) * ao;
+  amb *= mix(1.0 - uBand.z, 1.0, core);
+  // shade keeps its color: tint it instead of just dimming it
+  vec3 shade = albedo * amb * mix(uShadeTint, vec3(1.0), sun);
+  float slum = dot(shade, vec3(0.2126, 0.7152, 0.0722));
+  shade = mix(vec3(slum), shade, uGrade.z);
+  vec3 col = shade + albedo * uSunColor * sun * mix(0.75, 1.0, ao);
+
+  // leaves light up when the sun is behind them
+  float toward = max(dot(E, uSunDir), 0.0);
+  float through = uTranslucency * (0.25 + 0.75 * pow(toward, 2.0)) * (1.0 - lit) * sh * dp;
+  col += albedo * uSunColor * vec3(1.05, 1.0, 0.55) * through * 0.75;
+
+  // rim light on the sun side, to pull the hero and the egg off the background
+  float fres = pow(1.0 - max(dot(Ng, -E), 0.0), 3.0);
+  col += uSunColor * fres * uRim * (0.25 + 0.75 * sh) * smoothstep(-0.4, 0.6, dot(Ng, uSunDir)) * 0.6;
+
+  #ifdef ROLE_FEATHER
+  {
+    // a faint blue sheen across dark plumage, like a magpie
+    float sheen = pow(1.0 - max(dot(Ng, -E), 0.0), 2.0) * (1.0 - smoothstep(0.08, 0.3, lum));
+    col += vec3(0.10, 0.22, 0.42) * sheen * (0.35 + 0.65 * sun) * 0.9;
+  }
+  #endif
+
+  #ifdef ROLE_EYE
+  col += vec3(1.0) * pow(max(dot(reflect(E, Ng), uSunDir), 0.0), 40.0);
+  #endif
+
+  #ifdef ROLE_EGG
+  col += uGlow * (0.10 + 0.5 * fres);
+  #endif
+
+  #ifdef ROLE_AMBER
+  {
+    // resin glows from inside: bright honey at the heart, deep orange at the edge
+    float facing = max(dot(Ng, -E), 0.0);
+    vec3 heart = vec3(1.0, 0.80, 0.30);
+    vec3 edge = vec3(0.85, 0.33, 0.03);
+    col = mix(edge, heart, pow(facing, 1.4)) * (0.85 + 0.25 * sun);
+    col += vec3(1.0, 0.95, 0.8) * pow(max(dot(reflect(E, Ng), uSunDir), 0.0), 24.0) * 0.9;
+    col += uGlow * 0.3;
+  }
+  #endif
+
+  // mist: thicker low in the valley, warmer when you look toward the sun
+  float dist = length(vWorld - cameraPosition);
+  float b = uFog.z;
+  float camH = cameraPosition.y - uFog.y;
+  float ry = E.y;
+  float ryb = abs(ry) < 0.0005 ? 0.0005 : ry;
+  float heightFog = uFog.x * exp(-b * camH) * (1.0 - exp(-b * ryb * dist)) / (b * ryb);
+  float fogAmt = 1.0 - exp(-(max(heightFog, 0.0) + uHaze.x * dist));
+  fogAmt = min(fogAmt, uFog.w);
+  #ifdef ROLE_AMBER
+  fogAmt *= 0.35;
+  #endif
+  #ifdef ROLE_EGG
+  fogAmt *= 0.5;
+  #endif
+  #ifdef ROLE_RIDGE
+  // far ridges carry their own painted amount of mist, so the layers stack by design
+  fogAmt = clamp(vPaint.a * uHaze.w, 0.0, 1.0);
+  #endif
+  vec3 fogCol = mix(uFogColor, uFogSun, pow(toward, uHaze.y) * uHaze.z);
+  col = mix(col, fogCol, fogAmt);
+
+  col = toDisplay(col);
+  col += (hash21(gl_FragCoord.xy + fract(uTime)) - 0.5) / 255.0;
+  // alpha carries how strongly outlines should draw here, fading out with the mist
+  gl_FragColor = vec4(col, uLine * (1.0 - fogAmt * 0.85));
+}
+`;
+
+export interface PaintOptions {
+  role: Role;
+  look?: RoleLook;
+}
+
+const made: THREE.ShaderMaterial[] = [];
+
+export function paintMaterial(role: Role): THREE.ShaderMaterial {
+  const base = ROLE_BASE[role];
+  const mat = new THREE.ShaderMaterial({
+    vertexShader: VERT,
+    fragmentShader: FRAG,
+    defines: { ...base.defines },
+    side: base.side,
+    uniforms: {
+      ...world,
+      uTint: { value: new THREE.Color(1, 1, 1) },
+      uSat: { value: 1 },
+      uTranslucency: { value: base.translucency },
+      uPuff: { value: base.puff },
+      uSway: { value: base.sway },
+      uDappleAmt: { value: base.dapple },
+      uShadowAmt: { value: base.shadow },
+      uRim: { value: base.rim },
+      uLine: { value: base.line },
+      uAo: { value: base.ao },
+      uCrack: { value: 0.55 },
+      uGlow: { value: new THREE.Color(0, 0, 0) },
+    },
+  });
+  mat.userData.role = role;
+  mat.userData.base = base;
+  made.push(mat);
+  return mat;
+}
+
+/** Apply a style's per-role look (tint, saturation) to every paint material made so far. */
+export function applyRoleLooks(looks: Partial<Record<Role, RoleLook>>, fallback: RoleLook = {}) {
+  for (const mat of made) {
+    const role = mat.userData.role as Role;
+    const look = { ...fallback, ...(looks[role] ?? {}) };
+    const tint = new THREE.Color(look.tint ?? '#ffffff');
+    const val = look.val ?? 1;
+    (mat.uniforms.uTint.value as THREE.Color).copy(tint).multiplyScalar(val);
+    mat.uniforms.uSat.value = look.sat ?? 1;
+  }
+}
+
+export function allPaintMaterials(): readonly THREE.ShaderMaterial[] {
+  return made;
+}
+
+export { NOISE };

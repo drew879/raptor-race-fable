@@ -69,6 +69,7 @@ kit('flora_small', [
     ('fern_a', lambda: plants.fern_clump(11), FOL),
     ('fern_b', lambda: plants.fern_clump(12, 1.25), FOL),
     ('fern_c', lambda: plants.fern_clump(13, 0.8), FOL),
+    ('fern_lo', lambda: plants.fern_clump(14, 1.0, lod=1), FOL),
     ('horsetail_a', lambda: plants.horsetail_clump(21), FOL),
     ('horsetail_b', lambda: plants.horsetail_clump(22, 1.2), FOL),
     ('rock_a', lambda: plants.rock(31, 0.9), dict(ao_dist=0.5, ground_ao=0.2)),
@@ -83,6 +84,9 @@ kit('flora_trees', [
     ('ginkgo_b', lambda: plants.ginkgo(52, 11.0), dict(ao_dist=1.6, ao_strength=0.95, ao_samples=16, ground_ao=0.8)),
     ('conifer_a', lambda: plants.conifer(61, 17.0), dict(ao_dist=2.0, ao_strength=0.95, ao_samples=16, ground_ao=1.0)),
     ('conifer_b', lambda: plants.conifer(62, 22.0, 0.5), dict(ao_dist=2.0, ao_strength=0.95, ao_samples=16, ground_ao=1.0)),
+    ('treefern_lo', lambda: plants.tree_fern(43, 3.6, lod=1), dict(ao_dist=1.2, ao_strength=0.9, ao_samples=12, ground_ao=0.5)),
+    ('ginkgo_lo', lambda: plants.ginkgo(53, 10.0, lod=1), dict(ao_dist=1.6, ao_strength=0.95, ao_samples=12, ground_ao=0.8)),
+    ('conifer_lo', lambda: plants.conifer(63, 19.0, 0.45, lod=1), dict(ao_dist=2.0, ao_strength=0.95, ao_samples=12, ground_ao=1.0)),
 ], preview=dict(gap=1.5, lens=40))
 
 kit('props', [

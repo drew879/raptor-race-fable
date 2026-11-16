@@ -62,3 +62,185 @@ body {
 #ui > * {
   pointer-events: auto;
 }
+
+/* ---------- concept viewer ---------- */
+#ui {
+  --ui-ink: #16211f;
+  --ui-panel: #16211f;
+  --ui-accent: #f2a93b;
+  --ui-text: #f6ecd6;
+  color: var(--ui-text);
+  transition: opacity 0.25s;
+}
+#ui.clean .picker,
+#ui.clean .hud {
+  opacity: 0;
+  pointer-events: none;
+}
+.hud {
+  position: absolute;
+  top: calc(var(--sat) + 8px);
+  left: calc(var(--sal) + 12px);
+  right: calc(var(--sar) + 12px);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: opacity 0.25s;
+}
+.chip {
+  height: 38px;
+  padding: 0 14px;
+  border-radius: 19px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: 0.02em;
+  color: var(--ui-text);
+  background: color-mix(in srgb, var(--ui-panel) 78%, transparent);
+  border: 1.5px solid color-mix(in srgb, var(--ui-accent) 70%, transparent);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  font-variant-numeric: tabular-nums;
+}
+.chip.score {
+  margin-left: auto;
+}
+.drop {
+  width: 13px;
+  height: 17px;
+  background: radial-gradient(circle at 40% 62%, #ffe08a 0 18%, #f2a93b 45%, #c46a12 100%);
+  border-radius: 50% 50% 50% 50% / 62% 62% 38% 38%;
+  clip-path: polygon(50% 0, 100% 62%, 85% 100%, 15% 100%, 0 62%);
+  border-radius: 45%;
+}
+.chip.pause {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 22px;
+  justify-content: center;
+  gap: 5px;
+  font: inherit;
+}
+.chip.pause span {
+  width: 4px;
+  height: 15px;
+  border-radius: 2px;
+  background: var(--ui-text);
+}
+.chip.pause.pressed {
+  background: var(--ui-accent);
+}
+.picker {
+  position: absolute;
+  left: calc(var(--sal) + 10px);
+  right: calc(var(--sar) + 10px);
+  bottom: calc(var(--sab) + 8px);
+  padding: 9px 10px 4px 14px;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--ui-panel) 86%, transparent);
+  border: 1.5px solid color-mix(in srgb, var(--ui-accent) 55%, transparent);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  transition: opacity 0.25s;
+}
+.picker .row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.picker .title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.picker .title b {
+  font-size: 17px;
+}
+.picker .title span {
+  font-size: 12.5px;
+  line-height: 1.25;
+  opacity: 0.8;
+}
+.tabs {
+  display: flex;
+  gap: 6px;
+}
+.tabs button {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  border: 1.5px solid color-mix(in srgb, var(--ui-text) 35%, transparent);
+  background: transparent;
+  color: var(--ui-text);
+  font: inherit;
+  font-weight: 700;
+  font-size: 18px;
+}
+.tabs button.on {
+  background: var(--ui-accent);
+  border-color: var(--ui-accent);
+  color: #1c1a17;
+}
+.foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 2px;
+  font-size: 11px;
+  opacity: 0.7;
+}
+.fit-toggle {
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  padding: 6px 0 6px 10px;
+}
+.fit {
+  position: absolute;
+  inset: 0;
+  pointer-events: none !important;
+}
+.fit[hidden] {
+  display: none;
+}
+.fit pre {
+  position: absolute;
+  left: 50%;
+  top: 42%;
+  transform: translate(-50%, -50%);
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(10, 14, 13, 0.82);
+  color: #f6ecd6;
+  font: 13px/1.5 ui-monospace, Menlo, monospace;
+}
+.corner {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border: 0 solid #ff3df2;
+}
+.corner.tl { left: 0; top: 0; border-left-width: 4px; border-top-width: 4px; }
+.corner.tr { right: 0; top: 0; border-right-width: 4px; border-top-width: 4px; }
+.corner.bl { left: 0; bottom: 0; border-left-width: 4px; border-bottom-width: 4px; }
+.corner.br { right: 0; bottom: 0; border-right-width: 4px; border-bottom-width: 4px; }
+.boot {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px;
+  color: #f6ecd6;
+  font-size: 16px;
+  white-space: pre-wrap;
+}

@@ -58,6 +58,14 @@ export function watchViewport(listener: Listener): () => void {
 }
 
 /** Numbers for the on-screen fit check, so a screenshot from the phone tells us everything. */
+let fps = 0;
+/** Call once per frame; the fit check shows the smoothed frame rate. */
+export function tickFps(dtSeconds: number) {
+  if (dtSeconds <= 0) return;
+  const now = 1 / dtSeconds;
+  fps = fps === 0 ? now : fps + (now - fps) * 0.05;
+}
+
 export function viewportReport(): string {
   const cs = getComputedStyle(document.documentElement);
   const inset = (name: string) => cs.getPropertyValue(name).trim() || '0px';
@@ -69,5 +77,6 @@ export function viewportReport(): string {
     `screen ${screen.width} x ${screen.height}`,
     `dpr ${window.devicePixelRatio}`,
     `safe top ${inset('--sat')} bottom ${inset('--sab')}`,
+    `fps ${fps.toFixed(0)}`,
   ].join('\n');
 }
