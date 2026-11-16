@@ -1,8 +1,10 @@
 import './style.css';
 import * as THREE from 'three';
+import { runBench } from './app/bench';
 import { startUpdates } from './app/build';
+import { Quality } from './app/quality';
 import { tickFps, watchViewport } from './app/viewport';
-import { buildRun } from './game/run';
+import { buildRun, type RunView } from './game/run';
 import { buildHeroLab } from './herolab/scene';
 import { buildLookdev, type Lookdev } from './lookdev/scene';
 import { makeViewerUI, type ViewerUI } from './lookdev/ui';
@@ -31,8 +33,8 @@ async function start() {
   const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
   // the paint shaders write finished display colors themselves
   renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
-  const dpr = Math.min(window.devicePixelRatio || 1, Number(params.get('dpr')) || 2);
-  renderer.setPixelRatio(dpr);
+  // Full sharpness is two pixels per point; Quality trims that when the phone can't keep up.
+  const fullDpr = Math.min(window.devicePixelRatio || 1, Number(params.get('dpr')) || 2);
   stage.appendChild(renderer.domElement);
 
   const post = new Post(renderer, params.get('msaa') === '0' ? 0 : 4);
@@ -53,12 +55,29 @@ async function start() {
   };
   setStyle(styleIndex);
 
-  // modes: the concept frames (default for now), the rough run, and a hero test view
+  // sharpness: set by the link for testing, otherwise looked after automatically
+  let size = { width: 2, height: 2 };
+  const applySize = () => {
+    const dpr = fullDpr * quality.scale;
+    renderer.setPixelRatio(dpr);
+    renderer.setSize(size.width, size.height, false);
+    post.setSize(size.width, size.height, dpr);
+  };
+  // modes: the concept frames (default for now), the rough run, its speed test, and a hero test view
   const mode = params.get('mode') ?? 'concept';
+  const fixedScale = Number(params.get('scale'));
+  const quality = new Quality(applySize, !fixedScale && mode !== 'bench' && params.get('auto') !== '0');
+  if (fixedScale) quality.scale = Math.min(1, Math.max(0.25, fixedScale));
+
   let view: Lookdev;
   let viewer: ViewerUI | null = null;
-  if (mode === 'run') {
-    view = await buildRun(ui, stage, { styles: STYLES, styleIndex: () => styleIndex, pickStyle: setStyle });
+  if (mode === 'run' || mode === 'bench') {
+    view = await buildRun(ui, stage, {
+      styles: STYLES,
+      styleIndex: () => styleIndex,
+      pickStyle: setStyle,
+      quality: () => (quality.scale < 1 ? `sharpness ${Math.round(quality.scale * 100)}%` : 'full sharpness'),
+    });
     boot.remove();
   } else {
     view = mode === 'hero' ? await buildHeroLab(params) : await buildLookdev();
@@ -73,12 +92,31 @@ async function start() {
   // styles set uniforms the scene may have just created materials for
   setStyle(styleIndex);
 
-  watchViewport(({ width, height }) => {
-    renderer.setSize(width, height, false);
-    post.setSize(width, height, dpr);
-    view.resize(width / height);
+  watchViewport((next) => {
+    size = next;
+    applySize();
+    view.resize(size.width / size.height);
     viewer?.refresh();
+    quality.rest();
   });
+  document.addEventListener('visibilitychange', () => quality.rest(2000));
+
+  // handy for checking the picture from the console
+  Object.assign(window, { rr: { renderer, view, post, setStyle, STYLES, quality } });
+
+  if (mode === 'bench') {
+    await runBench({
+      renderer,
+      post,
+      view: view as RunView,
+      ui,
+      setScale: (scale) => {
+        quality.scale = scale;
+        applySize();
+      },
+    });
+    return;
+  }
 
   const t0 = performance.now();
   let last = t0;
@@ -87,6 +125,7 @@ async function start() {
     const now = performance.now();
     const time = (now - t0) / 1000;
     tickFps((now - last) / 1000);
+    quality.tick(now - last);
     sinceReport += now - last;
     last = now;
     if (sinceReport > 500) {
@@ -96,9 +135,6 @@ async function start() {
     view.update(time, renderer);
     post.render(view.scene, view.camera);
   });
-
-  // handy for checking the picture from the console
-  Object.assign(window, { rr: { renderer, view, post, setStyle, STYLES } });
 }
 
 start().catch((e) => fail(String(e?.message ?? e)));

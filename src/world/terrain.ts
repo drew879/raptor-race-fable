@@ -26,6 +26,8 @@ const SOIL = hex('#4a3a2a');
 export class Terrain {
   readonly track: Track;
   readonly opts: TerrainOptions;
+  /** One material for all the ground, so its settings (like the lane hints) are set in one place. */
+  readonly material = paintMaterial('ground');
 
   constructor(track: Track, opts: Partial<TerrainOptions> = {}) {
     this.track = track;
@@ -111,6 +113,8 @@ export class Terrain {
         if (onTrail > 0.02) c.lerp(floor, 1 - onTrail);
         else c.copy(floor);
         paint.set([c.r, c.g, c.b, onTrail], i * 4);
+        // the ground shader reads trail coordinates from here: meters across, meters along
+        uv.set([u, s], i * 2);
       }
     }
     const index: number[] = [];
@@ -129,9 +133,51 @@ export class Terrain {
     geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     geo.setIndex(index);
     geo.computeVertexNormals();
-    const mesh = new THREE.Mesh(geo, paintMaterial('ground'));
+    const mesh = new THREE.Mesh(geo, this.material);
     mesh.frustumCulled = false;
     mesh.name = 'terrain';
+    mesh.userData.rows = rows;
+    mesh.userData.cols = cols;
+    mesh.userData.s0 = s0;
     return mesh;
+  }
+
+  /**
+   * The same ground cut into lengths of trail, so the parts behind the camera or far out of
+   * sight are never drawn. Built as one piece first, so shading runs unbroken across the cuts.
+   */
+  buildSections(s0: number, s1: number, sectionLength = 26, reach = 70): THREE.Group {
+    const whole = this.buildMesh(s0, s1, reach);
+    const rows = whole.userData.rows as number;
+    const cols = whole.userData.cols as number;
+    const src = whole.geometry;
+    const group = new THREE.Group();
+    group.name = 'terrain';
+    for (let r0 = 0; r0 < rows - 1; r0 += sectionLength) {
+      const r1 = Math.min(rows - 1, r0 + sectionLength);
+      const count = r1 - r0 + 1;
+      const geo = new THREE.BufferGeometry();
+      for (const name of ['position', 'normal', 'aPaint', 'uv']) {
+        const a = src.getAttribute(name) as THREE.BufferAttribute;
+        const size = a.itemSize;
+        const slice = (a.array as Float32Array).slice(r0 * cols * size, (r1 + 1) * cols * size);
+        geo.setAttribute(name, new THREE.BufferAttribute(slice, size));
+      }
+      const index: number[] = [];
+      for (let r = 0; r < count - 1; r++) {
+        for (let k = 0; k < cols - 1; k++) {
+          const a = r * cols + k;
+          index.push(a, a + 1, a + cols, a + 1, a + cols + 1, a + cols);
+        }
+      }
+      geo.setIndex(index);
+      geo.computeBoundingSphere();
+      const mesh = new THREE.Mesh(geo, this.material);
+      mesh.userData.s0 = s0 + r0;
+      mesh.userData.s1 = s0 + r1;
+      group.add(mesh);
+    }
+    src.dispose();
+    return group;
   }
 }

@@ -28,6 +28,17 @@ export interface RunHooks {
   styles: Style[];
   styleIndex(): number;
   pickStyle(index: number): void;
+  /** A short note on how sharp the picture is being drawn right now. */
+  quality?(): string;
+}
+
+/** The run, plus a few handles the speed test uses to switch parts of the picture off. */
+export interface RunView extends Lookdev {
+  debug: {
+    st: { s: number; eggS: number; paused: boolean; started: boolean };
+    forest: THREE.Object3D;
+    setShadows(on: boolean): void;
+  };
 }
 
 const START_S = 3;
@@ -38,12 +49,16 @@ const GRAVITY = (8 * JUMP_HEIGHT) / (JUMP_TIME * JUMP_TIME);
 const JUMP_V = (GRAVITY * JUMP_TIME) / 2;
 const SLIDE_TIME = 0.62;
 const EGG_SCALE = 0.56;
-const EGG_R = 0.275 * EGG_SCALE;
+const EGG_R = 0.275 * EGG_SCALE; // half its width
+const EGG_HALF = 0.5 * EGG_SCALE; // half its length
+const EGG_G = 9.5;
+/** How the egg travels: 0 steady end over end, 1 wobbling, 2 wobbling with bounces that depend on how it lands. */
+export const EGG_MODES = ['Steady', 'Wobbly', 'Lively'];
 
 // how far along the trail each kind of obstacle can catch you
 const DEPTH: Record<Obstacle['kind'], number> = { log: 0.3, arch: 0.45, boulder: 0.42, tree: 0.26 };
 
-export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHooks): Promise<Lookdev> {
+export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHooks): Promise<RunView> {
   const [trees, small, props, heroModel] = await Promise.all([
     loadKit(treesUrl),
     loadKit(smallUrl),
@@ -91,7 +106,10 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   scene.add(far);
 
   // ---------------------------------------------------------------- ground and forest
-  scene.add(terrain.buildMesh(-40, track.length + 40));
+  const ground = terrain.buildSections(-40, track.length + 40);
+  scene.add(ground);
+  // three worn tracks with a broken seam of moss between them, so the lanes read without painted lines
+  terrain.material.uniforms.uLanes.value.set(LANE, 1, 0.08, 0);
   const flora = new Flora(terrain, trees, small, {
     length: track.length,
     vistas: VISTAS,
@@ -129,24 +147,34 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   for (const [name, list] of Object.entries(byModel)) scene.add(instances(props, name, list, true));
 
   // ---------------------------------------------------------------- amber
-  const amberMesh = instances(props, 'amber', AMBER.map((a) => ({
-    position: terrain.place(a.s, a.lane * LANE, a.lift),
-    yaw: 0,
-    scale: 0.19,
-  })), false).children[0] as THREE.InstancedMesh;
-  amberMesh.frustumCulled = false;
-  scene.add(amberMesh);
-  const amberGlow = makeGlowField(AMBER.length, '#ffb347', 0.4);
-  scene.add(amberGlow);
+  // Pieces are grouped into batches along the trail, so only the ones near the runner are drawn.
+  const AMBER_BATCH = 40; // meters of trail per batch
   const amberPos = AMBER.map((a) => terrain.place(a.s, a.lane * LANE, a.lift));
+  const batches: { s0: number; s1: number; first: number; mesh: THREE.InstancedMesh; glow: THREE.InstancedMesh }[] = [];
+  const batchOf: number[] = [];
+  for (let first = 0; first < AMBER.length; ) {
+    let end = first;
+    while (end < AMBER.length && AMBER[end].s < AMBER[first].s + AMBER_BATCH) end++;
+    const list = amberPos.slice(first, end).map((position) => ({ position, yaw: 0, scale: 0.19 }));
+    const mesh = instances(props, 'amber', list, false).children[0] as THREE.InstancedMesh;
+    mesh.frustumCulled = false;
+    const glow = makeGlowField(list.length, '#ffb347', 0.4);
+    scene.add(mesh, glow);
+    for (let i = first; i < end; i++) batchOf.push(batches.length);
+    batches.push({ s0: AMBER[first].s, s1: AMBER[end - 1].s, first, mesh, glow });
+    first = end;
+  }
   const m4 = new THREE.Matrix4();
   const qI = new THREE.Quaternion();
+  const v3 = new THREE.Vector3();
   const showAmber = (i: number, on: boolean) => {
+    const b = batches[batchOf[i]];
+    const k = i - b.first;
     const s = on ? 1 : 0;
-    amberMesh.setMatrixAt(i, m4.compose(amberPos[i], qI, new THREE.Vector3(0.19 * s, 0.19 * s, 0.19 * s)));
-    amberGlow.setMatrixAt(i, m4.compose(amberPos[i], qI, new THREE.Vector3(0.8 * s, 0.8 * s, 0.8 * s)));
-    amberMesh.instanceMatrix.needsUpdate = true;
-    amberGlow.instanceMatrix.needsUpdate = true;
+    b.mesh.setMatrixAt(k, m4.compose(amberPos[i], qI, v3.setScalar(0.19 * s)));
+    b.glow.setMatrixAt(k, m4.compose(amberPos[i], qI, v3.setScalar(0.8 * s)));
+    b.mesh.instanceMatrix.needsUpdate = true;
+    b.glow.instanceMatrix.needsUpdate = true;
   };
 
   // ---------------------------------------------------------------- hero and egg
@@ -193,12 +221,20 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   }
 
   const shadow = new SunShadow(27, 170);
+  let shadowsOn = true;
 
   // ---------------------------------------------------------------- state
   const obstacles = OBSTACLES.map((o) => ({ ...o, hit: false }));
   const archAt = OBSTACLES.filter((o) => o.kind === 'arch').map((o) => o.s);
   const collected: boolean[] = AMBER.map(() => false);
-  let baseSpeed = Number(localStorage.getItem('rr-speed')) || DEFAULT_SPEED;
+  let baseSpeed = Number(localStorage.getItem('rr-speed2')) || DEFAULT_SPEED;
+  const savedEgg = localStorage.getItem('rr-egg');
+  let eggMode = savedEgg === null ? 2 : THREE.MathUtils.clamp(Number(savedEgg) || 0, 0, 2);
+  // the egg's turn, in the trail's own frame (x across to the right, y up, z back up the trail)
+  const eggQ = new THREE.Quaternion();
+  const eggAxis = new THREE.Vector3();
+  const eggTurn = new THREE.Quaternion();
+  const eggLong = new THREE.Vector3();
   const st = {
     s: START_S,
     lane: 0,
@@ -217,8 +253,10 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     started: false,
     gap: 9,
     eggS: START_S + 9,
-    eggHop: 0,
-    eggTumble: 0,
+    eggY: 0,
+    eggVy: 0,
+    eggSpin: 0,
+    eggKick: 0,
     amber: 0,
     paused: false,
     finished: false,
@@ -235,6 +273,17 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     styles: hooks.styles,
     styleIndex: hooks.styleIndex(),
     speed: baseSpeed,
+    quality: hooks.quality,
+    eggModes: EGG_MODES,
+    eggMode,
+    onEgg: (mode) => {
+      eggMode = mode;
+      try {
+        localStorage.setItem('rr-egg', String(mode));
+      } catch {
+        /* private mode */
+      }
+    },
     onStart: () => {
       st.started = true;
     },
@@ -248,7 +297,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     onSpeed: (v) => {
       baseSpeed = v;
       try {
-        localStorage.setItem('rr-speed', String(v));
+        localStorage.setItem('rr-speed2', String(v));
       } catch {
         /* private mode */
       }
@@ -265,9 +314,10 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   function reset() {
     Object.assign(st, {
       s: START_S, lane: 0, u: 0, y: 0, vy: 0, slideT: 0, stumbleT: 0, safeT: 0, speed: 0, phase: 0, air: 0,
-      slide: 0, camU: 0, camDuck: 0, gap: 9, eggS: START_S + 9, eggHop: 0, eggTumble: 0, amber: 0, paused: false,
+      slide: 0, camU: 0, camDuck: 0, gap: 9, eggS: START_S + 9, eggY: 0, eggVy: 0, eggSpin: 0, eggKick: 0, amber: 0, paused: false,
       finished: false, queued: null, queuedT: 0, hint: 0, hintT: 0,
     });
+    eggQ.setFromAxisAngle(v3.set(1, 0, 0), -0.5); // tipped a little forward, about to roll
     for (const o of obstacles) o.hit = false;
     for (let i = 0; i < collected.length; i++) {
       collected[i] = false;
@@ -317,6 +367,37 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   });
   // never reload for an update in the middle of a run
   setReloadGuard(() => st.paused || st.finished || st.s < START_S + 2);
+
+  /**
+   * The egg always turns forward, top first down the trail. In the wobbly modes the axis it
+   * turns about swings with its path and tips up and down, so it tumbles at changing angles.
+   * In the lively mode each bounce depends on how it lands: down on an end, it kicks up high
+   * and spins faster; flat on its side, it skips low. No physics engine: a few lines of rules.
+   */
+  function rollEgg(dt: number, rolling: boolean) {
+    const wander = eggMode === 0 ? 0 : 1;
+    // lean the axis the way the egg is drifting across the trail, and tip it slowly up and down
+    eggAxis.set(-1, wander * 0.32 * Math.sin(st.eggS * 0.137 + 0.4), wander * -0.45 * Math.cos(st.eggS * 0.13)).normalize();
+    const wanted = rolling ? st.speed * 1.5 * (1 + st.eggKick) : 0;
+    st.eggSpin += (wanted - st.eggSpin) * Math.min(1, dt * (rolling ? 8 : 3));
+    st.eggKick = Math.max(0, st.eggKick - dt * 1.6);
+    eggQ.premultiply(eggTurn.setFromAxisAngle(eggAxis, st.eggSpin * dt)).normalize();
+
+    if (!rolling && st.eggY <= 0) return;
+    st.eggVy -= EGG_G * dt;
+    st.eggY += st.eggVy * dt;
+    if (st.eggY <= 0) {
+      st.eggY = 0;
+      st.eggVy = 0;
+      if (rolling) {
+        // how upright the egg is as it lands: 1 on an end, 0 flat on its side
+        const onEnd = Math.abs(eggLong.set(0, 1, 0).applyQuaternion(eggQ).y);
+        const height = eggMode === 2 ? 0.1 + 0.32 * onEnd * onEnd : 0.2;
+        st.eggVy = Math.sqrt(2 * EGG_G * height);
+        if (eggMode === 2) st.eggKick = 0.5 * onEnd * onEnd;
+      }
+    }
+  }
 
   function stumble() {
     st.stumbleT = 0.9;
@@ -393,9 +474,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     st.gap = Math.min(st.gap, 17);
     const wanted = Math.min(st.s + st.gap, END_S);
     st.eggS += (wanted - st.eggS) * Math.min(1, dt * 3);
-    const rolling = st.eggS < END_S - 0.05 ? 1 : 0;
-    st.eggHop += dt * 2.1 * rolling;
-    st.eggTumble += st.speed * dt * 1.9 * rolling;
+    rollEgg(dt, st.eggS < END_S - 0.05);
     hud.warn(st.gap > 12.5 && !st.finished);
 
     // first-time hints: one at a time, shown early enough to act on
@@ -437,16 +516,16 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     (heroShadow.material as THREE.ShaderMaterial).uniforms.uStrength.value = 0.46 * (1 - Math.min(0.6, st.y * 0.6));
 
     // egg: bouncing and tumbling down the trail ahead
-    const hop = Math.abs(Math.sin(st.eggHop * Math.PI)) * 0.24;
     // it weaves between the lanes, so it never sits on top of a line of amber
     const eggU = Math.sin(st.eggS * 0.13) * 0.36;
-    egg.position.copy(terrain.place(st.eggS, eggU, EGG_R + 0.02 + hop));
-    egg.quaternion.copy(basisAt(st.eggS));
-    egg.rotateZ(-0.8);
-    egg.rotateX(st.eggTumble);
+    // an egg standing on its end rides higher than one lying on its side
+    const up = eggLong.set(0, 1, 0).applyQuaternion(eggQ).y;
+    const rest = Math.sqrt(EGG_HALF * EGG_HALF * up * up + EGG_R * EGG_R * (1 - up * up));
+    egg.position.copy(terrain.place(st.eggS, eggU, rest + 0.015 + st.eggY));
+    egg.quaternion.copy(basisAt(st.eggS)).multiply(eggQ);
     eggShadow.position.copy(terrain.place(st.eggS + 0.04, eggU, 0.02));
     eggShadow.quaternion.copy(basisAt(st.eggS));
-    (eggShadow.material as THREE.ShaderMaterial).uniforms.uStrength.value = 0.55 * (1 - hop * 1.6);
+    (eggShadow.material as THREE.ShaderMaterial).uniforms.uStrength.value = 0.55 * (1 - Math.min(0.75, st.eggY * 1.6));
 
     // camera: behind and above, easing sideways with the hero, looking well down the trail
     st.camU += (st.u * 0.7 - st.camU) * 0.12;
@@ -489,7 +568,10 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     if (moved) placeAir();
 
     flora.update(st.s);
-    if (st.frame % 5 === 0) shadow.render(renderer, scene, terrain.place(st.s + 14, 0, 0, tmp));
+    // only the ground and the amber near the runner are drawn
+    for (const part of ground.children) part.visible = part.userData.s1 > st.s - 8 && part.userData.s0 < st.s + 330;
+    for (const b of batches) b.mesh.visible = b.glow.visible = b.s1 > st.s - 4 && b.s0 < st.s + 150;
+    if (shadowsOn && st.frame % 5 === 0) shadow.render(renderer, scene, terrain.place(st.s + 14, 0, 0, tmp));
     st.frame++;
   }
 
@@ -504,6 +586,14 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   return {
     scene,
     camera,
+    debug: {
+      st,
+      forest: flora.group,
+      setShadows(on: boolean) {
+        shadowsOn = on;
+        world.uShadowParams.value.w = on ? 1 : 0;
+      },
+    },
     resize(aspect: number) {
       camera.aspect = aspect;
       const base = 62;

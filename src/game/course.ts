@@ -6,7 +6,7 @@
 import type { Segment } from '../world/track';
 
 export const LANE = 0.68;
-export const DEFAULT_SPEED = 7; // meters per second
+export const DEFAULT_SPEED = 8; // meters per second
 
 export type ObstacleKind = 'log' | 'arch' | 'boulder' | 'tree';
 
@@ -93,7 +93,7 @@ export const OBSTACLES: Obstacle[] = [
 /** Where the egg comes to rest. */
 export const END_S = 512;
 
-const SPACING = 1.75; // a quarter second apart at the default speed
+const SPACING = 2; // a quarter second apart at the default speed
 const FLOAT = 0.34;
 
 function line(out: Amber[], s0: number, s1: number, lane: number, lift = FLOAT) {
@@ -101,7 +101,8 @@ function line(out: Amber[], s0: number, s1: number, lane: number, lift = FLOAT) 
 }
 function arc(out: Amber[], center: number, lane: number) {
   for (let i = -2; i <= 2; i++) {
-    out.push({ s: center + i * 0.95, lane, lift: FLOAT + Math.cos((i / 2) * (Math.PI / 2)) * 0.6 });
+    // a jump covers about 4.5 m at the default speed, so the arc is spread to match
+    out.push({ s: center + i * 1.12, lane, lift: FLOAT + Math.cos((i / 2) * (Math.PI / 2)) * 0.6 });
   }
 }
 
@@ -149,7 +150,8 @@ function buildAmber(): Amber[] {
   return a;
 }
 
-export const AMBER: Amber[] = buildAmber();
+// in trail order: the run draws and collects amber in batches along the trail
+export const AMBER: Amber[] = buildAmber().sort((x, y) => x.s - y.s);
 
 export const HINTS: { s: number; text: string }[] = [
   { s: 18, text: 'Swipe left or right' },

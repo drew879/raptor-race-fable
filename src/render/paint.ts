@@ -7,6 +7,7 @@
 // Every style direction is just a different set of values for these uniforms.
 
 import * as THREE from 'three';
+import { noiseTexture } from './noisetex';
 
 export const world = {
   uTime: { value: 0 },
@@ -35,6 +36,10 @@ export const world = {
   // x: global saturation, y: value, z: shade saturation boost, w: unused
   uGrade: { value: new THREE.Vector4(1, 1, 1, 0) },
   uShadeTint: { value: new THREE.Color(0.7, 0.8, 1.0) },
+  // smooth tiling noise, read in place of working noise out per pixel
+  uNoise: { value: noiseTexture() },
+  // outlines fade out between these two distances (meters), so the far forest stays pure paint
+  uLineFade: { value: new THREE.Vector2(1e5, 1e6) },
 };
 
 export type Role =
@@ -69,6 +74,7 @@ interface RoleBase {
   shadow: number;
   rim: number;
   line: number; // how strongly outlines draw on this role (0..1)
+  keepLine: number; // 1: the outline never fades with distance (the things you play with)
   ao: number;
 }
 
@@ -82,6 +88,7 @@ const solid: RoleBase = {
   shadow: 1,
   rim: 0.15,
   line: 1,
+  keepLine: 0,
   ao: 1,
 };
 const leafy: RoleBase = {
@@ -99,18 +106,18 @@ const leafy: RoleBase = {
 
 const ROLE_BASE: Record<Role, RoleBase> = {
   bark: { ...solid },
-  prop: { ...solid, dapple: 0.2, shadow: 0.5, rim: 0.4 },
+  prop: { ...solid, dapple: 0.2, shadow: 0.5, rim: 0.4, keepLine: 1 },
   rock: { ...solid },
   ground: { ...solid, defines: { ROLE_GROUND: 1 }, rim: 0, line: 0.5 },
   foliage_conifer: { ...leafy, translucency: 0.5, dapple: 0.25, puff: 0.5 },
   foliage_ginkgo: { ...leafy, translucency: 1.2, dapple: 0.35 },
   foliage_fern: { ...leafy, translucency: 1.0, dapple: 0.85, shadow: 0.85 },
   foliage_horsetail: { ...leafy, translucency: 0.6, puff: 0.3, dapple: 0.85 },
-  feather: { ...solid, defines: { ROLE_FEATHER: 1 }, side: THREE.DoubleSide, rim: 0.55, dapple: 0.2, shadow: 0.35 },
-  skin: { ...solid, rim: 0.3, dapple: 0.2, shadow: 0.35 },
-  eye: { ...solid, defines: { ROLE_EYE: 1 }, dapple: 0 },
-  egg: { ...solid, defines: { ROLE_EGG: 1 }, rim: 0.7, dapple: 0.1, shadow: 0.4, ao: 0 },
-  amber: { ...solid, defines: { ROLE_AMBER: 1 }, dapple: 0, shadow: 0, ao: 0 },
+  feather: { ...solid, defines: { ROLE_FEATHER: 1 }, side: THREE.DoubleSide, rim: 0.55, dapple: 0.2, shadow: 0.35, keepLine: 1 },
+  skin: { ...solid, rim: 0.3, dapple: 0.2, shadow: 0.35, keepLine: 1 },
+  eye: { ...solid, defines: { ROLE_EYE: 1 }, dapple: 0, keepLine: 1 },
+  egg: { ...solid, defines: { ROLE_EGG: 1 }, rim: 0.7, dapple: 0.1, shadow: 0.4, ao: 0, keepLine: 1 },
+  amber: { ...solid, defines: { ROLE_AMBER: 1 }, dapple: 0, shadow: 0, ao: 0, keepLine: 1 },
   ridge: { ...solid, defines: { ROLE_RIDGE: 1 }, side: THREE.DoubleSide, dapple: 0, shadow: 0, rim: 0, line: 0.6, ao: 0 },
 };
 
@@ -159,11 +166,17 @@ varying vec4 vShadowCoord;
 #ifdef USE_INSTANCING_COLOR
 varying vec3 vInstColor;
 #endif
+#ifdef ROLE_GROUND
+varying vec2 vTrail; // x: meters to the right of the trail's centerline, y: meters along it
+#endif
 #include <skinning_pars_vertex>
 
 void main() {
   vPaint = aPaint;
   vObj = position;
+  #ifdef ROLE_GROUND
+  vTrail = uv;
+  #endif
   vec3 transformed = position;
   vec3 objectNormal = normal;
   #include <skinbase_vertex>
@@ -224,6 +237,9 @@ uniform vec4 uShadowParams;
 uniform vec4 uBrush;
 uniform vec4 uGrade;
 uniform vec3 uShadeTint;
+uniform sampler2D uNoise;
+uniform vec2 uLineFade;
+uniform vec4 uLanes;
 
 uniform vec3 uTint;
 uniform float uSat;
@@ -233,6 +249,7 @@ uniform float uDappleAmt;
 uniform float uShadowAmt;
 uniform float uRim;
 uniform float uLine;
+uniform float uKeepLine;
 uniform float uAo;
 uniform float uCrack;
 uniform vec3 uGlow;
@@ -245,8 +262,15 @@ varying vec4 vShadowCoord;
 #ifdef USE_INSTANCING_COLOR
 varying vec3 vInstColor;
 #endif
+#ifdef ROLE_GROUND
+varying vec2 vTrail;
+#endif
 
 ${NOISE}
+
+// The noise texture, addressed in cells: r and g repeat every 16 cells, b and a every 32.
+#define LAYERED(p) texture2D(uNoise, (p) * 0.0625)
+#define PLAIN(p) texture2D(uNoise, (p) * 0.03125)
 
 float sunShadow() {
   if (uShadowParams.w < 0.5) return 1.0;
@@ -255,14 +279,13 @@ float sunShadow() {
   float inside = smoothstep(0.0, 0.08, min(edge.x, edge.y)) * step(sc.z, 1.0);
   if (inside <= 0.0) return 1.0;
   float z = sc.z - uShadowParams.y;
+  // four taps on a turned square; the hardware blends 2x2 texels for each
   float tx = uShadowParams.x * 1.25;
-  float s = 0.0;
-  for (int y = -1; y <= 1; y++) {
-    for (int x = -1; x <= 1; x++) {
-      s += texture(uShadowMap, vec3(sc.xy + vec2(float(x), float(y)) * tx, z));
-    }
-  }
-  return mix(1.0, s / 9.0, inside);
+  float s = texture(uShadowMap, vec3(sc.xy + vec2(-0.94, -0.31) * tx, z))
+          + texture(uShadowMap, vec3(sc.xy + vec2(0.31, -0.94) * tx, z))
+          + texture(uShadowMap, vec3(sc.xy + vec2(0.94, 0.31) * tx, z))
+          + texture(uShadowMap, vec3(sc.xy + vec2(-0.31, 0.94) * tx, z));
+  return mix(1.0, s * 0.25, inside);
 }
 
 // Light breaking through a canopy we never have to draw: noise projected along the sun.
@@ -272,7 +295,7 @@ float dapple(vec3 wp) {
   vec2 a = normalize(uSunDir.xz);
   p = vec2(dot(p, a) * (0.35 + uSunDir.y), dot(p, vec2(-a.y, a.x)));
   p = p * uDapple.y + uWind.xy * uTime * 0.03;
-  float n = fbm2(p) * 0.7 + vnoise2(p * 3.1 + 11.0) * 0.3;
+  float n = LAYERED(p).g;
   float th = 1.0 - uDapple.w;
   return smoothstep(th - uDapple.z, th + uDapple.z, n);
 }
@@ -295,9 +318,26 @@ void main() {
   #ifdef ROLE_GROUND
   {
     // fine soil and litter detail that vertex paint can't hold
-    float g = fbm2(vWorld.xz * 2.3) * 0.6 + vnoise2(vWorld.xz * 9.0) * 0.4;
+    vec4 fine = PLAIN(vWorld.xz * 7.5);
+    float g = LAYERED(vWorld.xz * 2.3).r * 0.6 + fine.b * 0.4;
     albedo *= 0.82 + 0.36 * g;
-    float pebble = smoothstep(0.80, 0.86, vnoise2(vWorld.xz * 6.0 + 40.0)) * vPaint.a;
+    float onTrail = vPaint.a;
+    // Lanes without painted lines: each lane is a worn, slightly paler track, and between the
+    // tracks runs a thin, broken seam of moss and litter, the way a shared trail wears in.
+    // uLanes: x lane width, y strength, z half the seam's width.
+    float lx = abs(vTrail.x);
+    float fromSeam = abs(lx - uLanes.x * 0.5);
+    vec4 rag = LAYERED(vec2(vTrail.y * 0.9, vTrail.x * 2.2 + 3.0));
+    // ragged at two sizes: long wavering runs, and small clumps along their edges
+    float seam = 1.0 - smoothstep(uLanes.z * 0.6, uLanes.z, fromSeam + (rag.r - 0.5) * 0.12 + (fine.b - 0.5) * 0.07);
+    seam *= smoothstep(0.33, 0.43, rag.g) * onTrail * uLanes.y;
+    float lu = lx > uLanes.x * 0.5 ? abs(lx - uLanes.x) : lx; // distance to the nearest lane's center
+    float track = (1.0 - smoothstep(0.0, uLanes.x * 0.4, lu)) * step(lx, uLanes.x * 1.5) * onTrail * uLanes.y;
+    albedo *= 1.0 + 0.1 * track;
+    vec3 moss = mix(vec3(0.15, 0.22, 0.09), vec3(0.26, 0.29, 0.12), fine.a);
+    moss = mix(moss, vec3(0.25, 0.17, 0.09), smoothstep(0.55, 0.7, fine.b) * 0.7); // flecks of leaf litter
+    albedo = mix(albedo, moss, seam * 0.7);
+    float pebble = smoothstep(0.80 - 0.1 * seam, 0.86 - 0.1 * seam, fine.a) * onTrail;
     albedo = mix(albedo, albedo * 1.35 + 0.03, pebble * 0.5);
     ao = 1.0;
   }
@@ -335,14 +375,16 @@ void main() {
   #endif
 
   // painterly variation: washes of slightly different value across big shapes
-  float wash = fbm2(vWorld.xz * uBrush.y + vWorld.y * 0.37);
-  float wash2 = vnoise3(vWorld * uBrush.y * 3.0);
+  float wash = LAYERED(vWorld.xz * uBrush.y + vWorld.y * 0.37).r;
+  // the height is folded in at a slant, so upright surfaces vary along their length too
+  vec2 slant = vWorld.xz + vWorld.y * vec2(0.37, 0.61);
+  float wash2 = PLAIN(slant * uBrush.y * 3.0).b;
   albedo *= 1.0 + (wash - 0.5) * 2.0 * uBrush.x + (wash2 - 0.5) * uBrush.x;
 
   // sun
   float ndl = dot(N, uSunDir);
   float w = (ndl + uBand.w) / (1.0 + uBand.w);
-  float wobble = (vnoise3(vWorld * 2.6) - 0.5) * uBrush.z;
+  float wobble = (PLAIN(slant.yx * 2.6).a - 0.5) * uBrush.z;
   float lit = smoothstep(uBand.x - uBand.y, uBand.x + uBand.y, w + wobble);
   float core = smoothstep(uBand.x - 0.5 - uBand.y, uBand.x - 0.5 + uBand.y, w + wobble);
 
@@ -427,8 +469,9 @@ void main() {
 
   col = toDisplay(col);
   col += (hash21(gl_FragCoord.xy + fract(uTime)) - 0.5) / 255.0;
-  // alpha carries how strongly outlines should draw here, fading out with the mist
-  gl_FragColor = vec4(col, uLine * (1.0 - fogAmt * 0.85));
+  // alpha carries how strongly outlines should draw here, fading out with the mist and with distance
+  float lineFar = max(1.0 - smoothstep(uLineFade.x, uLineFade.y, dist), uKeepLine);
+  gl_FragColor = vec4(col, uLine * (1.0 - fogAmt * 0.85) * lineFar);
 }
 `;
 
@@ -457,9 +500,12 @@ export function paintMaterial(role: Role): THREE.ShaderMaterial {
       uShadowAmt: { value: base.shadow },
       uRim: { value: base.rim },
       uLine: { value: base.line },
+      uKeepLine: { value: base.keepLine },
       uAo: { value: base.ao },
       uCrack: { value: 0.55 },
       uGlow: { value: new THREE.Color(0, 0, 0) },
+      // x: lane width, y: how strongly the lanes show, z: half the width of the seam between lanes (ground only)
+      uLanes: { value: new THREE.Vector4(0.68, 0, 0.08, 0) },
     },
   });
   mat.userData.role = role;
@@ -484,4 +530,3 @@ export function allPaintMaterials(): readonly THREE.ShaderMaterial[] {
   return made;
 }
 
-export { NOISE };

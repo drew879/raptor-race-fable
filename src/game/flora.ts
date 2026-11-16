@@ -1,5 +1,6 @@
-// The forest along a whole course, planted in chunks. Each chunk exists at three levels of
-// detail and shows one of them, picked by how far ahead of the runner it is.
+// The forest along a whole course, planted in chunks. Each chunk exists at four levels of
+// detail and shows one of them, picked by how far ahead of the runner it is. Within a level,
+// plants far off to the side get a lighter model too: they are mostly hidden by nearer ones.
 
 import * as THREE from 'three';
 import { instances, type Kit, type Placement } from '../world/assets';
@@ -32,29 +33,45 @@ const CONIFER_H = [17, 22];
 const GINKGO_H = [9, 11];
 const TREEFERN_H = [3.0, 4.2];
 
+const LEVELS = 4;
+/** Which level of detail a chunk shows, from how far ahead of the runner it starts. */
+const levelFor = (ahead: number) => (ahead < 13 ? 0 : ahead < 52 ? 1 : ahead < 104 ? 2 : 3);
+
 function modelFor(p: Plant, level: number): { name: string; scale: number } | null {
   const hi = level === 0 && p.nearTrail;
   switch (p.kind) {
-    case 'conifer':
+    case 'conifer': {
       // full-detail conifers are costly, so only the row right beside the trail gets them
       if (hi && p.offset < 6.5) return { name: p.variant ? 'conifer_b' : 'conifer_a', scale: p.scale };
-      return { name: level === 2 ? 'conifer_far' : 'conifer_lo', scale: (p.scale * CONIFER_H[p.variant]) / 19 };
-    case 'ginkgo':
+      const scale = (p.scale * CONIFER_H[p.variant]) / 19;
+      if (level <= 1) return { name: p.offset > 16 ? 'conifer_far' : 'conifer_lo', scale };
+      if (level === 2) return { name: p.offset > 20 ? 'conifer_dist' : 'conifer_far', scale };
+      return { name: 'conifer_dist', scale };
+    }
+    case 'ginkgo': {
       if (hi) return { name: p.variant ? 'ginkgo_b' : 'ginkgo_a', scale: p.scale };
-      return { name: level === 2 ? 'ginkgo_far' : 'ginkgo_lo', scale: (p.scale * GINKGO_H[p.variant]) / 10 };
-    case 'treefern':
-      if (hi) return { name: p.variant ? 'treefern_b' : 'treefern_a', scale: p.scale };
-      return { name: 'treefern_lo', scale: (p.scale * TREEFERN_H[p.variant]) / 3.6 };
+      const scale = (p.scale * GINKGO_H[p.variant]) / 10;
+      return { name: level >= 2 || p.offset > 16 ? 'ginkgo_far' : 'ginkgo_lo', scale };
+    }
+    case 'treefern': {
+      if (hi && p.offset < 6) return { name: p.variant ? 'treefern_b' : 'treefern_a', scale: p.scale };
+      if (level === 3) return null;
+      const scale = (p.scale * TREEFERN_H[p.variant]) / 3.6;
+      return { name: level === 2 || (level === 1 && p.offset > 6) ? 'treefern_far' : 'treefern_lo', scale };
+    }
     case 'fern':
       // undergrowth thins out with distance: far away only the trail's edge is planted
+      if (level === 3) return null;
       if (level === 1 && p.offset > 8) return null;
       if (level === 2 && p.offset > 3.6) return null;
-      return { name: 'fern_lo', scale: p.scale };
+      if (level === 0) return { name: p.offset < 6 ? 'fern_lo' : 'fern_far', scale: p.scale };
+      if (level === 1) return { name: p.offset < 4 ? 'fern_lo' : 'fern_far', scale: p.scale };
+      return { name: 'fern_far', scale: p.scale };
     case 'horsetail':
-      if (level === 2) return null;
+      if (level >= 2) return null;
       return { name: p.variant ? 'horsetail_b' : 'horsetail_a', scale: p.scale };
     case 'rock':
-      if (level === 2) return null;
+      if (level >= 2) return null;
       return { name: ['rock_a', 'rock_b', 'rock_c'][p.variant], scale: p.scale };
   }
 }
@@ -139,7 +156,7 @@ export class Flora {
       }
 
       const levels: THREE.Group[] = [];
-      for (let level = 0; level < 3; level++) {
+      for (let level = 0; level < LEVELS; level++) {
         const lists = new Map<string, Placement[]>();
         for (const p of plants) {
           const m = modelFor(p, level);
@@ -174,8 +191,8 @@ export class Flora {
     for (const c of this.chunks) {
       const ahead = c.s0 - playerS;
       const visible = c.s1 - playerS > -VIEW_BEHIND && ahead < VIEW_AHEAD;
-      const level = ahead < 13 ? 0 : ahead < 52 ? 1 : 2;
-      for (let i = 0; i < 3; i++) c.levels[i].visible = visible && i === level;
+      const level = levelFor(ahead);
+      for (let i = 0; i < LEVELS; i++) c.levels[i].visible = visible && i === level;
     }
   }
 }

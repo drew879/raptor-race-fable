@@ -24,44 +24,15 @@ export interface Style {
   sky: { zenith: string; horizon: string; glow: string; params: [number, number, number, number] };
   mist: number;
   shafts: { amount: number; color: string };
-  line: { strength: number; width: number; sensitivity: number; wobble: number; color: string };
-  paper: { grain: number; size: number; edge: number; pool: number; color: string };
+  /** fade: outlines on the scenery thin out between these two distances in meters (omit for none). */
+  line: { strength: number; width: number; sensitivity: number; wobble: number; color: string; fade?: [number, number] };
+  paper: { grain: number; size: number; pool: number };
   final: [number, number, number];
   roles: Partial<Record<Role, RoleLook>>;
   ui: { ink: string; panel: string; accent: string; text: string };
 }
 
 export const STYLES: Style[] = [
-  {
-    id: 'journal',
-    tab: 'A',
-    name: 'Field Journal',
-    blurb: 'Ink line and watercolor wash on paper',
-    sun: { color: '#fff0cc', power: 1.0 },
-    skyAmb: '#d2e1e3',
-    groundAmb: '#b5af97',
-    shadeTint: '#c6cdf2',
-    band: [0.5, 0.05, 0.1, 0.25],
-    fog: { color: '#e4ead9', sun: '#fff1cf', density: 0.02, base: -40, falloff: 0.035, max: 0.96, haze: 0.0052, glowPower: 5, glow: 0.7, ridgeMist: 1.05 },
-    dapple: [0.7, 0.2, 0.05, 0.6],
-    brush: [0.24, 0.32, 0.22, 0],
-    grade: [0.95, 1.1, 1.05],
-    sky: { zenith: '#a8cbd6', horizon: '#f4eddb', glow: '#fff0cc', params: [2.4, 7, 0.5, 0.2] },
-    mist: 0.45,
-    shafts: { amount: 0.22, color: '#fff3d0' },
-    line: { strength: 0.9, width: 0.9, sensitivity: 0.028, wobble: 1.2, color: '#3b2a20' },
-    paper: { grain: 0.2, size: 1.9, edge: 0.5, pool: 0.18, color: '#f3ead8' },
-    final: [1.0, 1.0, 0.0],
-    roles: {
-      foliage_conifer: { tint: '#f2ffe8', sat: 0.9, val: 1.15 },
-      foliage_fern: { val: 1.1 },
-      bark: { val: 1.15, sat: 0.9 },
-      ground: { val: 1.1 },
-      ridge: { tint: '#a9c4b6', val: 1.2 },
-      feather: { val: 1.25 },
-    },
-    ui: { ink: '#3b2a20', panel: '#f3ead8', accent: '#e39a2d', text: '#3b2a20' },
-  },
   {
     // A's ink line, paper and crisp washes, lit like B: low golden sun, cooler and deeper shade,
     // blue-green mist that warms toward the sun.
@@ -82,12 +53,42 @@ export const STYLES: Style[] = [
     mist: 0.55,
     shafts: { amount: 0.5, color: '#ffe2a6' },
     line: { strength: 0.9, width: 0.9, sensitivity: 0.028, wobble: 1.2, color: '#33241b' },
-    paper: { grain: 0.17, size: 1.9, edge: 0.5, pool: 0.18, color: '#f3e8d2' },
+    paper: { grain: 0.17, size: 1.9, pool: 0.18 },
     final: [1.02, 1.04, 0.1],
     roles: {
       ridge: { tint: '#7fa5a0', val: 1.05 },
       feather: { val: 1.2 },
       bark: { val: 1.05 },
+    },
+    ui: { ink: '#33241b', panel: '#f3e8d2', accent: '#e39a2d', text: '#33241b' },
+  },
+  {
+    // Halfway between A+ and B. The paint is B's: deeper color, softer light, thicker mist.
+    // The ink is A's, but kept for what is close and for the things you play with (the runner,
+    // the egg, amber, obstacles). The forest beyond about 45 m is paint alone.
+    id: 'paintjournal',
+    tab: 'AB',
+    name: 'Painted Journal',
+    blurb: "B's deep paint, A's ink on what matters",
+    sun: { color: '#ffd9a0', power: 1.29 },
+    skyAmb: '#abc5cf',
+    groundAmb: '#939677',
+    shadeTint: '#b4cdf0',
+    band: [0.44, 0.13, 0.25, 0.32],
+    fog: { color: '#93bfb8', sun: '#ffd28e', density: 0.028, base: -38, falloff: 0.04, max: 0.945, haze: 0.0039, glowPower: 4.5, glow: 0.98, ridgeMist: 1.0 },
+    dapple: [0.84, 0.2, 0.095, 0.58],
+    brush: [0.19, 0.43, 0.16, 0],
+    grade: [1.09, 1.02, 1.18],
+    sky: { zenith: '#69a6b8', horizon: '#f6e1ac', glow: '#ffd595', params: [2.05, 6, 0.9, 0.45] },
+    mist: 0.58,
+    shafts: { amount: 0.55, color: '#ffe1a1' },
+    line: { strength: 0.66, width: 0.78, sensitivity: 0.032, wobble: 1.0, color: '#3a2a20', fade: [14, 46] },
+    paper: { grain: 0.09, size: 1.8, pool: 0.1 },
+    final: [1.03, 1.05, 0.2],
+    roles: {
+      ridge: { tint: '#779f9c', val: 1.02 },
+      feather: { val: 1.18 },
+      bark: { val: 1.02 },
     },
     ui: { ink: '#33241b', panel: '#f3e8d2', accent: '#e39a2d', text: '#33241b' },
   },
@@ -109,45 +110,13 @@ export const STYLES: Style[] = [
     mist: 0.6,
     shafts: { amount: 0.6, color: '#ffdf9c' },
     line: { strength: 0, width: 1, sensitivity: 0.03, wobble: 0, color: '#000000' },
-    paper: { grain: 0.05, size: 1.6, edge: 0, pool: 0, color: '#f3ead8' },
+    paper: { grain: 0.05, size: 1.6, pool: 0 },
     final: [1.04, 1.06, 0.3],
     roles: {
       ridge: { tint: '#6f9a98' },
       feather: { val: 1.15 },
     },
     ui: { ink: '#16211f', panel: '#16211f', accent: '#f2a93b', text: '#f6ecd6' },
-  },
-  {
-    id: 'inkmist',
-    tab: 'C',
-    name: 'Ink and Mist',
-    blurb: 'Ridges stacked in mist, color saved for amber and egg',
-    sun: { color: '#fff4dc', power: 0.9 },
-    skyAmb: '#cdd6d0',
-    groundAmb: '#aeb0a0',
-    shadeTint: '#cfd6de',
-    band: [0.5, 0.09, 0.2, 0.3],
-    fog: { color: '#e7e6d8', sun: '#f7efd9', density: 0.05, base: -34, falloff: 0.045, max: 0.975, haze: 0.0085, glowPower: 4, glow: 0.6, ridgeMist: 0.86 },
-    dapple: [0.6, 0.2, 0.12, 0.62],
-    brush: [0.3, 0.75, 0.3, 0],
-    grade: [0.52, 1.02, 0.9],
-    sky: { zenith: '#d3d9d0', horizon: '#f1ecdc', glow: '#fff4dc', params: [1.8, 5, 0.35, 0.15] },
-    mist: 0.85,
-    shafts: { amount: 0.12, color: '#fff6e0' },
-    line: { strength: 0.78, width: 0.95, sensitivity: 0.04, wobble: 1.7, color: '#1d2125' },
-    paper: { grain: 0.24, size: 2.2, edge: 0.4, pool: 0.12, color: '#f1ecdc' },
-    final: [1.0, 1.14, 0.0],
-    roles: {
-      egg: { sat: 2.1, val: 1.05 },
-      feather: { sat: 1.7, val: 1.2 },
-      foliage_ginkgo: { sat: 1.25 },
-      ridge: { tint: '#7d8f8a', sat: 0.6 },
-      bark: { val: 0.62, sat: 0.4 },
-      foliage_conifer: { val: 0.8, sat: 0.8 },
-      foliage_fern: { sat: 1.1 },
-      ground: { val: 1.05, sat: 0.9 },
-    },
-    ui: { ink: '#23272b', panel: '#f1ecdc', accent: '#e39a2d', text: '#23272b' },
   },
 ];
 
@@ -177,10 +146,10 @@ export function applyStyle(style: Style) {
   fxUniforms.uShaftColor.value.copy(lin(style.shafts.color));
 
   postUniforms.uLine.value.set(style.line.strength, style.line.width, style.line.sensitivity, style.line.wobble);
+  world.uLineFade.value.set(...(style.line.fade ?? [1e5, 1e6]));
   // these two are used in display space by the finishing pass
   postUniforms.uLineColor.value.copy(lin(style.line.color)).convertLinearToSRGB();
-  postUniforms.uPaper.value.set(style.paper.grain, style.paper.size, style.paper.edge, style.paper.pool);
-  postUniforms.uPaperColor.value.copy(lin(style.paper.color)).convertLinearToSRGB();
+  postUniforms.uPaper.value.set(style.paper.grain, style.paper.size, 0, style.paper.pool);
   postUniforms.uFinal.value.set(style.final[0], style.final[1], style.final[2], 0);
 
   applyRoleLooks(style.roles);

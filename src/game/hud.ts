@@ -3,13 +3,18 @@
 // so a swipe handler underneath can never swallow it.
 
 import { BUILD } from '../app/build';
-import { currentFps, isStandalone } from '../app/viewport';
+import { currentFps, fitLine, isStandalone } from '../app/viewport';
 import type { Style } from '../render/styles';
 
 export interface HudHooks {
   styles: Style[];
   styleIndex: number;
   speed: number;
+  eggModes: string[];
+  eggMode: number;
+  /** A short note on how sharp the picture is being drawn, for the pause sheet's small print. */
+  quality?(): string;
+  onEgg(mode: number): void;
   onStart(): void;
   onPause(): void;
   onResume(): void;
@@ -45,7 +50,8 @@ export function makeHud(root: HTMLElement, hooks: HudHooks): Hud {
       <div class="setting"><span>Speed</span>
         <div class="stepper"><button class="slower" aria-label="Slower">&minus;</button><b class="speed"></b><button class="faster" aria-label="Faster">+</button></div>
       </div>
-      <a class="link" href="?">See the concept frames</a>
+      <div class="setting"><span>Egg</span><div class="tabs words egg-tabs"></div></div>
+      <div class="links"><a class="link" href="?mode=bench">Speed test</a><a class="link" href="?">Concept frames</a></div>
       <small class="about">Rough test run &middot; build ${BUILD}</small>
     </div>
     <div class="sheet start-sheet">
@@ -96,6 +102,19 @@ export function makeHud(root: HTMLElement, hooks: HudHooks): Hud {
   });
   showSpeed();
 
+  const eggTabs = q<HTMLElement>('.egg-tabs');
+  const markEgg = (mode: number) => [...eggTabs.children].forEach((el, i) => el.classList.toggle('on', i === mode));
+  hooks.eggModes.forEach((name, i) => {
+    const b = document.createElement('button');
+    b.textContent = name;
+    press(b, () => {
+      markEgg(i);
+      hooks.onEgg(i);
+    });
+    eggTabs.appendChild(b);
+  });
+  markEgg(hooks.eggMode);
+
   hooks.styles.forEach((style, i) => {
     const b = document.createElement('button');
     b.textContent = style.tab;
@@ -120,7 +139,8 @@ export function makeHud(root: HTMLElement, hooks: HudHooks): Hud {
       if (paused) {
         // handy when reporting back from the phone: which build, how smooth, and how it was opened
         q<HTMLElement>('.about').textContent =
-          `Rough test run · build ${BUILD} · ${currentFps().toFixed(0)} fps · ${isStandalone() ? 'Home Screen' : 'browser'}`;
+          `Rough test run · build ${BUILD} · ${currentFps().toFixed(0)} fps · ${isStandalone() ? 'Home Screen' : 'browser'}` +
+          `${hooks.quality ? ` · ${hooks.quality()}` : ''}\n${fitLine()}`;
       }
     },
     showFinish(count, total) {

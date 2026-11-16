@@ -1,22 +1,22 @@
 // The finishing pass. The scene is drawn into an offscreen image with depth, then this pass
-// adds what makes each style: ink outlines found from depth, paper grain, the ragged edge
-// of a wash, and a final grade. With every effect at zero it is a plain copy.
+// adds what makes each style: ink outlines found from depth, paper grain and a final grade.
+// With every effect at zero it is a plain copy.
 
 import * as THREE from 'three';
-import { NOISE } from './paint';
+import { noiseTexture } from './noisetex';
 
 export const postUniforms = {
   tColor: { value: null as THREE.Texture | null },
   tDepth: { value: null as THREE.Texture | null },
+  uNoise: { value: noiseTexture() },
   uRes: { value: new THREE.Vector2(1, 1) },
   uNearFar: { value: new THREE.Vector2(0.3, 2500) },
   uDpr: { value: 1 },
   // x: strength, y: thickness in points, z: sensitivity (lower finds more edges), w: hand wobble in points
   uLine: { value: new THREE.Vector4(0, 1, 0.03, 0) },
   uLineColor: { value: new THREE.Color('#2a2018') },
-  // x: grain strength, y: grain size in points, z: how far the painting fades to bare paper at the edges, w: pigment pooling at wash edges
+  // x: grain strength, y: grain size in points, z: unused, w: pigment pooling at wash edges
   uPaper: { value: new THREE.Vector4(0, 2, 0, 0) },
-  uPaperColor: { value: new THREE.Color('#f3ead8') },
   // x: saturation, y: contrast, z: vignette, w: unused
   uFinal: { value: new THREE.Vector4(1, 1, 0, 0) },
 };
@@ -25,16 +25,15 @@ const FRAG = /* glsl */ `
 precision highp float;
 uniform sampler2D tColor;
 uniform sampler2D tDepth;
+uniform sampler2D uNoise;
 uniform vec2 uRes;
 uniform vec2 uNearFar;
 uniform float uDpr;
 uniform vec4 uLine;
 uniform vec3 uLineColor;
 uniform vec4 uPaper;
-uniform vec3 uPaperColor;
 uniform vec4 uFinal;
 varying vec2 vUv;
-${NOISE}
 
 // 1 / view depth. It is linear across any flat surface on screen, so its second
 // difference is zero on planes and spikes at silhouettes and creases.
@@ -46,56 +45,54 @@ float invZ(vec2 uv) {
 void main() {
   vec2 px = 1.0 / uRes;
   vec2 pt = vUv * uRes / uDpr; // position in points, so effects look the same on any screen
-  vec4 c = texture2D(tColor, vUv);
-  vec3 col = c.rgb;
+  vec3 col = texture2D(tColor, vUv).rgb;
 
   if (uLine.x > 0.0) {
-    vec2 wob = (vec2(vnoise2(pt / 23.0), vnoise2(pt / 23.0 + 19.0)) - 0.5) * 2.0 * uLine.w * uDpr * px;
-    vec2 uv = vUv + wob;
-    float weight = 0.7 + 0.6 * vnoise2(pt / 55.0 + 3.0);
-    vec2 o = px * uLine.y * uDpr * weight;
+    // one read of the noise gives the hand's wobble (b, a) and the pen's changing weight (r)
+    vec4 hand = texture2D(uNoise, pt / 736.0);
+    vec2 uv = vUv + (hand.ba - 0.5) * 2.0 * uLine.w * uDpr * px;
+    vec2 o = px * uLine.y * uDpr * (0.7 + 0.6 * hand.r);
     float z0 = invZ(uv);
-    vec2 offs[4];
-    offs[0] = vec2(o.x, 0.0); offs[1] = vec2(-o.x, 0.0); offs[2] = vec2(0.0, o.y); offs[3] = vec2(0.0, -o.y);
-    float zs[4];
-    float nearest = z0;
-    float lw = texture2D(tColor, uv).a;
-    for (int i = 0; i < 4; i++) {
-      zs[i] = invZ(uv + offs[i]);
-      if (zs[i] > nearest) { nearest = zs[i]; lw = texture2D(tColor, uv + offs[i]).a; }
-    }
-    float lap = abs(zs[0] + zs[1] - 2.0 * z0) + abs(zs[2] + zs[3] - 2.0 * z0);
-    float rel = lap / max(nearest, 1e-6);
-    float edge = smoothstep(uLine.z, uLine.z * 3.0, rel);
-    // a dry pen skips a little
-    edge *= 0.75 + 0.25 * smoothstep(0.25, 0.6, vnoise2(pt / 6.0));
-    col = mix(col, uLineColor, clamp(edge * uLine.x * lw, 0.0, 1.0));
+    float zr = invZ(uv + vec2(o.x, 0.0));
+    float zl = invZ(uv - vec2(o.x, 0.0));
+    float zu = invZ(uv + vec2(0.0, o.y));
+    float zd = invZ(uv - vec2(0.0, o.y));
+    float nearest = max(z0, max(max(zr, zl), max(zu, zd)));
+    float lap = abs(zr + zl - 2.0 * z0) + abs(zu + zd - 2.0 * z0);
+    float edge = smoothstep(uLine.z, uLine.z * 3.0, lap / max(nearest, 1e-6));
     // pigment pools a little along the edges of a wash
+    float pool = 0.0;
     if (uPaper.w > 0.0) {
       vec2 o2 = o * 3.0;
       float lap2 = abs(invZ(uv + vec2(o2.x, 0.0)) + invZ(uv - vec2(o2.x, 0.0)) - 2.0 * z0)
                  + abs(invZ(uv + vec2(0.0, o2.y)) + invZ(uv - vec2(0.0, o2.y)) - 2.0 * z0);
-      float pool = smoothstep(uLine.z * 2.0, uLine.z * 12.0, lap2 / max(nearest, 1e-6));
-      col *= 1.0 - pool * uPaper.w * lw;
+      pool = smoothstep(uLine.z * 2.0, uLine.z * 12.0, lap2 / max(nearest, 1e-6)) * uPaper.w;
+    }
+    if (edge + pool > 0.0) {
+      // the line's weight belongs to whichever surface is in front
+      vec2 at = uv;
+      if (zr == nearest) at = uv + vec2(o.x, 0.0);
+      else if (zl == nearest) at = uv - vec2(o.x, 0.0);
+      else if (zu == nearest) at = uv + vec2(0.0, o.y);
+      else if (zd == nearest) at = uv - vec2(0.0, o.y);
+      float lw = texture2D(tColor, at).a;
+      // a dry pen skips a little
+      edge *= 0.75 + 0.25 * smoothstep(0.25, 0.6, texture2D(uNoise, pt / 192.0).b);
+      col = mix(col, uLineColor, clamp(edge * uLine.x * lw, 0.0, 1.0));
+      col *= 1.0 - pool * lw;
     }
   }
 
-  if (uPaper.x > 0.0 || uPaper.z > 0.0) {
+  if (uPaper.x > 0.0) {
+    // paper tooth: two reads at different sizes and angles, so the tile never shows
     vec2 g = pt / uPaper.y;
-    float grain = fbm2(g) * 0.6 + vnoise2(vec2(g.x * 0.18, g.y * 1.9)) * 0.4;
+    vec2 g1 = vec2(g.x * 0.956 - g.y * 0.292, g.x * 0.292 + g.y * 0.956);
+    vec2 g2 = vec2(g.x * 0.996 + g.y * 0.087, g.y * 0.996 - g.x * 0.087);
+    float grain = texture2D(uNoise, g1 / 32.0).b * 0.6 + texture2D(uNoise, vec2(g2.x * 0.18, g2.y * 1.9) / 32.0).a * 0.4;
     float tooth = (grain - 0.5) * 2.0;
     // darker paint shows more of the paper's tooth
     float lum = dot(col, vec3(0.299, 0.587, 0.114));
     col *= 1.0 - uPaper.x * tooth * (0.5 + 0.8 * (1.0 - lum));
-    // toward the edge of the page the wash thins out to bare paper, with a ragged edge
-    if (uPaper.z > 0.0) {
-      vec2 q = min(vUv, 1.0 - vUv) * vec2(uRes.x / uRes.y, 1.0);
-      float d = min(q.x * 1.6, q.y);
-      float ragged = d + (fbm2(pt / 34.0) - 0.5) * 0.045 * uPaper.z + (vnoise2(pt / 7.0) - 0.5) * 0.012;
-      float inside = smoothstep(0.004, 0.004 + 0.06 * uPaper.z, ragged);
-      vec3 bare = uPaperColor * (1.0 - uPaper.x * tooth * 0.6);
-      col = mix(bare, col, inside);
-    }
   }
 
   float l = dot(col, vec3(0.299, 0.587, 0.114));
@@ -109,21 +106,15 @@ void main() {
 
 export class Post {
   private target: THREE.WebGLRenderTarget;
+  private w = 4;
+  private h = 4;
   private quad: THREE.Mesh;
   private quadScene = new THREE.Scene();
   private quadCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   enabled = true;
 
-  constructor(private renderer: THREE.WebGLRenderer, samples = 4) {
-    this.target = new THREE.WebGLRenderTarget(4, 4, {
-      samples,
-      depthTexture: new THREE.DepthTexture(4, 4, THREE.UnsignedIntType),
-      minFilter: THREE.LinearFilter,
-      magFilter: THREE.LinearFilter,
-      generateMipmaps: false,
-    });
-    this.target.depthTexture!.minFilter = THREE.NearestFilter;
-    this.target.depthTexture!.magFilter = THREE.NearestFilter;
+  constructor(private renderer: THREE.WebGLRenderer, private samples = 4) {
+    this.target = this.makeTarget();
     const mat = new THREE.ShaderMaterial({
       uniforms: postUniforms,
       depthTest: false,
@@ -142,9 +133,33 @@ export class Post {
     this.quadScene.add(this.quad);
   }
 
+  private makeTarget(): THREE.WebGLRenderTarget {
+    const target = new THREE.WebGLRenderTarget(this.w, this.h, {
+      samples: this.samples,
+      depthTexture: new THREE.DepthTexture(this.w, this.h, THREE.UnsignedIntType),
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
+      generateMipmaps: false,
+    });
+    target.depthTexture!.minFilter = THREE.NearestFilter;
+    target.depthTexture!.magFilter = THREE.NearestFilter;
+    return target;
+  }
+
+  /** Edge smoothing samples: 4 for the game, 0 to switch it off (the speed test compares them). */
+  setSamples(samples: number) {
+    if (samples === this.samples) return;
+    this.samples = samples;
+    this.target.depthTexture?.dispose();
+    this.target.dispose();
+    this.target = this.makeTarget();
+  }
+
   setSize(width: number, height: number, dpr: number) {
     const w = Math.max(2, Math.round(width * dpr));
     const h = Math.max(2, Math.round(height * dpr));
+    this.w = w;
+    this.h = h;
     this.target.setSize(w, h);
     postUniforms.uRes.value.set(w, h);
     postUniforms.uDpr.value = dpr;

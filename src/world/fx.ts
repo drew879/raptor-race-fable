@@ -2,7 +2,7 @@
 // They blend over the scene and leave the outline channel (alpha) alone.
 
 import * as THREE from 'three';
-import { NOISE, world } from '../render/paint';
+import { world } from '../render/paint';
 
 function softBlend(mat: THREE.ShaderMaterial, additive: boolean) {
   mat.transparent = true;
@@ -30,6 +30,7 @@ export function makeMist(position: THREE.Vector3, width: number, height: number,
   const mat = new THREE.ShaderMaterial({
     uniforms: {
       uTime: world.uTime,
+      uNoise: world.uNoise,
       uFogColor: world.uFogColor,
       uFogSun: world.uFogSun,
       uSunDir: world.uSunDir,
@@ -44,13 +45,13 @@ export function makeMist(position: THREE.Vector3, width: number, height: number,
       void main() { vUv = uv; vec4 wp = modelMatrix * vec4(position, 1.0); vWorld = wp.xyz; gl_Position = projectionMatrix * viewMatrix * wp; }`,
     fragmentShader: /* glsl */ `
       uniform float uTime, uAmount, uSeed, uTinted; uniform vec3 uFogColor, uFogSun, uSunDir, uTint; uniform vec4 uHaze;
+      uniform sampler2D uNoise;
       varying vec2 vUv; varying vec3 vWorld;
-      ${NOISE}
       ${DISPLAY}
       void main() {
         vec2 p = vUv * 2.0 - 1.0;
         float body = (1.0 - smoothstep(0.35, 1.0, abs(p.x))) * (1.0 - smoothstep(0.1, 1.0, abs(p.y)));
-        float n = fbm2(vec2(vUv.x * 3.0 + uTime * 0.012 + uSeed, vUv.y * 1.6 + uSeed * 0.37));
+        float n = texture2D(uNoise, vec2(vUv.x * 3.0 + uTime * 0.012 + uSeed, vUv.y * 1.6 + uSeed * 0.37) * 0.0625).r;
         float a = body * smoothstep(0.25, 0.75, n) * uAmount;
         float near = smoothstep(2.0, 14.0, length(vWorld - cameraPosition));
         vec3 E = normalize(vWorld - cameraPosition);
@@ -76,6 +77,7 @@ export function makeShaft(top: THREE.Vector3, length: number, width: number, see
   const mat = new THREE.ShaderMaterial({
     uniforms: {
       uTime: world.uTime,
+      uNoise: world.uNoise,
       uColor: fxUniforms.uShaftColor,
       uAmount: fxUniforms.uShaftAmount,
       uSeed: { value: seed },
@@ -85,12 +87,12 @@ export function makeShaft(top: THREE.Vector3, length: number, width: number, see
       void main() { vUv = uv; vec4 wp = modelMatrix * vec4(position, 1.0); vWorld = wp.xyz; gl_Position = projectionMatrix * viewMatrix * wp; }`,
     fragmentShader: /* glsl */ `
       uniform float uTime, uAmount, uSeed; uniform vec3 uColor;
+      uniform sampler2D uNoise;
       varying vec2 vUv; varying vec3 vWorld;
-      ${NOISE}
       ${DISPLAY}
       void main() {
         float across = 1.0 - abs(vUv.x * 2.0 - 1.0);
-        float streak = 0.55 + 0.45 * vnoise2(vec2(vUv.x * 7.0 + uSeed, uTime * 0.05 + uSeed));
+        float streak = 0.55 + 0.45 * texture2D(uNoise, vec2(vUv.x * 7.0 + uSeed, uTime * 0.05 + uSeed) * 0.03125).b;
         float along = smoothstep(0.0, 0.18, vUv.y) * smoothstep(1.0, 0.45, vUv.y);
         float a = pow(across, 1.6) * streak * along * uAmount;
         float near = smoothstep(1.5, 9.0, length(vWorld - cameraPosition));
