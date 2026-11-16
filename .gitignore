@@ -1,0 +1,8 @@
+node_modules
+dist
+.DS_Store
+*.blend1
+art/_preview
+.claude
+raptor-race-brief.md
+docs/local
