@@ -255,8 +255,11 @@ export function makeShaftField(count: number): ShaftField {
         float streak = 0.55 + 0.45 * texture2D(uNoise, vec2(vUv.x * 7.0 + vSeed, uTime * 0.05 + vSeed) * 0.03125).b;
         float along = smoothstep(0.0, 0.18, vUv.y) * smoothstep(1.0, 0.45, vUv.y);
         float a = pow(across, 1.6) * streak * along * uAmount;
-        float near = smoothstep(1.5, 9.0, length(vWorld - cameraPosition));
-        gl_FragColor = vec4(toDisplay(uColor), a * near);
+        float dist = length(vWorld - cameraPosition);
+        float near = smoothstep(1.5, 9.0, dist);
+        // shafts far down the trail thin out, so a long row of them never adds up to a glare
+        float far = 1.0 - 0.6 * smoothstep(35.0, 95.0, dist);
+        gl_FragColor = vec4(toDisplay(uColor), a * near * far);
       }`,
   });
   softBlend(mat, true);
