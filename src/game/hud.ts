@@ -3,7 +3,7 @@
 // so a swipe handler underneath can never swallow it.
 
 import { BUILD } from '../app/build';
-import { currentFps, fitLine, isStandalone } from '../app/viewport';
+import { currentFps, fitLine, isStandalone, lateFrames } from '../app/viewport';
 import type { Style } from '../render/styles';
 
 export interface HudHooks {
@@ -140,7 +140,7 @@ export function makeHud(root: HTMLElement, hooks: HudHooks): Hud {
         // handy when reporting back from the phone: which build, how smooth, and how it was opened
         q<HTMLElement>('.about').textContent =
           `Rough test run · build ${BUILD} · ${currentFps().toFixed(0)} fps · ${isStandalone() ? 'Home Screen' : 'browser'}` +
-          `${hooks.quality ? ` · ${hooks.quality()}` : ''}\n${fitLine()}`;
+          `${hooks.quality ? ` · ${hooks.quality()}` : ''}\n${lateFrames()}\n${fitLine()}`;
       }
     },
     showFinish(count, total) {

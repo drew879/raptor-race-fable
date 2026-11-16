@@ -66,12 +66,14 @@ export function makeRidges(center: THREE.Vector3, specs: RidgeSpec[]): THREE.Gro
   const group = new THREE.Group();
   group.name = 'ridges';
   const mat = paintMaterial('ridge');
+  // every layer goes into one mesh, so the whole ring of ridges is a single draw call
+  const pos: number[] = [];
+  const paint: number[] = [];
+  const nor: number[] = [];
+  const index: number[] = [];
   for (const spec of specs) {
     const n = 360;
-    const pos: number[] = [];
-    const paint: number[] = [];
-    const nor: number[] = [];
-    const index: number[] = [];
+    const first = pos.length / 3;
     const c = new THREE.Color(spec.color);
     for (let i = 0; i <= n; i++) {
       const a = (i / n) * Math.PI * 2;
@@ -89,20 +91,20 @@ export function makeRidges(center: THREE.Vector3, specs: RidgeSpec[]): THREE.Gro
         paint.push(c.r * shade * k, c.g * shade * k, c.b * shade * k, mist);
       }
       if (i < n) {
-        const o = i * 3;
+        const o = first + i * 3;
         index.push(o, o + 3, o + 1, o + 1, o + 3, o + 4, o + 1, o + 4, o + 2, o + 2, o + 4, o + 5);
       }
     }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
-    geo.setAttribute('aPaint', new THREE.Float32BufferAttribute(paint, 4));
-    geo.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array((pos.length / 3) * 2), 2));
-    geo.setIndex(index);
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.frustumCulled = false;
-    group.add(mesh);
   }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  geo.setAttribute('aPaint', new THREE.Float32BufferAttribute(paint, 4));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array((pos.length / 3) * 2), 2));
+  geo.setIndex(index);
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.frustumCulled = false;
+  group.add(mesh);
   return group;
 }
 

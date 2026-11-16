@@ -52,18 +52,27 @@ export function noiseTexture(): THREE.DataTexture {
   const g = [lattice(16, 101), lattice(32, 211), lattice(64, 307), lattice(48, 401)];
   const b = lattice(32, 503);
   const a = lattice(32, 601);
+  // Noise built on a grid peaks on the grid, and a cut through it (dappled light, pebbles)
+  // then shows dots in rows. So the page is read through a gentle, wrapping warp, and each
+  // layer sits a different part-cell off the others.
+  const warpU = lattice(8, 701);
+  const warpV = lattice(8, 809);
   const data = new Uint8Array(SIZE * SIZE * 4);
   for (let y = 0; y < SIZE; y++) {
-    const v = (y + 0.5) / SIZE;
+    const v0 = (y + 0.5) / SIZE;
     for (let x = 0; x < SIZE; x++) {
-      const u = (x + 0.5) / SIZE;
+      const u0 = (x + 0.5) / SIZE;
+      const u = u0 + (sample(warpU, 8, u0 * 8, v0 * 8) - 0.5) * 0.07;
+      const v = v0 + (sample(warpV, 8, u0 * 8, v0 * 8) - 0.5) * 0.07;
       const layered = (l: Float32Array[]) =>
-        sample(l[0], 16, u * 16, v * 16) * 0.55 + sample(l[1], 32, u * 32, v * 32) * 0.3 + sample(l[2], 64, u * 64, v * 64) * 0.15;
+        sample(l[0], 16, u * 16, v * 16) * 0.55 +
+        sample(l[1], 32, u * 32 + 0.37, v * 32 + 0.61) * 0.3 +
+        sample(l[2], 64, u * 64 + 0.71, v * 64 + 0.23) * 0.15;
       const i = (y * SIZE + x) * 4;
       data[i] = Math.round(layered(r) * 255);
-      data[i + 1] = Math.round((layered(g) * 0.7 + sample(g[3], 48, u * 48, v * 48) * 0.3) * 255);
+      data[i + 1] = Math.round((layered(g) * 0.7 + sample(g[3], 48, u * 48 + 0.53, v * 48 + 0.19) * 0.3) * 255);
       data[i + 2] = Math.round(sample(b, 32, u * 32, v * 32) * 255);
-      data[i + 3] = Math.round(sample(a, 32, u * 32, v * 32) * 255);
+      data[i + 3] = Math.round(sample(a, 32, u * 32 + 0.41, v * 32 + 0.67) * 255);
     }
   }
   const tex = new THREE.DataTexture(data, SIZE, SIZE, THREE.RGBAFormat, THREE.UnsignedByteType);

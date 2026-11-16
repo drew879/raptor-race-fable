@@ -53,15 +53,36 @@ export function watchViewport(listener: Listener): () => void {
 
 /** Smoothed frame rate, for the readouts. */
 let fps = 0;
+// the last ten seconds or so of frame times, to count late frames
+const recent = new Float32Array(600);
+let recentAt = 0;
+let recentCount = 0;
 /** Call once per frame. */
 export function tickFps(dtSeconds: number) {
   if (dtSeconds <= 0) return;
   const now = 1 / dtSeconds;
   fps = fps === 0 ? now : fps + (now - fps) * 0.05;
+  if (dtSeconds < 0.25) {
+    recent[recentAt] = dtSeconds * 1000;
+    recentAt = (recentAt + 1) % recent.length;
+    recentCount = Math.min(recent.length, recentCount + 1);
+  }
 }
 
 export function currentFps(): number {
   return fps;
+}
+
+/** How many of the recent frames ran late on a 60-a-second screen, and the longest one. */
+export function lateFrames(): string {
+  if (recentCount === 0) return 'late frames 0%';
+  let late = 0;
+  let worst = 0;
+  for (let i = 0; i < recentCount; i++) {
+    if (recent[i] > 22) late++;
+    worst = Math.max(worst, recent[i]);
+  }
+  return `late frames ${Math.round((100 * late) / recentCount)}% · longest ${worst.toFixed(0)} ms`;
 }
 
 function insets(): { top: string; bottom: string } {

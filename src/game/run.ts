@@ -9,7 +9,7 @@ import { world } from '../render/paint';
 import { SunShadow } from '../render/shadow';
 import type { Style } from '../render/styles';
 import { instance, instances, loadKit, loadSkinned, materialFor, SHADOW_LAYER, type Placement } from '../world/assets';
-import { makeContactShadow, makeGlowField, makeMist, makeShaft } from '../world/fx';
+import { makeContactShadow, makeGlowField, makeMistField, makeShaftField } from '../world/fx';
 import { rng, smoothstep } from '../world/noise';
 import { makeRidges, makeSky, makeVolcano } from '../world/sky';
 import { Terrain } from '../world/terrain';
@@ -95,17 +95,25 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   );
   const volcano = makeVolcano(eye0, bearing + THREE.MathUtils.degToRad(10), 1950, 400, '#3b5a66', 0.72);
   far.add(volcano);
+  scene.add(far);
+
+  // All the mist is one draw call and all the sun shafts another. Sheets are listed from the
+  // farthest to the nearest: the volcano's plume, the valley's layers, then the trail's own mist.
+  const mist = makeMistField(16);
+  mist.mesh.renderOrder = 2;
+  scene.add(mist.mesh);
   const summit = volcano.userData.summit as THREE.Vector3;
   const drift = volcano.userData.side as THREE.Vector3;
+  const plume: THREE.Vector3[] = [];
   for (let i = 0; i < 4; i++) {
     const p = summit.clone().addScaledVector(drift, -40 - i * 95);
     p.y += 30 + i * 34;
-    far.add(makeMist(p, 190 + i * 70, 70 + i * 22, 40 + i * 9.7, '#6b7480', 0.5 - i * 0.07));
+    plume.push(p);
+    mist.set(i, 190 + i * 70, 70 + i * 22, 40 + i * 9.7, '#6b7480', 0.5 - i * 0.07);
   }
-  scene.add(far);
 
   // ---------------------------------------------------------------- ground and forest
-  const ground = terrain.buildSections(-40, track.length + 40);
+  const ground = terrain.buildMesh(-40, track.length + 40);
   scene.add(ground);
   // three worn tracks with a broken seam of moss between them, so the lanes read without painted lines
   terrain.material.uniforms.uLanes.value.set(LANE, 1, 0.08, 0);
@@ -146,34 +154,52 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   for (const [name, list] of Object.entries(byModel)) scene.add(instances(props, name, list, true));
 
   // ---------------------------------------------------------------- amber
-  // Pieces are grouped into batches along the trail, so only the ones near the runner are drawn.
+  // One draw call for the amber and one for its glow. Only the pieces near the runner are in
+  // the list at any moment; it is refilled as the runner moves from one batch of trail to the next.
   const AMBER_BATCH = 40; // meters of trail per batch
   const amberPos = AMBER.map((a) => terrain.place(a.s, a.lane * LANE, a.lift));
-  const batches: { s0: number; s1: number; first: number; mesh: THREE.InstancedMesh; glow: THREE.InstancedMesh }[] = [];
-  const batchOf: number[] = [];
+  const batchStart: number[] = []; // the first piece of each batch, then one past the last piece
   for (let first = 0; first < AMBER.length; ) {
+    batchStart.push(first);
     let end = first;
     while (end < AMBER.length && AMBER[end].s < AMBER[first].s + AMBER_BATCH) end++;
-    const list = amberPos.slice(first, end).map((position) => ({ position, yaw: 0, scale: 0.19 }));
-    const mesh = instances(props, 'amber', list, false).children[0] as THREE.InstancedMesh;
-    mesh.frustumCulled = false;
-    const glow = makeGlowField(list.length, '#ffb347', 0.4);
-    scene.add(mesh, glow);
-    for (let i = first; i < end; i++) batchOf.push(batches.length);
-    batches.push({ s0: AMBER[first].s, s1: AMBER[end - 1].s, first, mesh, glow });
     first = end;
   }
+  batchStart.push(AMBER.length);
+  const amberMesh = instances(props, 'amber', amberPos.map((position) => ({ position, yaw: 0, scale: 0.19 })), false).children[0] as THREE.InstancedMesh;
+  amberMesh.frustumCulled = false;
+  const amberGlow = makeGlowField(AMBER.length, '#ffb347', 0.4);
+  scene.add(amberMesh, amberGlow);
   const m4 = new THREE.Matrix4();
   const qI = new THREE.Quaternion();
   const v3 = new THREE.Vector3();
-  const showAmber = (i: number, on: boolean) => {
-    const b = batches[batchOf[i]];
-    const k = i - b.first;
-    const s = on ? 1 : 0;
-    b.mesh.setMatrixAt(k, m4.compose(amberPos[i], qI, v3.setScalar(0.19 * s)));
-    b.glow.setMatrixAt(k, m4.compose(amberPos[i], qI, v3.setScalar(0.8 * s)));
-    b.mesh.instanceMatrix.needsUpdate = true;
-    b.glow.instanceMatrix.needsUpdate = true;
+  let shownFrom = 0; // pieces shownFrom up to (not including) shownTo are in the list
+  let shownTo = 0;
+  const putAmber = (i: number) => {
+    const size = collected[i] ? 0 : 1;
+    amberMesh.setMatrixAt(i - shownFrom, m4.compose(amberPos[i], qI, v3.setScalar(0.19 * size)));
+    amberGlow.setMatrixAt(i - shownFrom, m4.compose(amberPos[i], qI, v3.setScalar(0.8 * size)));
+    amberMesh.instanceMatrix.needsUpdate = true;
+    amberGlow.instanceMatrix.needsUpdate = true;
+  };
+  const showAmberNear = (s: number, refill = false) => {
+    let from = AMBER.length;
+    let to = 0;
+    for (let k = 0; k < batchStart.length - 1; k++) {
+      const first = batchStart[k];
+      const end = batchStart[k + 1];
+      if (AMBER[end - 1].s > s - 4 && AMBER[first].s < s + 150) {
+        from = Math.min(from, first);
+        to = Math.max(to, end);
+      }
+    }
+    if (to < from) from = to = 0;
+    if (!refill && from === shownFrom && to === shownTo) return;
+    shownFrom = from;
+    shownTo = to;
+    for (let i = from; i < to; i++) putAmber(i);
+    amberMesh.count = amberGlow.count = to - from;
+    amberMesh.visible = amberGlow.visible = to > from;
   };
 
   // ---------------------------------------------------------------- hero and egg
@@ -192,35 +218,39 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   scene.add(eggShadow);
 
   // ---------------------------------------------------------------- air: mist and sun shafts that travel with you
-  const mists: { mesh: THREE.Mesh; s: number; u: number; lift: number }[] = [];
+  const airAt = new THREE.Vector3();
+  // the valley's layers, farthest first: [distance ahead, drop below the eye, width, height, seed]
+  const valleyMist = ([[740, -6, 1600, 110, 5], [500, 14, 1100, 80, 4], [330, 22, 800, 60, 3], [215, 24, 520, 44, 2], [130, 22, 300, 30, 1]] as const).map(
+    ([r, drop, w, h, seed], k) => {
+      mist.set(4 + k, w, h, seed * 13.1);
+      return { i: 4 + k, r, drop };
+    },
+  );
+  const mists: { i: number; s: number; u: number; lift: number }[] = [];
   const MIST_GAP = 34;
   for (let i = 0; i < 7; i++) {
     const w = 34 + (i % 3) * 22;
     const h = 7 + (i % 3) * 4;
-    const mesh = makeMist(new THREE.Vector3(), w, h, i * 7.3);
-    scene.add(mesh);
-    mists.push({ mesh, s: 28 + i * MIST_GAP, u: i % 2 ? 7 : -5, lift: 1.5 + h * 0.3 });
+    mist.set(9 + i, w, h, i * 7.3);
+    mists.push({ i: 9 + i, s: 28 + i * MIST_GAP, u: i % 2 ? 7 : -5, lift: 1.5 + h * 0.3 });
   }
-  const shafts: { mesh: THREE.Mesh; s: number; u: number }[] = [];
+  const shaftField = makeShaftField(10);
+  shaftField.mesh.renderOrder = 3;
+  scene.add(shaftField.mesh);
+  const shafts: { s: number; u: number }[] = [];
   const SHAFT_GAP = 11;
   for (let i = 0; i < 10; i++) {
-    const mesh = makeShaft(new THREE.Vector3(), 33, 1.4 + rnd() * 2.2, rnd() * 50);
-    scene.add(mesh);
-    shafts.push({ mesh, s: 10 + i * SHAFT_GAP, u: -1.5 + rnd() * 7 });
+    shaftField.set(i, 33, 1.4 + rnd() * 2.2, rnd() * 50);
+    shafts.push({ s: 10 + i * SHAFT_GAP, u: -1.5 + rnd() * 7 });
   }
   const placeAir = () => {
-    for (const m of mists) m.mesh.position.copy(terrain.place(m.s, m.u, m.lift));
-    for (const sh of shafts) sh.mesh.position.copy(terrain.place(sh.s, sh.u, 0)).addScaledVector(sun, 30);
+    for (const m of mists) mist.move(m.i, terrain.place(m.s, m.u, m.lift, airAt));
+    shafts.forEach((sh, i) => shaftField.move(i, terrain.place(sh.s, sh.u, 0, airAt).addScaledVector(sun, 30)));
   };
-  const valleyMist: { mesh: THREE.Mesh; r: number; drop: number }[] = [];
-  for (const [r, drop, w, h, seed] of [[130, 22, 300, 30, 1], [215, 24, 520, 44, 2], [330, 22, 800, 60, 3], [500, 14, 1100, 80, 4], [740, -6, 1600, 110, 5]] as const) {
-    const mesh = makeMist(new THREE.Vector3(), w, h, seed * 13.1);
-    scene.add(mesh);
-    valleyMist.push({ mesh, r, drop });
-  }
 
   const shadow = new SunShadow(27, 170);
   let shadowsOn = true;
+  let shadowAt = -1e9; // where along the trail the shadow map was last drawn
 
   // ---------------------------------------------------------------- state
   const obstacles = OBSTACLES.map((o) => ({ ...o, hit: false }));
@@ -318,10 +348,9 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     });
     eggQ.setFromAxisAngle(v3.set(1, 0, 0), -0.5); // tipped a little forward, about to roll
     for (const o of obstacles) o.hit = false;
-    for (let i = 0; i < collected.length; i++) {
-      collected[i] = false;
-      showAmber(i, true);
-    }
+    collected.fill(false);
+    showAmberNear(START_S, true);
+    shadowAt = -1e9;
     for (let i = 0; i < mists.length; i++) mists[i].s = 28 + i * MIST_GAP;
     for (let i = 0; i < shafts.length; i++) shafts[i].s = 10 + i * SHAFT_GAP;
     placeAir();
@@ -462,7 +491,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       if (a.s > st.s + 1) break;
       if (Math.abs(a.s - st.s) < 0.55 && Math.abs(st.u - a.lane * LANE) < 0.42 && Math.abs(st.y + 0.3 - a.lift) < 0.6) {
         collected[i] = true;
-        showAmber(i, false);
+        if (i >= shownFrom && i < shownTo) putAmber(i);
         st.amber++;
         hud.setAmber(st.amber);
       }
@@ -549,9 +578,11 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     world.uFog.value.y = camera.position.y + hooks.styles[hooks.styleIndex()].fog.base;
     const ahead = track.sample(st.s + 40).tan.clone().setY(0).normalize();
     for (const v of valleyMist) {
-      v.mesh.position.copy(camera.position).addScaledVector(ahead, v.r);
-      v.mesh.position.y = camera.position.y - v.drop;
+      airAt.copy(camera.position).addScaledVector(ahead, v.r);
+      airAt.y = camera.position.y - v.drop;
+      mist.move(v.i, airAt);
     }
+    plume.forEach((p, i) => mist.move(i, airAt.copy(p).add(far.position)));
     let moved = false;
     for (const m of mists) {
       if (m.s < st.s - 6) {
@@ -569,9 +600,14 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
 
     flora.update(st.s);
     // only the ground and the amber near the runner are drawn
-    for (const part of ground.children) part.visible = part.userData.s1 > st.s - 8 && part.userData.s0 < st.s + 330;
-    for (const b of batches) b.mesh.visible = b.glow.visible = b.s1 > st.s - 4 && b.s0 < st.s + 150;
-    if (shadowsOn && st.frame % 5 === 0) shadow.render(renderer, scene, terrain.place(st.s + 14, 0, 0, tmp));
+    terrain.showRange(ground, st.s - 8, st.s + 330);
+    showAmberNear(st.s);
+    // Nothing that casts into the shadow map moves, so it only needs drawing again once the
+    // runner has covered some ground. That keeps its cost off most frames.
+    if (shadowsOn && Math.abs(st.s - shadowAt) >= 2.5) {
+      shadowAt = st.s;
+      shadow.render(renderer, scene, terrain.place(st.s + 14, 0, 0, tmp));
+    }
     st.frame++;
   }
 
@@ -591,6 +627,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       forest: flora.group,
       setShadows(on: boolean) {
         shadowsOn = on;
+        shadowAt = -1e9;
         world.uShadowParams.value.w = on ? 1 : 0;
       },
     },

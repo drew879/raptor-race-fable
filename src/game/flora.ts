@@ -1,9 +1,14 @@
-// The forest along a whole course, planted in chunks. Each chunk exists at four levels of
-// detail and shows one of them, picked by how far ahead of the runner it is. Within a level,
+// The forest along a whole course. Plants are laid out in 13 m chunks, and each chunk can be
+// shown at four levels of detail, picked by how far ahead of the runner it is. Within a level,
 // plants far off to the side get a lighter model too: they are mostly hidden by nearer ones.
+//
+// How it is drawn matters more than how much is drawn. A phone's browser pays for every
+// separate draw call, far more than for triangles, so each model is drawn once for the whole
+// view (one call per part of a model) from a list of where its copies stand. The lists are
+// refilled only when a chunk changes level, a few times every 13 m.
 
 import * as THREE from 'three';
-import { instances, type Kit, type Placement } from '../world/assets';
+import { materialFor, SHADOW_LAYER, type Kit } from '../world/assets';
 import { rng } from '../world/noise';
 import type { Terrain } from '../world/terrain';
 
@@ -22,10 +27,27 @@ interface Plant {
   offset: number; // |u|
 }
 
+/** Ready-made placement data for every copy of one model in one chunk at one level. */
+interface Slab {
+  n: number;
+  mats: Float32Array; // 16 numbers per copy
+  cols: Float32Array; // 3 numbers per copy
+}
+
 interface Chunk {
   s0: number;
   s1: number;
-  levels: THREE.Group[];
+  /** For each level, the slabs by model name. */
+  levels: Map<string, Slab>[];
+  /** The level on show, or -1 when out of sight. */
+  shown: number;
+}
+
+/** One model drawn for the whole view: its parts share one list of placements. */
+interface Batch {
+  meshes: THREE.InstancedMesh[];
+  mats: THREE.InstancedBufferAttribute;
+  cols: THREE.InstancedBufferAttribute;
 }
 
 // model heights, so swapping detail levels keeps each tree the same size
@@ -87,6 +109,7 @@ export interface FloraOptions {
 export class Flora {
   readonly group = new THREE.Group();
   private chunks: Chunk[] = [];
+  private batches = new Map<string, Batch>();
 
   constructor(terrain: Terrain, trees: Kit, small: Kit, opts: FloraOptions) {
     const rnd = rng(opts.seed ?? 20261116);
@@ -98,6 +121,10 @@ export class Flora {
     };
     const leftBands = [-3.4, -6.8, -11.5, -17, -24, -33];
     const rightBands = [3.6, 7.6, 12.5, 19, 27, 37];
+    const m4 = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const up = new THREE.Vector3(0, 1, 0);
+    const size3 = new THREE.Vector3();
 
     for (let s0 = -52; s0 < opts.length + 60; s0 += CHUNK) {
       const plants: Plant[] = [];
@@ -155,44 +182,109 @@ export class Flora {
         add('rock', variant, s, u, size, 0.15, 0.12);
       }
 
-      const levels: THREE.Group[] = [];
+      // work out, once, where every copy of every model stands at each level
+      const levels: Map<string, Slab>[] = [];
       for (let level = 0; level < LEVELS; level++) {
-        const lists = new Map<string, Placement[]>();
+        const lists = new Map<string, { p: Plant; scale: number }[]>();
         for (const p of plants) {
           const m = modelFor(p, level);
           if (!m) continue;
           let list = lists.get(m.name);
           if (!list) lists.set(m.name, (list = []));
-          list.push({ position: p.position, yaw: p.yaw, scale: m.scale, tint: p.tint });
+          list.push({ p, scale: m.scale });
         }
-        const g = new THREE.Group();
+        const slabs = new Map<string, Slab>();
         for (const [name, list] of lists) {
-          const kit = name.startsWith('fern') || name.startsWith('horsetail') || name.startsWith('rock') ? small : trees;
-          // high canopy shade is painted as dappled light; trunks and low plants cast real shadows
-          const casts = (role: string) => level < 2 && role !== 'foliage_conifer' && role !== 'foliage_ginkgo';
-          const inst = instances(kit, name, list, casts);
-          for (const child of inst.children) {
-            const mesh = child as THREE.InstancedMesh;
-            mesh.computeBoundingSphere();
-            mesh.frustumCulled = true;
-          }
-          g.add(inst);
+          const mats = new Float32Array(list.length * 16);
+          const cols = new Float32Array(list.length * 3);
+          list.forEach(({ p, scale }, i) => {
+            m4.compose(p.position, q.setFromAxisAngle(up, p.yaw), size3.setScalar(scale)).toArray(mats, i * 16);
+            p.tint.toArray(cols, i * 3);
+          });
+          slabs.set(name, { n: list.length, mats, cols });
         }
-        g.visible = false;
-        levels.push(g);
-        this.group.add(g);
+        levels.push(slabs);
       }
-      this.chunks.push({ s0, s1: s0 + CHUNK, levels });
+      this.chunks.push({ s0, s1: s0 + CHUNK, levels, shown: -1 });
     }
+
+    // the most copies of each model ever on show at once, found by walking the whole course
+    const most = new Map<string, number>();
+    for (let s = -60; s < opts.length + 60; s += 1) {
+      const now = new Map<string, number>();
+      for (const c of this.chunks) {
+        const level = this.levelOf(c, s);
+        if (level < 0) continue;
+        for (const [name, slab] of c.levels[level]) now.set(name, (now.get(name) ?? 0) + slab.n);
+      }
+      for (const [name, n] of now) most.set(name, Math.max(most.get(name) ?? 0, n));
+    }
+
+    for (const [name, room] of most) {
+      const kit = name.startsWith('fern') || name.startsWith('horsetail') || name.startsWith('rock') ? small : trees;
+      const parts = kit.get(name);
+      if (!parts) throw new Error(`No model named ${name}`);
+      const mats = new THREE.InstancedBufferAttribute(new Float32Array(room * 16), 16);
+      const cols = new THREE.InstancedBufferAttribute(new Float32Array(room * 3), 3);
+      mats.setUsage(THREE.DynamicDrawUsage);
+      cols.setUsage(THREE.DynamicDrawUsage);
+      const meshes = parts.map((part) => {
+        const mesh = new THREE.InstancedMesh(part.geometry, materialFor(part.role), room);
+        // every part of the model reads the same list of placements
+        mesh.instanceMatrix = mats;
+        mesh.instanceColor = cols;
+        mesh.count = 0;
+        mesh.visible = false;
+        mesh.frustumCulled = false;
+        mesh.matrixAutoUpdate = false;
+        mesh.name = name;
+        // high canopy shade is painted as dappled light; trunks and low plants cast real shadows
+        if (part.role !== 'foliage_conifer' && part.role !== 'foliage_ginkgo') mesh.layers.enable(SHADOW_LAYER);
+        this.group.add(mesh);
+        return mesh;
+      });
+      this.batches.set(name, { meshes, mats, cols });
+    }
+  }
+
+  /** The level a chunk shows for a runner at s, or -1 when it is out of sight. */
+  private levelOf(c: Chunk, playerS: number): number {
+    const ahead = c.s0 - playerS;
+    return c.s1 - playerS > -VIEW_BEHIND && ahead < VIEW_AHEAD ? levelFor(ahead) : -1;
   }
 
   /** Show the chunks around the runner at the right level of detail. */
   update(playerS: number) {
+    let changed = false;
     for (const c of this.chunks) {
-      const ahead = c.s0 - playerS;
-      const visible = c.s1 - playerS > -VIEW_BEHIND && ahead < VIEW_AHEAD;
-      const level = levelFor(ahead);
-      for (let i = 0; i < LEVELS; i++) c.levels[i].visible = visible && i === level;
+      const level = this.levelOf(c, playerS);
+      if (level !== c.shown) {
+        c.shown = level;
+        changed = true;
+      }
+    }
+    if (!changed) return;
+    for (const [name, batch] of this.batches) {
+      let n = 0;
+      for (const c of this.chunks) {
+        if (c.shown < 0) continue;
+        const slab = c.levels[c.shown].get(name);
+        if (!slab) continue;
+        (batch.mats.array as Float32Array).set(slab.mats, n * 16);
+        (batch.cols.array as Float32Array).set(slab.cols, n * 3);
+        n += slab.n;
+      }
+      for (const mesh of batch.meshes) {
+        mesh.count = n;
+        mesh.visible = n > 0;
+      }
+      if (n === 0) continue;
+      batch.mats.clearUpdateRanges();
+      batch.mats.addUpdateRange(0, n * 16);
+      batch.mats.needsUpdate = true;
+      batch.cols.clearUpdateRanges();
+      batch.cols.addUpdateRange(0, n * 3);
+      batch.cols.needsUpdate = true;
     }
   }
 }

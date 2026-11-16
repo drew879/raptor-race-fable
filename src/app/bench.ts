@@ -83,9 +83,15 @@ export async function runBench(rig: Rig) {
   };
   const breathe = () => new Promise((r) => setTimeout(r, 80));
   const size = renderer.getDrawingBufferSize(new THREE.Vector2());
+  // how many separate draw calls one frame takes: the thing a phone's browser charges most for
+  park(150);
+  renderer.info.reset();
+  frame();
+  const draws = renderer.info.render.calls;
+  renderer.info.reset();
   const lines = [
     `Raptor Race speed test · build ${BUILD}`,
-    `${isStandalone() ? 'Home Screen' : 'browser'} · ${size.x}x${size.y} px · screen x${window.devicePixelRatio}`,
+    `${isStandalone() ? 'Home Screen' : 'browser'} · ${size.x}x${size.y} px · screen x${window.devicePixelRatio} · ${draws} draws`,
     fitLine(),
     '',
     'time to draw one frame (60 a second needs under 16.7)',

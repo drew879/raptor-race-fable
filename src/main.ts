@@ -55,6 +55,9 @@ async function start() {
   };
   setStyle(styleIndex);
 
+  // draw calls in the last frame: on a phone this is what costs the most
+  let draws = 0;
+  renderer.info.autoReset = false;
   // sharpness: set by the link for testing, otherwise looked after automatically
   let size = { width: 2, height: 2 };
   const applySize = () => {
@@ -76,7 +79,7 @@ async function start() {
       styles: STYLES,
       styleIndex: () => styleIndex,
       pickStyle: setStyle,
-      quality: () => (quality.scale < 1 ? `sharpness ${Math.round(quality.scale * 100)}%` : 'full sharpness'),
+      quality: () => `${quality.scale < 1 ? `sharpness ${Math.round(quality.scale * 100)}%` : 'full sharpness'} · ${draws} draws`,
     });
     boot.remove();
   } else {
@@ -132,8 +135,10 @@ async function start() {
       sinceReport = 0;
       viewer?.refresh();
     }
+    renderer.info.reset();
     view.update(time, renderer);
     post.render(view.scene, view.camera);
+    draws = renderer.info.render.calls;
   });
 }
 

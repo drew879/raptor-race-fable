@@ -125,6 +125,158 @@ export function makeShaft(top: THREE.Vector3, length: number, width: number, see
   return mesh;
 }
 
+/** Many sheets of mist drawn in one call. Each one always faces the camera. */
+export interface MistField {
+  mesh: THREE.Mesh;
+  /** Set up sheet i. A tint makes it a colored cloud (the volcano's plume) of the given strength. */
+  set(i: number, width: number, height: number, seed: number, tint?: string, amount?: number): void;
+  move(i: number, center: THREE.Vector3): void;
+}
+
+export function makeMistField(count: number): MistField {
+  const geo = new THREE.InstancedBufferGeometry();
+  const quad = new THREE.PlaneGeometry(1, 1);
+  geo.setIndex(quad.getIndex());
+  geo.setAttribute('position', quad.getAttribute('position'));
+  geo.setAttribute('uv', quad.getAttribute('uv'));
+  const centers = new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 3);
+  const shapes = new THREE.InstancedBufferAttribute(new Float32Array(count * 4), 4); // width, height, seed, tint strength
+  const tints = new THREE.InstancedBufferAttribute(new Float32Array(count * 3).fill(1), 3);
+  centers.setUsage(THREE.DynamicDrawUsage);
+  geo.setAttribute('aCenter', centers);
+  geo.setAttribute('aShape', shapes);
+  geo.setAttribute('aTint', tints);
+  geo.instanceCount = count;
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: world.uTime,
+      uNoise: world.uNoise,
+      uFogColor: world.uFogColor,
+      uFogSun: world.uFogSun,
+      uSunDir: world.uSunDir,
+      uHaze: world.uHaze,
+      uAmount: fxUniforms.uMistAmount,
+    },
+    vertexShader: /* glsl */ `
+      attribute vec3 aCenter; attribute vec4 aShape; attribute vec3 aTint;
+      varying vec2 vUv; varying vec3 vWorld; varying vec2 vSeedTint; varying vec3 vTint;
+      void main() {
+        vUv = uv; vSeedTint = aShape.zw; vTint = aTint;
+        // the camera's own right and up, so the sheet faces it squarely
+        vec3 right = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
+        vec3 up = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
+        vWorld = aCenter + right * (position.x * aShape.x) + up * (position.y * aShape.y);
+        gl_Position = projectionMatrix * viewMatrix * vec4(vWorld, 1.0);
+      }`,
+    fragmentShader: /* glsl */ `
+      uniform float uTime, uAmount; uniform vec3 uFogColor, uFogSun, uSunDir; uniform vec4 uHaze;
+      uniform sampler2D uNoise;
+      varying vec2 vUv; varying vec3 vWorld; varying vec2 vSeedTint; varying vec3 vTint;
+      ${DISPLAY}
+      void main() {
+        float seed = vSeedTint.x;
+        vec2 p = vUv * 2.0 - 1.0;
+        float body = (1.0 - smoothstep(0.35, 1.0, abs(p.x))) * (1.0 - smoothstep(0.1, 1.0, abs(p.y)));
+        float n = texture2D(uNoise, vec2(vUv.x * 3.0 + uTime * 0.012 + seed, vUv.y * 1.6 + seed * 0.37) * 0.0625).r;
+        float a = body * smoothstep(0.25, 0.75, n) * uAmount;
+        float near = smoothstep(2.0, 14.0, length(vWorld - cameraPosition));
+        vec3 E = normalize(vWorld - cameraPosition);
+        vec3 col = mix(uFogColor, uFogSun, pow(max(dot(E, uSunDir), 0.0), uHaze.y) * uHaze.z);
+        if (vSeedTint.y > 0.0) { col = mix(uFogColor, vTint, 0.55); a = body * smoothstep(0.2, 0.7, n) * vSeedTint.y; }
+        gl_FragColor = vec4(toDisplay(col), a * near);
+      }`,
+  });
+  softBlend(mat, false);
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.frustumCulled = false;
+  mesh.name = 'mist';
+  const color = new THREE.Color();
+  return {
+    mesh,
+    set(i, width, height, seed, tint, amount = 1) {
+      shapes.setXYZW(i, width, height, seed, tint ? amount : 0);
+      if (tint) tints.setXYZ(i, ...color.set(tint).toArray() as [number, number, number]);
+      shapes.needsUpdate = true;
+      tints.needsUpdate = true;
+    },
+    move(i, center) {
+      centers.setXYZ(i, center.x, center.y, center.z);
+      centers.needsUpdate = true;
+    },
+  };
+}
+
+/** Many shafts of sunlight drawn in one call. Each hangs from its top point along the sun's direction. */
+export interface ShaftField {
+  mesh: THREE.Mesh;
+  set(i: number, length: number, width: number, seed: number): void;
+  move(i: number, top: THREE.Vector3): void;
+}
+
+export function makeShaftField(count: number): ShaftField {
+  const geo = new THREE.InstancedBufferGeometry();
+  const quad = new THREE.PlaneGeometry(1, 1);
+  geo.setIndex(quad.getIndex());
+  geo.setAttribute('position', quad.getAttribute('position'));
+  geo.setAttribute('uv', quad.getAttribute('uv'));
+  const tops = new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 3);
+  const shapes = new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 3); // length, width, seed
+  tops.setUsage(THREE.DynamicDrawUsage);
+  geo.setAttribute('aTop', tops);
+  geo.setAttribute('aShape', shapes);
+  geo.instanceCount = count;
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: world.uTime,
+      uNoise: world.uNoise,
+      uSunDir: world.uSunDir,
+      uColor: fxUniforms.uShaftColor,
+      uAmount: fxUniforms.uShaftAmount,
+    },
+    vertexShader: /* glsl */ `
+      attribute vec3 aTop; attribute vec3 aShape;
+      uniform vec3 uSunDir;
+      varying vec2 vUv; varying vec3 vWorld; varying float vSeed;
+      void main() {
+        vUv = uv; vSeed = aShape.z;
+        // a strip lying along the light, turned about that line to face the camera
+        vec3 down = -uSunDir;
+        vec3 across = normalize(cross(down, cameraPosition - aTop));
+        vWorld = aTop + across * (position.x * aShape.y) + down * ((0.5 - position.y) * aShape.x);
+        gl_Position = projectionMatrix * viewMatrix * vec4(vWorld, 1.0);
+      }`,
+    fragmentShader: /* glsl */ `
+      uniform float uTime, uAmount; uniform vec3 uColor;
+      uniform sampler2D uNoise;
+      varying vec2 vUv; varying vec3 vWorld; varying float vSeed;
+      ${DISPLAY}
+      void main() {
+        float across = 1.0 - abs(vUv.x * 2.0 - 1.0);
+        float streak = 0.55 + 0.45 * texture2D(uNoise, vec2(vUv.x * 7.0 + vSeed, uTime * 0.05 + vSeed) * 0.03125).b;
+        float along = smoothstep(0.0, 0.18, vUv.y) * smoothstep(1.0, 0.45, vUv.y);
+        float a = pow(across, 1.6) * streak * along * uAmount;
+        float near = smoothstep(1.5, 9.0, length(vWorld - cameraPosition));
+        gl_FragColor = vec4(toDisplay(uColor), a * near);
+      }`,
+  });
+  softBlend(mat, true);
+  mat.side = THREE.DoubleSide;
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.frustumCulled = false;
+  mesh.name = 'shaft';
+  return {
+    mesh,
+    set(i, length, width, seed) {
+      shapes.setXYZ(i, length, width, seed);
+      shapes.needsUpdate = true;
+    },
+    move(i, top) {
+      tops.setXYZ(i, top.x, top.y, top.z);
+      tops.needsUpdate = true;
+    },
+  };
+}
+
 /** A soft round glow that faces the camera. Used behind amber and the egg. */
 export function makeGlow(color: THREE.ColorRepresentation, size: number, strength = 1): THREE.Mesh {
   const mat = new THREE.ShaderMaterial({

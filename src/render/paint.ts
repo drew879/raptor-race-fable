@@ -333,10 +333,10 @@ void main() {
     seam *= smoothstep(0.33, 0.43, rag.g) * onTrail * uLanes.y;
     float lu = lx > uLanes.x * 0.5 ? abs(lx - uLanes.x) : lx; // distance to the nearest lane's center
     float track = (1.0 - smoothstep(0.0, uLanes.x * 0.4, lu)) * step(lx, uLanes.x * 1.5) * onTrail * uLanes.y;
-    albedo *= 1.0 + 0.1 * track;
+    albedo *= 1.0 + 0.08 * track;
     vec3 moss = mix(vec3(0.15, 0.22, 0.09), vec3(0.26, 0.29, 0.12), fine.a);
     moss = mix(moss, vec3(0.25, 0.17, 0.09), smoothstep(0.55, 0.7, fine.b) * 0.7); // flecks of leaf litter
-    albedo = mix(albedo, moss, seam * 0.7);
+    albedo = mix(albedo, moss, seam * 0.55);
     float pebble = smoothstep(0.80 - 0.1 * seam, 0.86 - 0.1 * seam, fine.a) * onTrail;
     albedo = mix(albedo, albedo * 1.35 + 0.03, pebble * 0.5);
     ao = 1.0;
