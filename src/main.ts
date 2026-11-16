@@ -4,6 +4,7 @@ import { runBench } from './app/bench';
 import { startUpdates } from './app/build';
 import { Quality } from './app/quality';
 import { tickFps, watchViewport } from './app/viewport';
+import { buildCloseup } from './closeup/scene';
 import { buildRun, type RunView } from './game/run';
 import { buildHeroLab } from './herolab/scene';
 import { buildLookdev, type Lookdev } from './lookdev/scene';
@@ -40,15 +41,16 @@ async function start() {
   const post = new Post(renderer, params.get('msaa') === '0' ? 0 : 4);
   post.enabled = params.get('post') !== '0';
 
-  // which look: the link can ask for one, otherwise the last one used, otherwise Golden Journal
-  const wanted = params.get('style') ?? localStorage.getItem('rr-style') ?? 'goldjournal';
-  let styleIndex = Math.max(0, STYLES.findIndex((s) => s.id === wanted));
+  // which look: the link can ask for one, otherwise the last one used, otherwise Inked Diorama
+  const wanted = params.get('style') ?? localStorage.getItem('rr-style2') ?? 'inkdiorama';
+  let styleIndex = STYLES.findIndex((s) => s.id === wanted);
+  if (styleIndex < 0) styleIndex = STYLES.findIndex((s) => s.id === 'inkdiorama');
   const setStyle = (index: number) => {
     styleIndex = index;
     applyStyle(STYLES[index]);
     document.documentElement.style.background = STYLES[index].ui.panel;
     try {
-      localStorage.setItem('rr-style', STYLES[index].id);
+      localStorage.setItem('rr-style2', STYLES[index].id);
     } catch {
       /* private mode */
     }
@@ -66,7 +68,8 @@ async function start() {
     renderer.setSize(size.width, size.height, false);
     post.setSize(size.width, size.height, dpr);
   };
-  // modes: the concept frames (default for now), the rough run, its speed test, and a hero test view
+  // modes: the concept frames (default for now), the rough run, its speed test, the close-up
+  // turntable, and a hero test view
   const mode = params.get('mode') ?? 'concept';
   const fixedScale = Number(params.get('scale'));
   const quality = new Quality(applySize, !fixedScale && mode !== 'bench' && params.get('auto') !== '0');
@@ -79,8 +82,13 @@ async function start() {
       styles: STYLES,
       styleIndex: () => styleIndex,
       pickStyle: setStyle,
-      quality: () => `${quality.scale < 1 ? `sharpness ${Math.round(quality.scale * 100)}%` : 'full sharpness'} · ${draws} draws`,
+      quality: () =>
+        `${quality.scale < 1 ? `sharpness ${Math.round(quality.scale * 100)}%` : 'full sharpness'} · ${draws} draws` +
+        (quality.history() ? `\nsharpness log: ${quality.history()}` : ''),
     });
+    boot.remove();
+  } else if (mode === 'close') {
+    view = await buildCloseup(ui, stage, { styles: STYLES, styleIndex: () => styleIndex, pickStyle: setStyle });
     boot.remove();
   } else {
     view = mode === 'hero' ? await buildHeroLab(params) : await buildLookdev();
@@ -128,7 +136,7 @@ async function start() {
     const now = performance.now();
     const time = (now - t0) / 1000;
     tickFps((now - last) / 1000);
-    quality.tick(now - last);
+    quality.tick(now - last, view.steady?.() ?? true);
     sinceReport += now - last;
     last = now;
     if (sinceReport > 500) {

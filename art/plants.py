@@ -636,3 +636,68 @@ def egg():
     geo.tube(path, rad, lambda t, ang, p: srgb('#7fd3c4'), 'egg', around=around,
              uv_fn=lambda t, ang, p: (ang / (2 * math.pi), t))
     return geo
+
+
+EGG_BLUE = srgb('#7fd3c4')
+EGG_INSIDE = srgb('#e9efe2')
+
+
+def _true_egg_radius(x):
+    """Half width of the close-up egg at x (-1 at the narrow end .. 1 at the blunt end), for a
+    shell one unit long. Its cousins' eggs were long: at least twice as long as wide."""
+    return 0.226 * math.sqrt(max(0.0, 1 - abs(x) ** 2.3)) * (1.0 + 0.09 * x)
+
+
+def egg_true():
+    """The egg for close-ups, at the proportions of an oviraptorosaur egg (2.2 to 1), one unit
+    long. The chase egg above is shorter and fatter on purpose, so it reads from far away."""
+    geo = Geo()
+    n, around = 30, 36
+    path = [Vector((0, 0, lerp(-0.5, 0.5, i / (n - 1)))) for i in range(n)]
+
+    def rad(t, ang):
+        r = max(_true_egg_radius(t * 2 - 1), 0.002)
+        return r, r
+
+    geo.tube(path, rad, lambda t, ang, p: EGG_BLUE, 'egg', around=around,
+             uv_fn=lambda t, ang, p: (ang / (2 * math.pi), t))
+    return geo
+
+
+def eggshell(seed=3, upper=False):
+    """Part of the close-up egg after hatching, with a broken, toothed rim and a pale inside.
+    upper=False: the narrow end, a cup the chick can sit in. upper=True: the blunt end, a cap."""
+    rnd = random.Random(seed)
+    geo = Geo()
+    around = 44
+    rows = 16
+    cut = 0.12  # where it broke, in the egg's own -1..1
+    teeth = []
+    for j in range(around):
+        big = 0.16 * abs(math.sin(j * 0.9 + seed)) * (1.0 if j % 5 < 3 else 0.3)
+        teeth.append(cut + (big + rnd.uniform(-0.04, 0.04)) * (-1 if upper else 1))
+
+    def ring(x, shrink, j):
+        ang = 2 * math.pi * j / around
+        r = max(_true_egg_radius(x), 0.002) * shrink
+        return Vector((math.cos(ang) * r, math.sin(ang) * r, x * 0.5))
+
+    end = 1.0 if upper else -1.0
+    for shrink, color, flip in ((1.0, EGG_BLUE, not upper), (0.93, EGG_INSIDE, upper)):
+        grid = []
+        for i in range(rows + 1):
+            t = i / rows
+            row = []
+            for j in range(around):
+                # rows run from the closed end to the broken rim, which follows the teeth
+                x = lerp(end * 0.985, teeth[j], t ** 0.8)
+                row.append(ring(x, shrink, j))
+            grid.append(row)
+        idx, cols, _ = geo.add_grid(grid, lambda i, j, p, c=color: c, 'egg', close_u=True, flip=flip)
+        tip = geo.vert(Vector((0, 0, end * 0.5 * (1.0 if shrink == 1.0 else 0.94))))
+        for j in range(around):
+            tri = [idx[0][j], idx[0][(j + 1) % around], tip]
+            if not flip:
+                tri.reverse()
+            geo.face(tri, color, 'egg')
+    return geo

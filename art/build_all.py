@@ -103,26 +103,29 @@ kit('props', [
     ('lane_tree', lambda: plants.lane_tree(), dict(ao_dist=0.8, ao_samples=16, ground_ao=0.5)),
     ('amber', lambda: plants.amber_drop(), dict(ao=False)),
     ('egg', lambda: plants.egg(), dict(ao=False)),
+    ('egg_true', lambda: plants.egg_true(), dict(ao=False)),
+    ('eggshell_cup', lambda: plants.eggshell(3), dict(ao=False)),
+    ('eggshell_cap', lambda: plants.eggshell(5, upper=True), dict(ao=False)),
 ], preview=dict(lens=60))
 
 import hero  # noqa: E402
 
 
-def hero_kit():
-    """The rigged hero: one skinned mesh and its skeleton."""
-    name = 'caudipteryx'
+def hero_kit(form, previews=True):
+    """A rigged animal: one skinned mesh and its skeleton."""
+    name = form.name
     if only and not any(o in name for o in only):
         return
     t0 = time.time()
     G.reset_scene()
-    g, bones = hero.build()
-    obj = g.to_object(name, ao_dist=0.25, ao_strength=0.9, ao_samples=28)
+    g, bones = hero.build(form)
+    obj = g.to_object(name, ao_dist=0.25 * form.head_scale / 0.88, ao_strength=0.9, ao_samples=28)
     arm = G.make_armature(name + '_rig', bones, obj)
     tris = sum(len(p.vertices) - 2 for p in obj.data.polygons)
     G.export_glb([arm, obj], os.path.join(OUT, name + '.glb'), skins=True)
     size = os.path.getsize(os.path.join(OUT, name + '.glb')) / 1024
     print(f'[kit] {name}: {tris} tris, {len(bones)} bones, {size:.0f} KB, {time.time() - t0:.1f}s')
-    if not no_preview:
+    if previews and not no_preview:
         for tag, eye, target in (('behind', (0.0, -1.55, 1.15), (0.0, 0.1, 0.42)),
                                  ('side', (1.7, 0.1, 0.5), (0.0, 0.1, 0.42)),
                                  ('front', (0.9, 1.5, 0.75), (0.0, 0.1, 0.42))):
@@ -130,4 +133,6 @@ def hero_kit():
                              size=(760, 760))
 
 
-hero_kit()
+hero_kit(hero.PARENT)
+for chick in hero.CHICKS:
+    hero_kit(chick, previews=False)

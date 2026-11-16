@@ -58,6 +58,9 @@ const STANCE = 3 / 8;
 const TUCK: Leg = [42, -76, -38, -30]; // in the air
 const TUCK_BACK: Leg = [20, -80, -70, -60];
 const CROUCH: Leg = [78, -96, 58, 86]; // sliding low
+// Sitting the way a bird does: knee forward beside the body, ankle on the ground behind it,
+// and the long foot bone lying flat along the ground under the belly.
+const SIT: Leg = [92, -46, 88, 90];
 
 const X = new THREE.Vector3(1, 0, 0);
 const Y = new THREE.Vector3(0, 1, 0);
@@ -124,6 +127,28 @@ export interface HeroState {
   slide: number;
   /** -1..1, leaning into a lane change (+ = moving right). */
   lean: number;
+  /** 0..1, settled down on folded legs with the arms spread, as on a nest. */
+  sit?: number;
+  /** Where the head is turned, in radians: yaw (+ = to its right) and pitch (+ = up). */
+  lookYaw?: number;
+  lookPitch?: number;
+  /** 0..1, how far the beak is open. */
+  beak?: number;
+  /** 0..1, eyes closing. */
+  blink?: number;
+  /** Seconds, for breathing and other small idle movement. Leave out to hold still. */
+  idle?: number;
+}
+
+/** A natural blink for a clock in seconds: shut for about a tenth of a second every few seconds. */
+export function blinkAt(time: number, seed = 0): number {
+  const period = 3.4;
+  const n = Math.floor(time / period + seed);
+  // each blink falls at its own moment inside its window, and now and then there are two
+  const r = Math.abs(Math.sin(n * 127.1 + seed * 311.7) * 43758.5453) % 1;
+  const t = (time + seed * period) % period - (0.4 + r * 2.4);
+  const one = (x: number) => (x > 0 && x < 0.16 ? Math.sin((x / 0.16) * Math.PI) : 0);
+  return Math.min(1, one(t) * 1.25 + (r > 0.7 ? one(t - 0.3) * 1.25 : 0));
 }
 
 export class HeroRig {
@@ -140,7 +165,14 @@ export class HeroRig {
   private legL: Leg = [0, 0, 0, 0];
   private legR: Leg = [0, 0, 0, 0];
 
-  constructor(model: SkinnedModel) {
+  /**
+   * `scale`: the legs' size against the parent's (the chick's are the same shape, smaller),
+   * so the same poses keep its feet on the ground.
+   */
+  constructor(
+    private model: SkinnedModel,
+    private scale = 1,
+  ) {
     this.root = model.root;
     this.root.updateMatrixWorld(true);
     const rootInv = new THREE.Quaternion();
@@ -156,6 +188,10 @@ export class HeroRig {
       });
     }
     this.hipsRestY = this.joint('hips').bone.position.y;
+  }
+
+  private has(name: string): boolean {
+    return this.joints.has(name);
   }
 
   private joint(name: string): Joint {
@@ -188,8 +224,10 @@ export class HeroRig {
 
   pose(s: HeroState) {
     const TAU = Math.PI * 2;
-    const run = s.run * (1 - s.slide);
+    const sit = s.sit ?? 0;
+    const run = s.run * (1 - s.slide) * (1 - sit);
     const grounded = 1 - s.air;
+    const breath = s.idle === undefined ? 0 : Math.sin(s.idle * 1.9);
 
     // ---- legs
     const duty = THREE.MathUtils.clamp(CONTACT / strideLength(s.speed), 0.2, 0.46);
@@ -205,20 +243,25 @@ export class HeroRig {
       mixLeg(this.legL, CROUCH, s.slide, this.legL);
       mixLeg(this.legR, CROUCH, s.slide * 0.92, this.legR);
     }
+    if (sit > 0) {
+      mixLeg(this.legL, SIT, sit, this.legL);
+      mixLeg(this.legR, SIT, sit, this.legR);
+    }
 
     // ---- hips: the lower foot stays on the ground, which gives the run its bounce for free
     const drop = Math.max(legDrop(this.legL), legDrop(this.legR));
-    let lift = drop - this.restDrop;
+    let lift = (drop - this.restDrop) * this.scale;
     // Between footfalls both feet are off the ground for a moment. The hips then follow a low arc
     // from their height at toe-off to their height at the next touchdown, not the dangling feet.
     const half = ((s.phase % 0.5) + 0.5) % 0.5;
     if (half > duty) {
       const f = (half - duty) / (0.5 - duty);
       const arc = this.toeOffDrop + (this.touchdownDrop - this.toeOffDrop) * f + FLOAT_HEIGHT * 4 * f * (1 - f);
-      lift += Math.max(0, arc - drop) * run * grounded;
+      lift += Math.max(0, arc - drop) * run * grounded * this.scale;
     }
-    const minLift = 0.15 - this.restDrop; // belly on the ground
-    if (s.slide > 0) lift = Math.max(lift, minLift);
+    const minLift = (0.15 - this.restDrop) * this.scale; // belly on the ground
+    if (s.slide > 0 || sit > 0) lift = Math.max(lift, minLift);
+    lift += breath * 0.0025 * this.scale * (1 - run);
     this.hipLift = lift;
     const hips = this.joint('hips');
     hips.bone.position.y = this.hipsRestY + lift;
@@ -227,28 +270,39 @@ export class HeroRig {
     // hanging leg forward, which is the same turn that lifts the nose. So nose-down is negative.
     const swing = Math.sin(s.phase * TAU);
     const bounce = Math.cos(s.phase * TAU * 2);
-    const hipsPitch = (run * -7 + s.airTilt * 11 * s.air + s.slide * -3) * DEG;
+    const hipsPitch = (run * -7 + s.airTilt * 11 * s.air + s.slide * -3 + sit * 4) * DEG;
     const hipsYaw = swing * 5 * DEG * run * grounded + s.lean * -10 * DEG;
     const hipsRoll = (Math.cos(s.phase * TAU) * 3 * run * grounded + s.lean * 14) * DEG;
     this.turn('hips', hipsPitch, hipsYaw, -hipsRoll);
 
-    this.poseLeg('L', this.legL, hipsPitch, s.slide * 0.25);
-    this.poseLeg('R', this.legR, hipsPitch, s.slide * 0.25);
+    this.poseLeg('L', this.legL, hipsPitch, s.slide * 0.25 + sit * 0.3);
+    this.poseLeg('R', this.legR, hipsPitch, s.slide * 0.25 + sit * 0.3);
 
     // ---- spine, neck and head: the neck reaches forward at speed and lies low in a slide,
     // while the head stays level and steady, like a running bird's
-    const reach = run * 10 + s.slide * 46 - s.air * 4;
-    const chestPitch = s.slide * -8 * DEG;
-    const neck1 = -(reach + bounce * 2 * run) * DEG;
-    const neck2 = -(reach * 0.5 - bounce * 2 * run) * DEG;
+    // sitting, the neck draws back into an S and the head comes down toward the nest
+    const reach = run * 10 + s.slide * 46 - s.air * 4 - sit * 14;
+    const chestPitch = s.slide * -8 * DEG + breath * 0.6 * DEG * (1 - run);
+    const lookYaw = s.lookYaw ?? 0;
+    const lookPitch = s.lookPitch ?? 0;
+    const neck1 = -(reach + bounce * 2 * run) * DEG + lookPitch * 0.25;
+    const neck2 = -(reach * 0.5 - bounce * 2 * run - sit * 30) * DEG + lookPitch * 0.3;
     this.turn('chest', chestPitch, -hipsYaw * 0.5, hipsRoll * 0.4);
-    this.turn('neck1', neck1, 0, 0);
-    this.turn('neck2', neck2, s.lean * 8 * DEG, 0);
+    // yaw is counter-clockwise seen from above, so turning the head to its right is negative
+    this.turn('neck1', neck1, -lookYaw * 0.3, 0);
+    this.turn('neck2', neck2, s.lean * 8 * DEG - lookYaw * 0.35, 0);
     const level = -(hipsPitch + chestPitch + neck1 + neck2);
-    this.turn('head', level * 0.85 + (run * -4 + s.air * 3) * DEG, s.lean * 10 * DEG, hipsRoll * -0.6);
+    this.turn(
+      'head',
+      level * 0.85 + (run * -4 + s.air * 3 - sit * 16) * DEG + lookPitch * 0.45 + sit * lookPitch * 0.3,
+      s.lean * 10 * DEG - lookYaw * 0.35,
+      hipsRoll * -0.6 - lookYaw * 0.12,
+    );
+    if (this.has('jaw')) this.turn('jaw', -(s.beak ?? 0) * 24 * DEG, 0, 0);
+    if (this.model.eye) this.model.eye.uniforms.uBlink.value = s.blink ?? 0;
 
     // ---- tail: counters the hips, lifts in the air, lies flat in a slide (up is negative)
-    const tailPitch = (bounce * 3 * run - run * 3 - s.air * 14 + s.slide * 7) * DEG - hipsPitch * 0.5;
+    const tailPitch = (bounce * 3 * run - run * 3 - s.air * 14 + s.slide * 7 + sit * 6) * DEG - hipsPitch * 0.5;
     this.turn('tail1', tailPitch, -hipsYaw * 0.9 + swing * -4 * DEG * run, 0);
     this.turn('tail2', tailPitch * 0.8, swing * -6 * DEG * run + s.lean * 8 * DEG, 0);
 
@@ -256,10 +310,16 @@ export class HeroRig {
     for (const sfx of ['L', 'R'] as const) {
       const side = sfx === 'L' ? -1 : 1;
       const beat = Math.sin(s.phase * TAU * 2 + (side > 0 ? 0.6 : 0));
-      const lift = (run * 8 + beat * 5 * run + s.air * 30 - s.slide * 4) * DEG;
-      const sweep = (run * 6 + s.air * 14 + s.slide * 16) * DEG;
+      // sitting, the arms open out and forward, so the fans lie over the edge of the nest
+      const lift = (run * 8 + beat * 5 * run + s.air * 30 - s.slide * 4 + sit * 26 + breath * 0.8 * (1 - run)) * DEG;
+      const sweep = (run * 6 + s.air * 14 + s.slide * 16 - sit * 30) * DEG;
       this.turn('arm' + sfx, 0, -side * sweep, side * lift);
       this.turn('hand' + sfx, 0, -side * sweep * 0.5, side * lift * 0.5);
+      // the hand opens the fan when it is in use and folds it back against the body at rest
+      if (this.has('fan' + sfx)) {
+        const open = (run * 10 + s.air * 22 + sit * 24 - s.slide * 6) * DEG;
+        this.turn('fan' + sfx, 0, side * open, side * open * 0.3);
+      }
     }
   }
 }

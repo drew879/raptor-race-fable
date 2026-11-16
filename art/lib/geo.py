@@ -140,6 +140,16 @@ def rot(axis, angle):
     return Matrix.Rotation(angle, 3, Vector(axis))
 
 
+# ---------------------------------------------------------------- detail coordinates
+
+def detail(kind, across, along):
+    """Pack a detail coordinate for the shader. kind is a small whole number, 1 or more, whose
+    meaning belongs to the role (on feathers: 1 a vaned feather, 2 a body feather, 3 down).
+    across runs -1..1 and along usually 0..1. The kind rides in the first number (kind * 4 +
+    across), so a face with no detail, which is all zeros, reads as kind 0."""
+    return (kind * 4.0 + across, along)
+
+
 # ---------------------------------------------------------------- geometry builder
 
 class Geo:
@@ -150,6 +160,10 @@ class Geo:
         self.faces = []
         self.cols = []     # per face: list of (r, g, b) per corner
         self.uvs = []      # per face: list of (u, v) per corner
+        # per face: list of (a, b) per corner, or None. A second set of coordinates the shader
+        # draws fine detail from: barbs on a feather, the iris of an eye, scales on a foot.
+        # See detail() below for how they are packed.
+        self.det = []
         self.mats = []     # per face: role name
         self.smooth = []   # per face: bool
         self.nrm = []      # per face: None, or a normal to use for every corner (soft feather shading)
@@ -158,8 +172,9 @@ class Geo:
         self.bind = None
         self.vbind = []    # per vertex: list of (bone, weight), or None
 
-    def face(self, idx, colors, mat, uv=(0.0, 0.0), smooth=True, normal=None):
-        """colors: one color for the face, or a list with one per corner. uv likewise."""
+    def face(self, idx, colors, mat, uv=(0.0, 0.0), smooth=True, normal=None, detail=None):
+        """colors: one color for the face, or a list with one per corner. uv likewise.
+        detail: None, or a list with one packed detail coordinate per corner."""
         if not isinstance(colors, list):
             colors = [colors] * len(idx)
         if not isinstance(uv, list):
@@ -167,6 +182,7 @@ class Geo:
         self.faces.append(tuple(idx))
         self.cols.append(colors)
         self.uvs.append(uv)
+        self.det.append(detail)
         self.mats.append(mat)
         self.smooth.append(smooth)
         self.nrm.append(normal)
@@ -178,9 +194,12 @@ class Geo:
         self.vbind.append(b(v) if callable(b) else b)
         return len(self.verts) - 1
 
-    def add_grid(self, pts, color_fn, mat, uv_fn=None, close_u=False, smooth=True, flip=False):
+    def add_grid(self, pts, color_fn, mat, uv_fn=None, close_u=False, smooth=True, flip=False,
+                 detail_fn=None):
         """pts[i][j] grid of points. color_fn(i, j, p) -> rgb. Makes quads between neighbors.
-        close_u wraps j (around) so tubes have no seam."""
+        close_u wraps j (around) so tubes have no seam.
+        detail_fn(i, j, p) -> packed detail coordinate (see detail()). With close_u it is also
+        called with j == nj for the last column, so coordinates can run on past the seam."""
         ni = len(pts)
         nj = len(pts[0])
         idx = [[self.vert(pts[i][j]) for j in range(nj)] for i in range(ni)]
@@ -191,14 +210,19 @@ class Geo:
             for j in range(jmax):
                 j2 = (j + 1) % nj
                 quad = [(i, j), (i, j2), (i + 1, j2), (i + 1, j)]
+                det = None
+                if detail_fn:
+                    det = [detail_fn(a, j + 1 if (b == j2 and j2 != j + 1) else b, pts[a][b]) for a, b in quad]
                 if flip:
                     quad.reverse()
+                    if det:
+                        det.reverse()
                 self.face([idx[a][b] for a, b in quad], [cols[a][b] for a, b in quad], mat,
-                          [uvs[a][b] for a, b in quad], smooth)
+                          [uvs[a][b] for a, b in quad], smooth, detail=det)
         return idx, cols, uvs
 
     def tube(self, path, radius_fn, color_fn, mat, around=10, uv_fn=None, cap_start=True,
-             cap_end=True, up_hint=Vector((0, 0, 1)), smooth=True, twist=0.0):
+             cap_end=True, up_hint=Vector((0, 0, 1)), smooth=True, twist=0.0, detail_fn=None):
         """Loft a tube along path (list of Vectors).
         radius_fn(t, angle) -> (rx, ry) radii in the right and up directions at t in 0..1.
         color_fn(t, angle, p) -> rgb."""
@@ -221,7 +245,13 @@ class Geo:
         def ufn(i, j, p):
             return uv_fn(i / (n - 1), 2 * math.pi * j / around, p) if uv_fn else (0.0, 0.0)
 
-        idx, cols, uvs = self.add_grid(rings, cfn, mat, ufn, close_u=True, smooth=smooth, flip=True)
+        dfn = None
+        if detail_fn:
+            def dfn(i, j, p):
+                return detail_fn(i / (n - 1), 2 * math.pi * j / around, p)
+
+        idx, cols, uvs = self.add_grid(rings, cfn, mat, ufn, close_u=True, smooth=smooth, flip=True,
+                                       detail_fn=dfn)
         for end, enabled in ((0, cap_start), (n - 1, cap_end)):
             if not enabled:
                 continue
@@ -239,19 +269,22 @@ class Geo:
         return rings
 
     def blade(self, base, direction, normal, length, width_fn, color_fn, mat, segs=6,
-              droop=0.0, fold=0.0, twist=0.0, sway=(0.0, 1.0), phase=0.0, curl=0.0, shade_normal=None):
+              droop=0.0, fold=0.0, twist=0.0, sway=(0.0, 1.0), phase=0.0, curl=0.0, shade_normal=None,
+              kind=0, cup=0.0):
         """A leaf, frond leaflet or feather: a strip with a center spine and two edges.
         width_fn(t) -> half width at t (0 base .. 1 tip). color_fn(t, side) -> rgb, side -1/0/1.
         droop bends the spine toward -normal over its length (radians total),
         fold lifts the edges into a V (radians), curl rolls it sideways.
-        sway=(at base, at tip) weights for wind."""
+        sway=(at base, at tip) weights for wind.
+        kind: 0 for none, else the detail kind the shader draws on it (see detail()).
+        cup: bends the tip back toward the surface it lies on (radians), so a body feather hugs it."""
         f, r, u = basis(direction, normal)
         pos = Vector(base)
         rows = []
         seg_len = length / segs
         for i in range(segs + 1):
             t = i / segs
-            ang = -droop * t
+            ang = -droop * t - cup * t * t
             d = (rot(r, ang) @ f)
             up_i = (rot(r, ang) @ u)
             if twist:
@@ -278,8 +311,13 @@ class Geo:
             for side, (a, b) in ((-1, (0, 1)), (1, (1, 2))):
                 quad = [ids[i][a], ids[i][b], ids[i + 1][b], ids[i + 1][a]]
                 col = color_fn(tm, side)
+                det = None
+                if kind:
+                    ac = (-1.0, 0.0) if side < 0 else (0.0, 1.0)
+                    det = [detail(kind, ac[0], t0), detail(kind, ac[1], t0), detail(kind, ac[1], t1),
+                           detail(kind, ac[0], t1)]
                 self.face(quad, col, mat, [(s0, phase), (s0, phase), (s1, phase), (s1, phase)], True,
-                          normal=shade_normal)
+                          normal=shade_normal, detail=det)
 
     def merge(self, other):
         off = len(self.verts)
@@ -289,6 +327,7 @@ class Geo:
             self.faces.append(tuple(i + off for i in f))
         self.cols.extend(other.cols)
         self.uvs.extend(other.uvs)
+        self.det.extend(other.det)
         self.mats.extend(other.mats)
         self.smooth.extend(other.smooth)
         self.nrm.extend(other.nrm)
@@ -325,6 +364,14 @@ class Geo:
                 flat_uv.extend(t)
         col.data.foreach_set('color', flat_c)
         uv.data.foreach_set('uv', flat_uv)
+        if any(d is not None for d in self.det):
+            # a second UV layer; it exports as TEXCOORD_1, which the game reads as `uv1`
+            layer = mesh.uv_layers.new(name='Detail')
+            flat_d = []
+            for f, d in zip(self.faces, self.det):
+                for k in range(len(f)):
+                    flat_d.extend(d[k] if d is not None else (0.0, 0.0))
+            layer.data.foreach_set('uv', flat_d)
         mesh.color_attributes.active_color = col
         mesh.color_attributes.render_color_index = 0
 

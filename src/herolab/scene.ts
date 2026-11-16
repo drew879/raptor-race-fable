@@ -3,7 +3,7 @@
 // slow=<factor>, speed=<meters per second>, travel=0 (run on the spot instead of along the ground).
 
 import * as THREE from 'three';
-import { HeroRig, strideLength, type HeroState } from '../hero/rig';
+import { blinkAt, HeroRig, strideLength, type HeroState } from '../hero/rig';
 import { world } from '../render/paint';
 import { loadSkinned } from '../world/assets';
 import { makeContactShadow } from '../world/fx';
@@ -62,8 +62,15 @@ export async function buildHeroLab(params: URLSearchParams): Promise<Lookdev> {
       state.phase = fixedPhase ?? (t * speed) / strideLength(speed);
       hero.position.copy(terrain.place(travel ? 8 + ((t * speed) % 44) : 30, 0, 0));
       blob.position.copy(hero.position).setY(hero.position.y + 0.02);
-      state.run = mode === 'stand' ? 0 : 1;
-      state.speed = mode === 'stand' ? 0 : speed;
+      const still = mode === 'stand' || mode === 'sit';
+      state.run = still ? 0 : 1;
+      state.speed = still ? 0 : speed;
+      state.sit = mode === 'sit' ? 1 : 0;
+      state.idle = time;
+      state.blink = params.has('blink') ? Number(params.get('blink')) : blinkAt(time);
+      state.beak = Number(params.get('beak')) || 0;
+      state.lookYaw = Number(params.get('yaw')) || 0;
+      state.lookPitch = Number(params.get('pitch')) || 0;
       state.air = mode === 'jump' ? 1 : 0;
       state.airTilt = mode === 'jump' ? Math.sin(t * 2) : 0;
       state.slide = mode === 'slide' ? 1 : 0;

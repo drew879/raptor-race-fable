@@ -51,7 +51,7 @@ export function makeHud(root: HTMLElement, hooks: HudHooks): Hud {
         <div class="stepper"><button class="slower" aria-label="Slower">&minus;</button><b class="speed"></b><button class="faster" aria-label="Faster">+</button></div>
       </div>
       <div class="setting"><span>Egg</span><div class="tabs words egg-tabs"></div></div>
-      <div class="links"><a class="link" href="?mode=bench">Speed test</a><a class="link" href="?">Concept frames</a></div>
+      <div class="links"><a class="link" href="?mode=close">Close-up</a><a class="link" href="?mode=bench">Speed test</a><a class="link" href="?">Concept frames</a></div>
       <small class="about">Rough test run &middot; build ${BUILD}</small>
     </div>
     <div class="sheet start-sheet">

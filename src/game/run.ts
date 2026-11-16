@@ -638,6 +638,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       camera.fov = aspect <= phone ? base : THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(base / 2)) * Math.min(1, (phone / aspect) * 1.25)));
       camera.updateProjectionMatrix();
     },
+    steady: () => st.started && !st.paused && !st.finished,
     update(time: number, renderer: THREE.WebGLRenderer) {
       const dt = last < 0 ? 0 : Math.min(0.05, Math.max(0, time - last));
       last = time;

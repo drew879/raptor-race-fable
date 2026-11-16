@@ -118,6 +118,8 @@ export interface SkinnedModel {
   root: THREE.Object3D;
   bones: Map<string, THREE.Bone>;
   meshes: THREE.SkinnedMesh[];
+  /** This model's own eye material, so each animal blinks by itself (uBlink, uLid). */
+  eye: THREE.ShaderMaterial | null;
 }
 
 /** A rigged character: skinned meshes with paint materials, plus its bones by name. */
@@ -126,18 +128,24 @@ export async function loadSkinned(url: string, shadow = false): Promise<SkinnedM
   const root = gltf.scene;
   const bones = new Map<string, THREE.Bone>();
   const meshes: THREE.SkinnedMesh[] = [];
+  let eye: THREE.ShaderMaterial | null = null;
   root.traverse((o) => {
     if ((o as THREE.Bone).isBone) bones.set(o.name, o as THREE.Bone);
     const mesh = o as THREE.SkinnedMesh;
     if (mesh.isSkinnedMesh) {
       const role = (mesh.material as THREE.Material).name as Role;
       prepare(mesh.geometry);
-      mesh.material = materialFor(role);
+      if (role === 'eye') {
+        eye = paintMaterial('eye');
+        mesh.material = eye;
+      } else {
+        mesh.material = materialFor(role);
+      }
       mesh.frustumCulled = false; // bones move the mesh well outside its rest bounds
       if (shadow) mesh.layers.enable(SHADOW_LAYER);
       meshes.push(mesh);
     }
   });
   root.updateMatrixWorld(true);
-  return { root, bones, meshes };
+  return { root, bones, meshes, eye };
 }

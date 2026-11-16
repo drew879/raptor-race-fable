@@ -398,3 +398,58 @@ body {
   color: #1c1a17;
   background: var(--ui-accent);
 }
+
+/* ---------- the close-up turntable ---------- */
+.picker.closeup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.picker.closeup .row {
+  gap: 8px;
+}
+.picker.closeup .row[hidden] {
+  display: none;
+}
+.picker.closeup .lbl {
+  width: 44px;
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.75;
+}
+.picker.closeup .tabs.words {
+  flex: 1;
+}
+.picker.closeup .tabs.words button {
+  flex: 1;
+  padding: 0 4px;
+}
+.picker.closeup .tabs.looks {
+  flex: 1;
+}
+.picker.closeup .tabs.looks button {
+  height: 40px;
+}
+.picker .run-link.small {
+  margin: 0;
+  padding: 0 12px;
+  white-space: nowrap;
+  height: 40px;
+  line-height: 40px;
+  font-size: 14px;
+}
+.closeup-cap {
+  position: absolute;
+  left: calc(var(--sal) + 14px);
+  right: calc(var(--sar) + 14px);
+  top: calc(var(--sat) + 10px + var(--blur, 0px));
+  padding: 10px 14px;
+  border-radius: 14px;
+  font-size: 13.5px;
+  line-height: 1.4;
+  white-space: pre-line;
+  color: var(--ui-text);
+  background: color-mix(in srgb, var(--ui-panel) 82%, transparent);
+  border: 1.5px solid color-mix(in srgb, var(--ui-accent) 55%, transparent);
+  pointer-events: none !important;
+}

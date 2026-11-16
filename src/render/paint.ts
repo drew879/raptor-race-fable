@@ -113,9 +113,9 @@ const ROLE_BASE: Record<Role, RoleBase> = {
   foliage_ginkgo: { ...leafy, translucency: 1.2, dapple: 0.35 },
   foliage_fern: { ...leafy, translucency: 1.0, dapple: 0.85, shadow: 0.85 },
   foliage_horsetail: { ...leafy, translucency: 0.6, puff: 0.3, dapple: 0.85 },
-  feather: { ...solid, defines: { ROLE_FEATHER: 1 }, side: THREE.DoubleSide, rim: 0.55, dapple: 0.2, shadow: 0.35, keepLine: 1 },
-  skin: { ...solid, rim: 0.3, dapple: 0.2, shadow: 0.35, keepLine: 1 },
-  eye: { ...solid, defines: { ROLE_EYE: 1 }, dapple: 0, keepLine: 1 },
+  feather: { ...solid, defines: { ROLE_FEATHER: 1, USE_DETAIL: 1 }, side: THREE.DoubleSide, rim: 0.55, dapple: 0.2, shadow: 0.35, keepLine: 1 },
+  skin: { ...solid, defines: { ROLE_SKIN: 1, USE_DETAIL: 1 }, rim: 0.3, dapple: 0.2, shadow: 0.35, keepLine: 1 },
+  eye: { ...solid, defines: { ROLE_EYE: 1, USE_DETAIL: 1 }, dapple: 0, shadow: 0.2, rim: 0, keepLine: 1 },
   egg: { ...solid, defines: { ROLE_EGG: 1 }, rim: 0.7, dapple: 0.1, shadow: 0.4, ao: 0, keepLine: 1 },
   amber: { ...solid, defines: { ROLE_AMBER: 1 }, dapple: 0, shadow: 0, ao: 0, keepLine: 1 },
   ridge: { ...solid, defines: { ROLE_RIDGE: 1 }, side: THREE.DoubleSide, dapple: 0, shadow: 0, rim: 0, line: 0.6, ao: 0 },
@@ -169,11 +169,24 @@ varying vec3 vInstColor;
 #ifdef ROLE_GROUND
 varying vec2 vTrail; // x: meters to the right of the trail's centerline, y: meters along it
 #endif
+#ifdef USE_DETAIL
+// Fine detail is drawn from a second set of coordinates the model carries (see detail() in
+// art/lib/geo.py): x across (-1..1), y along, z the kind of detail, w a random number per piece.
+attribute vec2 uv1;
+varying vec4 vDetail;
+#endif
 #include <skinning_pars_vertex>
 
 void main() {
   vPaint = aPaint;
   vObj = position;
+  #ifdef USE_DETAIL
+  {
+    float kind = floor((uv1.x + 2.0) * 0.25);
+    // the exporter flips the second number top to bottom
+    vDetail = vec4(uv1.x - kind * 4.0, 1.0 - uv1.y, kind, uv.y);
+  }
+  #endif
   #ifdef ROLE_GROUND
   vTrail = uv;
   #endif
@@ -253,7 +266,13 @@ uniform float uKeepLine;
 uniform float uAo;
 uniform float uCrack;
 uniform vec3 uGlow;
+uniform float uBlink;
+uniform vec3 uLid;
+uniform float uEggNear;
 
+#ifdef USE_DETAIL
+varying vec4 vDetail;
+#endif
 varying vec4 vPaint;
 varying vec3 vWorld;
 varying vec3 vNormal;
@@ -349,11 +368,25 @@ void main() {
     // speckles and the crack are drawn here so the crack can grow during the chase
     vec3 q = vObj * 5.0;
     float sp = smoothstep(0.6, 0.7, vnoise3(q * 1.3)) * 0.55 + smoothstep(0.68, 0.76, vnoise3(q * 3.1 + 9.0)) * 0.45;
-    albedo = mix(albedo, albedo * vec3(0.5, 0.6, 0.72), sp);
+    // In the chase the speckles are few and bold, to read from far off. Up close (uEggNear)
+    // they are small and many, as on a real shell.
+    sp *= 1.0 - 0.7 * uEggNear;
+    if (uEggNear > 0.0) {
+      sp += (smoothstep(0.6, 0.68, vnoise3(q * 8.0 + 3.0)) * 0.45 + smoothstep(0.66, 0.74, vnoise3(q * 19.0)) * 0.4) * uEggNear;
+    }
+    albedo = mix(albedo, albedo * vec3(0.5, 0.6, 0.72), min(sp, 1.0));
     albedo *= 0.9 + 0.2 * vnoise3(q * 0.5);
     // the egg's long axis is Y in model space
     float along = vObj.y;
     float ang = atan(vObj.z, vObj.x);
+    {
+      // Up close the shell has a grain: fine ridges running its length, breaking into bumps
+      // toward the ends, as on the eggs of this animal's relatives.
+      float rp = ang * 84.0 + vnoise3(q * 0.8) * 5.0;
+      float near = (1.0 - smoothstep(0.25, 0.7, fwidth(rp))) * uEggNear;
+      float ridge = sin(rp) * mix(1.0, sin(along * 420.0 + ang * 5.0), smoothstep(0.22, 0.42, abs(along)));
+      albedo *= 1.0 + 0.09 * ridge * near;
+    }
     float zig = 0.14 + 0.06 * sin(ang * 5.0) + 0.04 * sin(ang * 11.0 + 1.3);
     float reach = smoothstep(-3.2 + 6.4 * uCrack, -3.2 + 6.4 * uCrack - 0.6, ang);
     float crack = (1.0 - smoothstep(0.012, 0.026, abs(along - zig))) * reach;
@@ -364,6 +397,114 @@ void main() {
     float up2 = (1.0 - smoothstep(0.009, 0.02, abs(hp.x + 0.09 + hp.y * 0.35))) * step(0.0, hp.y) * step(hp.y, 0.14);
     eggCrack = max(max(crack, hole), max(up1, up2) * step(0.3, uCrack));
     albedo = mix(albedo, vec3(0.03, 0.05, 0.06), eggCrack);
+  }
+  #endif
+
+  #ifdef ROLE_FEATHER
+  if (vDetail.z > 0.5) {
+    float ax = abs(vDetail.x);
+    float al = vDetail.y;
+    float seed = vDetail.w;
+    if (vDetail.z < 1.5) {
+      // A vaned feather. Barbs sweep out from the shaft toward the tip; they fade out once
+      // they are too fine for the screen, so nothing shimmers at a distance.
+      float p = al * 44.0 - ax * 5.0 + seed * 7.0;
+      float keep = 1.0 - smoothstep(0.3, 0.8, fwidth(p));
+      float groove = smoothstep(0.3, 0.5, abs(fract(p) - 0.5));
+      albedo *= 1.0 - 0.2 * groove * keep * smoothstep(0.05, 0.2, ax);
+      // here and there the vane has parted along a barb
+      float cell = floor(p / 6.0);
+      float parted = step(0.7, fract(sin(cell * 91.7 + seed * 40.0) * 43758.5453));
+      float gap = 1.0 - smoothstep(0.1, 0.55, abs(p - cell * 6.0 - 3.0));
+      albedo *= 1.0 - 0.5 * parted * gap * keep * smoothstep(0.3, 0.9, ax);
+      // the pale shaft, thinning toward the tip
+      float shaft = 1.0 - smoothstep(0.03, 0.075, ax / max(1.0 - 0.75 * al, 0.05));
+      albedo = mix(albedo, vec3(0.80, 0.73, 0.58), shaft * 0.8 * (1.0 - smoothstep(0.86, 0.98, al)));
+    } else if (vDetail.z < 2.5) {
+      // A body feather: shaded at its root, where the feather above covers it, and paler
+      // along its free edge. That scalloping is what makes plumage read as layers.
+      float root = smoothstep(0.0, 0.55, al);
+      float edge = smoothstep(0.45, 1.0, max(ax * ax, al * al * al));
+      albedo *= mix(0.8, 1.0, root) * (1.0 + 0.14 * edge);
+      float p = al * 13.0 - ax * 3.5 + seed * 5.0;
+      float keep = 1.0 - smoothstep(0.3, 0.8, fwidth(p));
+      albedo *= 1.0 - 0.12 * smoothstep(0.3, 0.5, abs(fract(p) - 0.5)) * keep;
+      float shaft = (1.0 - smoothstep(0.04, 0.1, ax)) * smoothstep(0.05, 0.3, al) * (1.0 - smoothstep(0.6, 0.95, al));
+      albedo *= 1.0 + 0.16 * shaft * keep;
+    } else if (vDetail.z < 3.5) {
+      // Down: soft loose strands with pale tips.
+      float strand = PLAIN(vec2(vDetail.x * 2.2 + seed * 9.0, al * 0.5 + seed * 3.0)).b;
+      albedo *= (0.84 + 0.32 * strand) * mix(0.78, 1.14, smoothstep(0.05, 1.0, al));
+    } else {
+      // Plumage drawn on the skin: rows of small feathers, each row half a feather out of step
+      // with the last. A feather is shaded at its root and pale toward its rounded tip, and
+      // between the tips the shaded roots of the next row show. The model says how many
+      // feathers go round each row (it arrives flipped, like the other second coordinate).
+      float count = 1.0 - seed;
+      float row = floor(al);
+      float v = al - row;
+      float U = (vDetail.x + 1.0) * 0.5 * count + 0.5 * mod(row, 2.0) + fract(sin(row * 12.9898) * 43758.5453);
+      float cell = floor(U);
+      float u = (U - cell - 0.5) * 2.0;
+      float rnd = fract(sin((mod(cell, count) + row * 57.0) * 78.233) * 43758.5453);
+      float keep = 1.0 - smoothstep(0.3, 0.75, max(fwidth(al), fwidth(U)));
+      // no two feathers quite alike: each a little longer or shorter, its tip a little off center
+      float uu = u + (rnd - 0.5) * 0.3;
+      float tipAt = 1.0 - (0.3 + 0.16 * rnd) * uu * uu - 0.3 * fract(rnd * 7.3);
+      float soft = max(fwidth(al) * 1.5, 0.03);
+      float inside = smoothstep(0.0, soft, tipAt - v);
+      float a2 = clamp(v / tipAt, 0.0, 1.0);
+      float fl = vDetail.z > 4.5
+        // down: looser, with a ragged pale fringe and no shaft
+        ? mix(0.74, 1.12, smoothstep(0.0, 0.9, a2)) * (0.9 + 0.2 * PLAIN(vec2(U * 1.7, al * 1.3)).b)
+        : mix(0.78, 1.0, smoothstep(0.0, 0.75, a2)) * (1.0 + 0.13 * smoothstep(0.7, 1.0, a2))
+            * (1.0 - 0.07 * smoothstep(0.3, 0.5, abs(fract(a2 * 9.0 - abs(u) * 2.5) - 0.5)))
+            * (1.0 + 0.07 * (1.0 - smoothstep(0.05, 0.14, abs(u))) * smoothstep(0.1, 0.4, a2) * (1.0 - smoothstep(0.6, 0.9, a2)));
+      fl = mix(0.78, fl, inside) * (0.94 + 0.12 * rnd);
+      albedo *= mix(0.93, fl, keep);
+    }
+  }
+  #endif
+
+  #ifdef ROLE_SKIN
+  float horn = 0.0;
+  if (vDetail.z > 0.5) {
+    if (vDetail.z < 1.5) {
+      // Scales on a bird-like leg: broad plates across the front, pebbles round the back.
+      float front = 1.0 - smoothstep(0.3, 0.55, abs(vDetail.x));
+      float p = vDetail.y;
+      float keep = 1.0 - smoothstep(0.3, 0.8, fwidth(p));
+      float groove = smoothstep(0.34, 0.5, abs(fract(p) - 0.5));
+      albedo *= 1.0 - 0.38 * groove * front * keep;
+      albedo *= 1.0 + 0.16 * (fract(p) - 0.5) * front * keep;
+      float pebble = PLAIN(vec2(vDetail.x * 7.0, p * 1.7)).a;
+      albedo *= mix(1.0, 0.8 + 0.4 * pebble, (1.0 - front) * keep);
+    } else {
+      // Horn (beak and claws): smooth, with faint growth lines and a soft shine.
+      horn = 1.0;
+      albedo *= 0.93 + 0.14 * PLAIN(vec2(vDetail.y * 2.6, vDetail.x * 0.35)).b;
+    }
+  }
+  #endif
+
+  #ifdef ROLE_EYE
+  float lid = 0.0;
+  vec2 eyeAt = vec2(0.0);
+  if (vDetail.z > 0.5) {
+    // The eye is drawn, so it stays crisp at any size: pupil, iris, the dark ring around
+    // them, and lids that close for a blink. The model's paint here is the iris color.
+    vec2 e = vec2(vDetail.x, vDetail.y * 2.0 - 1.0);
+    eyeAt = e;
+    float r = length(e);
+    float aa = fwidth(r) * 0.75 + 0.001;
+    vec3 iris = albedo * (0.82 + 0.4 * PLAIN(vec2(atan(e.y, e.x) * 2.4, r)).b);
+    iris *= mix(1.25, 1.0, smoothstep(0.28, 0.44, r)) * mix(1.0, 0.4, smoothstep(0.5, 0.66, r));
+    vec3 c = mix(vec3(0.012, 0.012, 0.016), iris, smoothstep(0.27 - aa, 0.27 + aa, r));
+    c = mix(c, vec3(0.03, 0.028, 0.03), smoothstep(0.66 - aa, 0.66 + aa, r));
+    float upper = smoothstep(-aa, aa, e.y - mix(1.25, -0.5, uBlink));
+    float lower = smoothstep(-aa, aa, mix(-1.25, -0.5, uBlink) - e.y);
+    lid = clamp(upper + lower, 0.0, 1.0);
+    albedo = mix(c, uLid, lid);
   }
   #endif
 
@@ -418,7 +559,22 @@ void main() {
   #endif
 
   #ifdef ROLE_EYE
-  col += vec3(1.0) * pow(max(dot(reflect(E, Ng), uSunDir), 0.0), 40.0);
+  {
+    // a wet eye: the sun's glint, plus a small catchlight that is always there, so the eye
+    // has life in any light
+    float wet = 1.0 - lid;
+    col += vec3(1.0) * pow(max(dot(reflect(E, Ng), uSunDir), 0.0), 40.0) * wet;
+    float spot = 1.0 - smoothstep(0.07, 0.12, length(eyeAt - vec2(0.17, 0.26)));
+    float spot2 = 1.0 - smoothstep(0.03, 0.06, length(eyeAt - vec2(-0.2, -0.16)));
+    col += (vec3(1.0, 0.98, 0.94) * spot * 0.85 + vec3(0.8, 0.9, 1.0) * spot2 * 0.3) * wet * step(0.5, vDetail.z);
+  }
+  #endif
+
+  #ifdef ROLE_SKIN
+  if (horn > 0.5) {
+    col += uSunColor * pow(max(dot(reflect(E, Ng), uSunDir), 0.0), 22.0) * 0.3 * (0.3 + 0.7 * sh);
+    col += uSkyAmb * pow(1.0 - max(dot(Ng, -E), 0.0), 3.0) * 0.25;
+  }
   #endif
 
   #ifdef ROLE_EGG
@@ -429,7 +585,7 @@ void main() {
     float form = dot(Ng, Lv);
     col *= mix(0.6, 1.34, smoothstep(-0.45, 0.85, form));
     col += uGlow * (0.02 + 0.16 * fres) * (1.0 - eggCrack);
-    col += vec3(1.0, 0.98, 0.92) * pow(max(dot(reflect(E, Ng), Lv), 0.0), 18.0) * 0.5 * (1.0 - eggCrack);
+    col += vec3(1.0, 0.98, 0.92) * pow(max(dot(reflect(E, Ng), Lv), 0.0), 18.0) * 0.5 * (1.0 - eggCrack) * (1.0 - 0.75 * uEggNear);
   }
   #endif
 
@@ -504,6 +660,11 @@ export function paintMaterial(role: Role): THREE.ShaderMaterial {
       uAo: { value: base.ao },
       uCrack: { value: 0.55 },
       uGlow: { value: new THREE.Color(0, 0, 0) },
+      // eyes: 0 open .. 1 shut, and the color of the lids
+      uBlink: { value: 0 },
+      uLid: { value: new THREE.Color(0.02, 0.022, 0.03) },
+      // the egg: 0 as it is drawn for the chase, 1 for close-ups (matte, finely speckled)
+      uEggNear: { value: 0 },
       // x: lane width, y: how strongly the lanes show, z: half the width of the seam between lanes (ground only)
       uLanes: { value: new THREE.Vector4(0.68, 0, 0.08, 0) },
     },

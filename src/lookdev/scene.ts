@@ -23,6 +23,8 @@ export interface Lookdev {
   camera: THREE.PerspectiveCamera;
   update(time: number, renderer: THREE.WebGLRenderer): void;
   resize(aspect: number): void;
+  /** False while frame times say nothing about drawing speed (a sheet is up, nothing is moving yet). */
+  steady?(): boolean;
 }
 
 const HERO_S = 14;
