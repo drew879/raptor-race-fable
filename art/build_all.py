@@ -40,7 +40,9 @@ def kit(name, parts, preview=None):
         g = fn()
         obj = g.to_object(obj_name, **kw)
         objs.append(obj)
-        tris += sum(len(p.vertices) - 2 for p in obj.data.polygons)
+        n = sum(len(p.vertices) - 2 for p in obj.data.polygons)
+        tris += n
+        print(f'  {obj_name}: {n} tris')
     G.export_glb(objs, os.path.join(OUT, name + '.glb'))
     size = os.path.getsize(os.path.join(OUT, name + '.glb')) / 1024
     print(f'[kit] {name}: {len(objs)} objects, {tris} tris, {size:.0f} KB, {time.time() - t0:.1f}s')
@@ -70,6 +72,7 @@ kit('flora_small', [
     ('fern_b', lambda: plants.fern_clump(12, 1.25), FOL),
     ('fern_c', lambda: plants.fern_clump(13, 0.8), FOL),
     ('fern_lo', lambda: plants.fern_clump(14, 1.0, lod=1), FOL),
+    ('fern_far', lambda: plants.fern_clump(15, 1.0, lod=2), dict(ao_dist=0.9, ao_strength=0.9, ao_samples=8, ground_ao=0.25)),
     ('horsetail_a', lambda: plants.horsetail_clump(21), FOL),
     ('horsetail_b', lambda: plants.horsetail_clump(22, 1.2), FOL),
     ('rock_a', lambda: plants.rock(31, 0.9), dict(ao_dist=0.5, ground_ao=0.2)),
@@ -89,6 +92,8 @@ kit('flora_trees', [
     ('conifer_lo', lambda: plants.conifer(63, 19.0, 0.45, lod=1), dict(ao_dist=2.0, ao_strength=0.95, ao_samples=12, ground_ao=1.0)),
     ('conifer_far', lambda: plants.conifer(64, 19.0, 0.45, lod=2), dict(ao_dist=2.0, ao_strength=0.95, ao_samples=8, ground_ao=1.0)),
     ('ginkgo_far', lambda: plants.ginkgo(54, 10.0, lod=2), dict(ao_dist=1.6, ao_strength=0.95, ao_samples=8, ground_ao=0.8)),
+    ('treefern_far', lambda: plants.tree_fern(44, 3.6, lod=2), dict(ao_dist=1.2, ao_strength=0.9, ao_samples=8, ground_ao=0.5)),
+    ('conifer_dist', lambda: plants.conifer(65, 19.0, 0.45, lod=3), dict(ao_dist=2.0, ao_strength=0.95, ao_samples=8, ground_ao=1.0)),
 ], preview=dict(gap=1.5, lens=40))
 
 kit('props', [

@@ -107,8 +107,9 @@ def path_at(path, t):
 # ---------------------------------------------------------------- leaves and fronds
 
 def frond(geo, base, heading, pitch, length, half_width, pairs, droop, rnd, dark, light, mat,
-          sway_base=0.15, pinna_droop=0.5, dead=0.0, sweep=0.5, pinna_segs=2):
-    """A pinnate frond: an arching midrib with paired leaflets, widest about a third along."""
+          sway_base=0.15, pinna_droop=0.5, dead=0.0, sweep=0.5, pinna_segs=2, rib=True):
+    """A pinnate frond: an arching midrib with paired leaflets, widest about a third along.
+    rib=False leaves the midrib out, for models only ever seen from far away."""
     out = Vector((math.cos(heading), math.sin(heading), 0.0))
     side = Z.cross(out).normalized()
     phase = rnd.random()
@@ -127,9 +128,10 @@ def frond(geo, base, heading, pitch, length, half_width, pairs, droop, rnd, dark
     dirs.append(dirs[-1])
 
     rib_col = mix(dark, srgb('#5a4a2a'), 0.5 + 0.5 * dead)
-    geo.tube(pts, lambda t, a: ((0.012 + 0.006 * (1 - t)) * (length / 1.6),) * 2,
-             lambda t, a, p: rib_col, mat, around=3,
-             uv_fn=lambda t, a, p: (lerp(sway_base, 1.0, t), phase), cap_start=False, cap_end=False)
+    if rib:
+        geo.tube(pts, lambda t, a: ((0.012 + 0.006 * (1 - t)) * (length / 1.6),) * 2,
+                 lambda t, a, p: rib_col, mat, around=3,
+                 uv_fn=lambda t, a, p: (lerp(sway_base, 1.0, t), phase), cap_start=False, cap_end=False)
 
     tint = rnd.uniform(-0.12, 0.12)
     for i in range(1, n + 1):
@@ -158,18 +160,19 @@ def frond(geo, base, heading, pitch, length, half_width, pairs, droop, rnd, dark
 
 
 def fern_clump(seed, size=1.0, lod=0):
-    """lod 0 is the close-up model; lod 1 is a light version for the distance."""
+    """lod 0 is the close-up model, lod 1 a light version for the middle distance,
+    lod 2 a handful of broad leaflets for far away."""
     rnd = random.Random(seed)
     geo = Geo()
-    count = rnd.randint(7, 10) if lod == 0 else 6
+    count = rnd.randint(7, 10) if lod == 0 else (6, 6, 5)[lod]
     for i in range(count):
         heading = 2 * math.pi * i / count + rnd.uniform(-0.3, 0.3)
         pitch = rnd.uniform(0.75, 1.15)
         length = rnd.uniform(0.55, 0.85) * size
         frond(geo, (rnd.uniform(-0.03, 0.03), rnd.uniform(-0.03, 0.03), 0.0), heading, pitch, length,
-              length * (0.2 if lod == 0 else 0.23), 9 if lod == 0 else 5, rnd.uniform(1.5, 2.1), rnd,
+              length * (0.2, 0.23, 0.3)[lod], (9, 5, 3)[lod], rnd.uniform(1.5, 2.1), rnd,
               FERN_DARK, FERN_LIGHT, 'foliage_fern', sway_base=0.1, pinna_droop=0.4,
-              pinna_segs=2 if lod == 0 else 1)
+              pinna_segs=2 if lod == 0 else 1, rib=lod < 2)
     # a couple of young upright fronds in the middle
     for i in range(2 if lod == 0 else 0):
         frond(geo, (0, 0, 0), rnd.uniform(0, 6.28), 1.35, 0.4 * size, 0.07 * size, 7, 0.5, rnd,
@@ -183,26 +186,26 @@ def tree_fern(seed, height=3.0, lod=0):
     r = 0.11 * (height / 3.0) ** 0.5
     fibre = (srgb('#2a1f1a'), srgb('#4a3626'), srgb('#6b4a30'))
     path = trunk(geo, (0, 0, 0), height, r * 1.25, r * 1.1, seed, wobble=0.12, flare=0.35, lobes=7,
-                 moss=0.35, rings=10 if lod == 0 else 6, around=9 if lod == 0 else 6, bark=fibre)
+                 moss=0.35, rings=(10, 6, 4)[lod], around=(9, 6, 5)[lod], bark=fibre)
     top = path[-1]
-    count = rnd.randint(11, 13) if lod == 0 else 9
+    count = rnd.randint(11, 13) if lod == 0 else (9, 9, 7)[lod]
     for i in range(count):
         heading = 2 * math.pi * i / count + rnd.uniform(-0.2, 0.2)
         length = rnd.uniform(1.7, 2.2) * (height / 3.0) ** 0.4
         frond(geo, top + Vector((0, 0, -0.05)), heading, rnd.uniform(0.55, 0.95), length,
-              length * (0.2 if lod == 0 else 0.23), 13 if lod == 0 else 7, rnd.uniform(1.25, 1.75), rnd,
+              length * (0.2, 0.23, 0.3)[lod], (13, 7, 4)[lod], rnd.uniform(1.25, 1.75), rnd,
               FERN_DARK, FERN_LIGHT, 'foliage_fern', sway_base=0.05, pinna_droop=0.45,
-              pinna_segs=2 if lod == 0 else 1)
+              pinna_segs=2 if lod == 0 else 1, rib=lod < 2)
     # young fronds standing up in the crown
     for i in range(3 if lod == 0 else 0):
         frond(geo, top, rnd.uniform(0, 6.28), 1.3, 0.8, 0.14, 8, 0.45, rnd, FERN_MID, FERN_LIGHT,
               'foliage_fern', sway_base=0.05)
     # a skirt of old brown fronds hanging against the trunk
-    for i in range(5 if lod == 0 else 3):
+    for i in range((5, 3, 2)[lod]):
         heading = rnd.uniform(0, 6.28)
-        frond(geo, top + Vector((0, 0, -0.18)), heading, -0.5, rnd.uniform(1.0, 1.4), 0.2,
-              9 if lod == 0 else 5, 0.9, rnd, FERN_DARK, FERN_MID, 'foliage_fern', sway_base=0.05,
-              dead=rnd.uniform(0.75, 0.95), pinna_segs=2 if lod == 0 else 1)
+        frond(geo, top + Vector((0, 0, -0.18)), heading, -0.5, rnd.uniform(1.0, 1.4), (0.2, 0.2, 0.28)[lod],
+              (9, 5, 3)[lod], 0.9, rnd, FERN_DARK, FERN_MID, 'foliage_fern', sway_base=0.05,
+              dead=rnd.uniform(0.75, 0.95), pinna_segs=2 if lod == 0 else 1, rib=lod < 2)
     return geo
 
 
@@ -212,7 +215,7 @@ def conifer_branch(geo, base, heading, length, rnd, droop, phase_seed, lod=0):
     out = Vector((math.cos(heading), math.sin(heading), 0.0))
     side = Z.cross(out).normalized()
     pitch0 = rnd.uniform(0.05, 0.3)
-    n = (5, 3, 2)[lod]
+    n = (5, 3, 2, 1)[lod]
     pos = Vector(base)
     step = length / n
     pts = [pos.copy()]
@@ -228,28 +231,29 @@ def conifer_branch(geo, base, heading, length, rnd, droop, phase_seed, lod=0):
     dirs.append(dirs[-1])
     phase = rnd.random()
     wood = mix(BARK_DARK, BARK_MID, 0.4)
-    geo.tube(pts, lambda t, a: ((0.035 * (1 - t) + 0.008) * (length / 2.5),) * 2,
-             lambda t, a, p: wood, 'bark', around=4 if lod == 0 else 3,
-             uv_fn=lambda t, a, p: (0.5 * t * t, phase), cap_start=False, cap_end=False)
+    if lod < 3:  # from very far away the branch itself is hidden by its foliage
+        geo.tube(pts, lambda t, a: ((0.035 * (1 - t) + 0.008) * (length / 2.5),) * 2,
+                 lambda t, a, p: wood, 'bark', around=4 if lod == 0 else 3,
+                 uv_fn=lambda t, a, p: (0.5 * t * t, phase), cap_start=False, cap_end=False)
     tint = rnd.uniform(-0.1, 0.1)
 
     def spray(at, direction, up, ln, sway0):
         def width(u):
-            wide = (0.17, 0.24, 0.34)[lod]
+            wide = (0.17, 0.24, 0.34, 0.5)[lod]
             return ln * wide * (0.5 + 0.5 * math.sin(math.pi * min(1.0, 0.1 + 0.9 * u))) * (1.0 - 0.35 * u)
 
         def col(u, sd):
             return ramp([(0.0, CONIFER_DARK), (0.5, CONIFER_MID), (1.0, CONIFER_LIGHT)],
                         clamp01(0.15 + 0.75 * u + tint + (0.08 if sd > 0 else 0.0)))
 
-        geo.blade(at, direction, up, ln, width, col, 'foliage_conifer', segs=3 if lod == 0 else 2,
+        geo.blade(at, direction, up, ln, width, col, 'foliage_conifer', segs=(3, 2, 2, 1)[lod],
                   droop=rnd.uniform(0.25, 0.6), fold=0.3, sway=(sway0, min(1.0, sway0 + 0.5)), phase=phase)
 
     for i in range(1, n + 1):
         t = i / n
         d = dirs[i]
         up = side.cross(d).normalized()
-        ln = length * (0.36, 0.5, 0.62)[lod] * (0.55 + 0.6 * math.sin(math.pi * min(1.0, t * 0.9 + 0.05)))
+        ln = length * (0.36, 0.5, 0.62, 0.85)[lod] * (0.55 + 0.6 * math.sin(math.pi * min(1.0, t * 0.9 + 0.05)))
         for s in (-1, 1):
             pdir = (side * s * 0.9 + d * 0.75 + Z * -0.12).normalized()
             spray(pts[i], pdir, up, ln * rnd.uniform(0.85, 1.15), 0.25 + 0.5 * t)
@@ -261,7 +265,7 @@ def conifer(seed, height=17.0, crown_start=0.42, lod=0):
     geo = Geo()
     r = 0.34 * (height / 17.0)
     path = trunk(geo, (0, 0, 0), height, r, r * 0.12, seed, wobble=0.5, flare=0.75, lobes=5, moss=0.7,
-                 rings=(18, 9, 6)[lod], around=(12, 7, 5)[lod],
+                 rings=(18, 9, 6, 4)[lod], around=(12, 7, 5, 4)[lod],
                  bark=(srgb('#3a2620'), srgb('#6e4532'), srgb('#96603f')))
     # a few dead stubs on the bare lower trunk
     for i in range(4 if lod == 0 else 0):
@@ -274,7 +278,7 @@ def conifer(seed, height=17.0, crown_start=0.42, lod=0):
         geo.tube(pts, lambda tt, a: ((0.05 * (1 - tt) + 0.012),) * 2,
                  lambda tt, a, pp: mix(BARK_DARK, BARK_GREY, 0.5 + 0.3 * tt), 'bark', around=5,
                  cap_start=False)
-    whorls = (13, 8, 6)[lod]
+    whorls = (13, 8, 6, 5)[lod]
     golden = 2.39996
     for k in range(whorls):
         f = k / (whorls - 1)
@@ -282,19 +286,19 @@ def conifer(seed, height=17.0, crown_start=0.42, lod=0):
         p = path_at(path, t ** (1 / 1.7))
         span = math.sin(math.pi * min(1.0, 0.18 + 0.82 * (1 - f) ** 0.8))  # widest low in the crown
         length = (0.9 + 3.0 * span) * (height / 17.0) * rnd.uniform(0.85, 1.1)
-        per = ((5 if f < 0.75 else 4), 4, 3)[lod]
+        per = ((5 if f < 0.75 else 4), 4, 3, 3)[lod]
         for j in range(per):
             heading = k * golden + 2 * math.pi * j / per + rnd.uniform(-0.2, 0.2)
             conifer_branch(geo, p + Vector((0, 0, rnd.uniform(-0.25, 0.25))), heading, length, rnd,
                            droop=lerp(0.75, 0.25, f), phase_seed=k, lod=lod)
     # leader
     top = path[-1]
-    for j in range(4):
-        heading = j * 1.57 + 0.4
+    for j in range(4 if lod < 3 else 2):
+        heading = j * (1.57 if lod < 3 else 3.14) + 0.4
         d = Vector((math.cos(heading) * 0.35, math.sin(heading) * 0.35, 1.0)).normalized()
         geo.blade(top + Vector((0, 0, -0.3)), d, Vector((math.cos(heading), math.sin(heading), 0.2)), 1.1,
                   lambda u: 0.16 * math.sin(math.pi * min(1.0, 0.15 + u * 0.85)),
-                  lambda u, sd: mix(CONIFER_MID, CONIFER_LIGHT, u), 'foliage_conifer', segs=3, droop=-0.2,
+                  lambda u, sd: mix(CONIFER_MID, CONIFER_LIGHT, u), 'foliage_conifer', segs=3 if lod < 3 else 1, droop=-0.2,
                   fold=0.3, sway=(0.6, 1.0), phase=0.3)
     return geo
 
