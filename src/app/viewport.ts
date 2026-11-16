@@ -66,6 +66,10 @@ export function tickFps(dtSeconds: number) {
   fps = fps === 0 ? now : fps + (now - fps) * 0.05;
 }
 
+export function currentFps(): number {
+  return fps;
+}
+
 export function viewportReport(): string {
   const cs = getComputedStyle(document.documentElement);
   const inset = (name: string) => cs.getPropertyValue(name).trim() || '0px';

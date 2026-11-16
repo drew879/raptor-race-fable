@@ -159,10 +159,25 @@ varying vec4 vShadowCoord;
 #ifdef USE_INSTANCING_COLOR
 varying vec3 vInstColor;
 #endif
+#include <skinning_pars_vertex>
 
 void main() {
   vPaint = aPaint;
   vObj = position;
+  vec3 transformed = position;
+  vec3 objectNormal = normal;
+  #include <skinbase_vertex>
+  #include <skinnormal_vertex>
+  #include <skinning_vertex>
+  #if defined(ROLE_AMBER) && defined(USE_INSTANCING)
+  {
+    float a = uTime * 1.6 + instanceMatrix[3].x * 2.0 + instanceMatrix[3].z * 2.0;
+    mat2 spin = mat2(cos(a), -sin(a), sin(a), cos(a));
+    transformed.xz = spin * transformed.xz;
+    objectNormal.xz = spin * objectNormal.xz;
+    transformed.y += sin(a * 1.3) * 0.12;
+  }
+  #endif
   mat4 m = modelMatrix;
   #ifdef USE_INSTANCING
   m = modelMatrix * instanceMatrix;
@@ -170,8 +185,8 @@ void main() {
   #ifdef USE_INSTANCING_COLOR
   vInstColor = instanceColor;
   #endif
-  vec4 wp = m * vec4(position, 1.0);
-  vNormal = normalize(mat3(m) * normal);
+  vec4 wp = m * vec4(transformed, 1.0);
+  vNormal = normalize(mat3(m) * objectNormal);
 
   // wind: a slow lean plus a quicker flutter, scaled by the painted sway weight
   float sway = uv.x * uSway;

@@ -13,7 +13,7 @@ from lib import geo as G  # noqa: E402
 import hero  # noqa: E402
 
 G.reset_scene()
-hero.build().to_object('caudipteryx', ao_dist=0.25, ao_strength=0.9, ao_samples=28)
+hero.build()[0].to_object('caudipteryx', ao_dist=0.25, ao_strength=0.9, ao_samples=28)
 out = os.path.join(HERE, '_preview', 'icon_1024.png')
 G.render_preview(out, eye=(1.45, -0.2, 0.7), target=(0.0, 0.16, 0.56), lens=58, size=(1024, 1024),
                  bg=(0.06, 0.2, 0.16))

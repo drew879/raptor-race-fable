@@ -5,7 +5,8 @@
 import * as THREE from 'three';
 import { world } from '../render/paint';
 import { SunShadow } from '../render/shadow';
-import { instance, instances, loadKit, materialFor, type Placement } from '../world/assets';
+import { HeroRig } from '../hero/rig';
+import { instance, instances, loadKit, loadSkinned, materialFor, type Placement } from '../world/assets';
 import { makeContactShadow, makeGlow, makeMist, makeShaft } from '../world/fx';
 import { fbm, rng } from '../world/noise';
 import { makeRidges, makeSky, makeVolcano } from '../world/sky';
@@ -28,11 +29,11 @@ const HERO_S = 14;
 const LANE = 0.62;
 
 export async function buildLookdev(): Promise<Lookdev> {
-  const [trees, small, props, heroKit] = await Promise.all([
+  const [trees, small, props, heroModel] = await Promise.all([
     loadKit(treesUrl),
     loadKit(smallUrl),
     loadKit(propsUrl),
-    loadKit(heroUrl),
+    loadSkinned(heroUrl, true),
   ]);
 
   const scene = new THREE.Scene();
@@ -228,7 +229,11 @@ export async function buildLookdev(): Promise<Lookdev> {
     obj.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(t.right, y, z));
   };
 
-  const hero = instance(heroKit, 'caudipteryx');
+  // the same rig the game uses, frozen at one moment of its stride
+  const rig = new HeroRig(heroModel);
+  rig.pose({ phase: 0.93, run: 1, air: 0, airTilt: 0, slide: 0, lean: 0 });
+  const hero = new THREE.Group();
+  hero.add(rig.root);
   hero.position.copy(terrain.place(HERO_S, 0, 0.005));
   orient(hero, HERO_S, 0.8);
   scene.add(hero);

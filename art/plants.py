@@ -9,6 +9,8 @@ import random
 
 from mathutils import Vector
 
+from mathutils import Matrix
+
 from lib.geo import (Geo, basis, clamp01, fbm, lerp, mix, ramp, resample, rot, scale, smoothstep,
                      srgb, vnoise)
 
@@ -210,7 +212,7 @@ def conifer_branch(geo, base, heading, length, rnd, droop, phase_seed, lod=0):
     out = Vector((math.cos(heading), math.sin(heading), 0.0))
     side = Z.cross(out).normalized()
     pitch0 = rnd.uniform(0.05, 0.3)
-    n = 5 if lod == 0 else 3
+    n = (5, 3, 2)[lod]
     pos = Vector(base)
     step = length / n
     pts = [pos.copy()]
@@ -233,7 +235,7 @@ def conifer_branch(geo, base, heading, length, rnd, droop, phase_seed, lod=0):
 
     def spray(at, direction, up, ln, sway0):
         def width(u):
-            wide = 0.17 if lod == 0 else 0.24
+            wide = (0.17, 0.24, 0.34)[lod]
             return ln * wide * (0.5 + 0.5 * math.sin(math.pi * min(1.0, 0.1 + 0.9 * u))) * (1.0 - 0.35 * u)
 
         def col(u, sd):
@@ -247,7 +249,7 @@ def conifer_branch(geo, base, heading, length, rnd, droop, phase_seed, lod=0):
         t = i / n
         d = dirs[i]
         up = side.cross(d).normalized()
-        ln = length * (0.36 if lod == 0 else 0.5) * (0.55 + 0.6 * math.sin(math.pi * min(1.0, t * 0.9 + 0.05)))
+        ln = length * (0.36, 0.5, 0.62)[lod] * (0.55 + 0.6 * math.sin(math.pi * min(1.0, t * 0.9 + 0.05)))
         for s in (-1, 1):
             pdir = (side * s * 0.9 + d * 0.75 + Z * -0.12).normalized()
             spray(pts[i], pdir, up, ln * rnd.uniform(0.85, 1.15), 0.25 + 0.5 * t)
@@ -259,7 +261,7 @@ def conifer(seed, height=17.0, crown_start=0.42, lod=0):
     geo = Geo()
     r = 0.34 * (height / 17.0)
     path = trunk(geo, (0, 0, 0), height, r, r * 0.12, seed, wobble=0.5, flare=0.75, lobes=5, moss=0.7,
-                 rings=18 if lod == 0 else 9, around=12 if lod == 0 else 7,
+                 rings=(18, 9, 6)[lod], around=(12, 7, 5)[lod],
                  bark=(srgb('#3a2620'), srgb('#6e4532'), srgb('#96603f')))
     # a few dead stubs on the bare lower trunk
     for i in range(4 if lod == 0 else 0):
@@ -272,7 +274,7 @@ def conifer(seed, height=17.0, crown_start=0.42, lod=0):
         geo.tube(pts, lambda tt, a: ((0.05 * (1 - tt) + 0.012),) * 2,
                  lambda tt, a, pp: mix(BARK_DARK, BARK_GREY, 0.5 + 0.3 * tt), 'bark', around=5,
                  cap_start=False)
-    whorls = 13 if lod == 0 else 8
+    whorls = (13, 8, 6)[lod]
     golden = 2.39996
     for k in range(whorls):
         f = k / (whorls - 1)
@@ -280,7 +282,7 @@ def conifer(seed, height=17.0, crown_start=0.42, lod=0):
         p = path_at(path, t ** (1 / 1.7))
         span = math.sin(math.pi * min(1.0, 0.18 + 0.82 * (1 - f) ** 0.8))  # widest low in the crown
         length = (0.9 + 3.0 * span) * (height / 17.0) * rnd.uniform(0.85, 1.1)
-        per = (5 if f < 0.75 else 4) if lod == 0 else 4
+        per = ((5 if f < 0.75 else 4), 4, 3)[lod]
         for j in range(per):
             heading = k * golden + 2 * math.pi * j / per + rnd.uniform(-0.2, 0.2)
             conifer_branch(geo, p + Vector((0, 0, rnd.uniform(-0.25, 0.25))), heading, length, rnd,
@@ -354,10 +356,10 @@ def ginkgo(seed, height=9.0, lod=0):
     bark = (srgb('#4a4038'), srgb('#7a6a58'), srgb('#9c8a70'))
     split = height * rnd.uniform(0.36, 0.44)
     r = 0.26 * (height / 9.0)
-    leaves = 1.0 if lod == 0 else 0.36  # fewer, larger leaves in the distance
-    grow = 1.0 if lod == 0 else 1.45
+    leaves = (1.0, 0.36, 0.16)[lod]  # fewer, larger leaves in the distance
+    grow = (1.0, 1.45, 2.0)[lod]
     path = trunk(geo, (0, 0, 0), split, r, r * 0.62, seed, wobble=0.3, flare=0.6, lobes=4, moss=0.55,
-                 rings=11 if lod == 0 else 6, around=10 if lod == 0 else 6, bark=bark, cap_end=False)
+                 rings=(11, 6, 4)[lod], around=(10, 6, 5)[lod], bark=bark, cap_end=False)
     top = path[-1]
     n_limbs = rnd.randint(4, 5)
     for i in range(n_limbs):
@@ -365,17 +367,18 @@ def ginkgo(seed, height=9.0, lod=0):
         reach = rnd.uniform(0.28, 0.5) * height
         rise = rnd.uniform(0.38, 0.58) * height * (1.15 if i == 0 else 1.0)
         end = top + Vector((math.cos(heading) * reach, math.sin(heading) * reach, rise))
-        pts = limb(geo, top + Vector((0, 0, -0.15)), end, r * 0.55, r * 0.12, rnd, bark, sag=-0.25)
+        pts = limb(geo, top + Vector((0, 0, -0.15)), end, r * 0.55, r * 0.12, rnd, bark, sag=-0.25,
+                   segs=6 if lod < 2 else 3)
         # leaf clusters along the outer two thirds of each limb, plus side twigs
         for k in range(7):
             t = lerp(0.3, 1.0, k / 6)
             p = pts[min(len(pts) - 1, int(round(t * (len(pts) - 1))))]
             jitter = Vector((rnd.uniform(-1, 1), rnd.uniform(-1, 1), rnd.uniform(-0.5, 0.8))) * height * 0.07
-            if k % 2 == 0:
+            if k % 2 == 0 and lod < 2:
                 twig_end = p + Vector((rnd.uniform(-1, 1), rnd.uniform(-1, 1), rnd.uniform(0.1, 0.8))) * height * 0.13
                 limb(geo, p, twig_end, r * 0.14, r * 0.05, rnd, bark, segs=3)
                 ginkgo_cluster(geo, twig_end, height * rnd.uniform(0.085, 0.11) * grow, int(15 * leaves), rnd, 0.9)
-            ginkgo_cluster(geo, p + jitter, height * rnd.uniform(0.09, 0.125) * grow, int(17 * leaves), rnd, 0.5 + 0.5 * t)
+            ginkgo_cluster(geo, p + jitter, height * rnd.uniform(0.09, 0.125) * grow, max(2, int(17 * leaves)), rnd, 0.5 + 0.5 * t)
     return geo
 
 
@@ -384,7 +387,7 @@ def ginkgo(seed, height=9.0, lod=0):
 def horsetail_clump(seed, size=1.0):
     rnd = random.Random(seed)
     geo = Geo()
-    stems = rnd.randint(7, 9)
+    stems = rnd.randint(5, 6)
     for s in range(stems):
         a = rnd.uniform(0, 6.28)
         rad = rnd.uniform(0.0, 0.22) * size
@@ -440,11 +443,13 @@ def horsetail_clump(seed, size=1.0):
 
 # ---------------------------------------------------------------- rocks, log
 
-def rock(seed, size=1.0, moss=0.7):
+def rock(seed, size=1.0, moss=0.7, shape=None, role='rock', faceted=False, lumpy=1.0):
     rnd = random.Random(seed)
     geo = Geo()
     ph = rnd.uniform(0, 100)
     sx, sy, sz = rnd.uniform(0.8, 1.3), rnd.uniform(0.7, 1.1), rnd.uniform(0.45, 0.75)
+    if shape:
+        sx, sy, sz = shape
     lat, lon = 9, 14
     rings = []
     for i in range(lat + 1):
@@ -454,7 +459,7 @@ def rock(seed, size=1.0, moss=0.7):
         for j in range(lon):
             th = 2 * math.pi * j / lon
             d = Vector((math.sin(phi) * math.cos(th), math.sin(phi) * math.sin(th), math.cos(phi)))
-            rr = 1.0 + 0.32 * fbm((d.x + ph, d.y, d.z), 1.3, 3) + 0.1 * vnoise((d.x * 4 + ph, d.y * 4, d.z * 4))
+            rr = 1.0 + lumpy * (0.32 * fbm((d.x + ph, d.y, d.z), 1.3, 3) + 0.1 * vnoise((d.x * 4 + ph, d.y * 4, d.z * 4)))
             p = Vector((d.x * sx, d.y * sy, d.z * sz)) * rr * size * 0.5
             p.z += size * sz * 0.28
             ring.append(p)
@@ -467,18 +472,20 @@ def rock(seed, size=1.0, moss=0.7):
         m = smoothstep(0.1, 0.6, nz + n * 0.9) * moss
         return mix(c, mix(MOSS_DARK, MOSS_LIGHT, clamp01(0.5 + n * 2.0)), m)
 
-    geo.add_grid(rings, col, 'rock', close_u=True, flip=True)
+    geo.add_grid(rings, col, role, close_u=True, flip=True, smooth=not faceted)
     return geo
 
 
-def fallen_log(seed, length=3.8, radius=0.2):
-    """Lies along X, across the trail. Low and wide: it has to say 'jump' at a glance."""
+def fallen_log(seed, length=3.8, radius=0.2, height=None, extras=True):
+    """Lies along X, across the trail. Low and wide: it has to say 'jump' at a glance.
+    height lifts its center off the ground (used by the slide-under arch)."""
     rnd = random.Random(seed)
     geo = Geo()
     ph = rnd.uniform(0, 100)
     n = 18
+    zc = radius * 0.92 if height is None else height
     path = [Vector((lerp(-length / 2, length / 2, i / (n - 1)), 0.03 * math.sin(i * 0.7),
-                    radius * 0.92 + 0.025 * math.sin(i * 0.5 + 1.0))) for i in range(n)]
+                    zc + 0.025 * math.sin(i * 0.5 + 1.0))) for i in range(n)]
 
     def rad(t, ang):
         r = radius * (1.0 - 0.14 * t) * (1.0 + 0.05 * math.sin(ang * 7 + t * 9) + 0.05 * vnoise((ang, t * 6.0, ph)))
@@ -511,6 +518,8 @@ def fallen_log(seed, length=3.8, radius=0.2):
             rings.append(ring)
         geo.add_grid(rings, lambda i, j, p: mix(WOOD_DARK, WOOD_PALE, clamp01(i / 3 + 0.15 * math.sin(j * 2.1))),
                      'prop', close_u=True, flip=True)
+    if not extras:
+        return geo
     # two broken branch stubs
     for sx, ang in ((-0.9, 1.0), (0.75, 2.2)):
         b = Vector((sx, 0, radius * 0.9))
@@ -534,6 +543,56 @@ def fallen_log(seed, length=3.8, radius=0.2):
         for j in range(6):
             geo.face([ctr, rim[j], rim[j + 1]], [srgb('#d9c7a0'), srgb('#8f6a44'), srgb('#8f6a44')], 'prop')
     return geo
+
+
+def arch_log(seed=81):
+    """A giant fallen trunk propped on two boulders: far too tall to jump, with a clean,
+    roomy opening underneath that says 'slide' at a glance."""
+    geo = fallen_log(seed, length=5.0, radius=0.36, height=0.6 + 0.36, extras=False)
+    for side, sd in ((-1, 82), (1, 83)):
+        r = rock(sd, 1.0, moss=0.5, shape=(1.15, 1.2, 1.02), role='prop')
+        r.transform(Matrix.Translation(Vector((side * 1.95, 0.0, 0.0))))
+        geo.merge(r)
+    # a short broken limb on top, so the trunk reads as a tree and not a pipe
+    for sx, ang in ((-0.6, 1.3), (1.0, 1.9)):
+        b = Vector((sx, 0, 0.96 + 0.3))
+        d = Vector((0.2, math.cos(ang), math.sin(ang))).normalized()
+        pts = [b + d * (0.45 * k / 3) for k in range(4)]
+        geo.tube(pts, lambda t, a: (0.08 * (1 - 0.5 * t),) * 2,
+                 lambda t, a, p: mix(BARK_DARK, BARK_MID, 0.3 + 0.5 * t), 'prop', around=6, cap_start=False)
+    return geo
+
+
+def boulder(seed=84):
+    """Fills a lane and stands taller than the hero can jump: go around."""
+    return rock(seed, 1.0, moss=0.5, shape=(0.86, 0.95, 1.12), role='prop', faceted=True, lumpy=1.7)
+
+
+def lane_tree(seed=85, height=7.0):
+    """A conifer standing in a lane. Root flare, moss and a few low dead branches,
+    so it reads as a tree and never as a bare pole."""
+    rnd = random.Random(seed)
+    geo = Geo()
+    path = trunk(geo, (0, 0, 0), height, 0.19, 0.13, seed, wobble=0.1, flare=1.0, lobes=5, moss=0.85,
+                 rings=14, around=10, bark=(srgb('#3a2620'), srgb('#6e4532'), srgb('#96603f')))
+    for z, heading, ln in ((0.95, 2.4, 0.42), (1.45, -0.7, 0.5), (2.05, 1.2, 0.46), (2.7, -2.2, 0.55)):
+        p = path_at(path, (z / height) ** (1 / 1.7))
+        out = Vector((math.cos(heading), math.sin(heading), 0.25))
+        pts = [p + out * (ln * k / 3) + Vector((0, 0, -0.03 * k * k)) for k in range(4)]
+        geo.tube(pts, lambda tt, a: ((0.04 * (1 - tt) + 0.01),) * 2,
+                 lambda tt, a, pp: mix(BARK_DARK, BARK_GREY, 0.4 + 0.4 * tt), 'bark', around=5, cap_start=False)
+    # living branches start well above head height and droop
+    for k in range(4):
+        zb = 3.2 + k * 0.9
+        p = path_at(path, (zb / height) ** (1 / 1.7))
+        for j in range(3):
+            conifer_branch(geo, p, k * 2.4 + j * 2.09, 1.5 - 0.15 * k, rnd, droop=0.7, phase_seed=k, lod=1)
+    geo2 = Geo()
+    geo2.merge(geo)
+    for i in range(len(geo2.mats)):
+        if geo2.mats[i] == 'bark':
+            geo2.mats[i] = 'prop'
+    return geo2
 
 
 # ---------------------------------------------------------------- collectibles and the egg

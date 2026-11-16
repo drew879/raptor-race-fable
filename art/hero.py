@@ -1,4 +1,5 @@
-"""Caudipteryx zoui, first pass, frozen mid-stride.
+"""Caudipteryx zoui, first pass, built standing in a rest pose with a skeleton.
+The game poses the skeleton in code (run, jump, slide), so there are no baked animations.
 
 What the fossils tell us and this model keeps:
 - about the size of a peacock, long legs built for running, short arms, short tail
@@ -15,8 +16,8 @@ import random
 
 from mathutils import Vector
 
-from lib.geo import (Geo, basis, catmull, clamp01, fbm, frames_along, lerp, mix, ramp, scale,
-                     smoothstep, srgb, vnoise)
+from lib.geo import (Geo, basis, catmull, chain_bind, clamp01, fbm, frames_along, lerp, mix, ramp,
+                     scale, smoothstep, srgb, vnoise)
 
 X = Vector((1, 0, 0))
 Y = Vector((0, 1, 0))
@@ -56,6 +57,10 @@ SPINE = [
 ]
 NK = len(SPINE) - 1
 
+# Leg segment lengths and the rest pose: angles from straight down, positive = forward.
+FEMUR, TIBIA, META = 0.13, 0.20, 0.13
+REST_LEG = (math.radians(26), math.radians(-34), math.radians(18), math.radians(88))
+
 
 def spine_point(k):
     """k in key units, 0 = tail tip .. NK = beak tip."""
@@ -67,6 +72,30 @@ def spine_radii(k):
     rx = catmull([s[2] for s in SPINE], k / NK)
     ry = catmull([s[3] for s in SPINE], k / NK)
     return max(rx, 0.003), max(ry, 0.003)
+
+
+# Spine joints (in key units) and the bone that owns each stretch between them.
+SPINE_JOINTS = [0.0, 1.7, 3.0, 4.5, 6.0, 7.5, 9.0, 13.0]
+SPINE_BONES = ['tail2', 'tail1', 'hips', 'chest', 'neck1', 'neck2', 'head']
+
+
+def leg_joints(side, angles=REST_LEG):
+    def d(a, out=0.0):
+        return Vector((side * out, math.sin(a), -math.cos(a))).normalized()
+
+    hip = Vector((side * 0.064, -0.02, 0.452))
+    knee = hip + d(angles[0], 0.12) * FEMUR
+    ankle = knee + d(angles[1], 0.06) * TIBIA
+    foot = ankle + d(angles[2], 0.0) * META
+    toe = foot + d(angles[3]) * 0.076
+    return hip, knee, ankle, foot, toe
+
+
+def arm_joints(side):
+    shoulder = Vector((side * 0.072, 0.185, 0.535))
+    elbow = Vector((side * 0.118, 0.115, 0.497))
+    hand = Vector((side * 0.165, 0.145, 0.487))
+    return shoulder, elbow, hand
 
 
 def body_color(k, s, p):
@@ -95,16 +124,21 @@ def body_color(k, s, p):
 
 def tuft(geo, rnd, p, t_dir, n_dir, length, width, base_col, tip_gain=1.25, lift=0.14, droop=0.45):
     """A short body feather lying back along the surface. It borrows the body's normal for
-    shading, so the coat reads as soft plumage with a broken edge instead of separate scales."""
+    shading, so the coat reads as soft plumage with a broken edge instead of separate scales.
+    The whole feather moves with the bone under its root."""
     d = (t_dir + n_dir * lift + Vector((rnd.uniform(-1, 1), rnd.uniform(-1, 1), rnd.uniform(-1, 1))) * 0.1).normalized()
     tip = mix(scale(base_col, tip_gain), base_col, 0.45)
 
     def w(u):
         return width * math.sqrt(max(0.0, math.sin(math.pi * min(1.0, 0.12 + 0.86 * u))))
 
+    outer = geo.bind
+    if callable(outer):
+        geo.bind = outer(Vector(p))
     geo.blade(p + n_dir * 0.0015, d, n_dir, length, w, lambda u, sd: mix(base_col, tip, u * u), 'feather',
               segs=3, droop=droop, fold=0.22, sway=(0.0, 0.25), phase=rnd.random(),
               shade_normal=(n_dir * 0.85 + d * 0.15))
+    geo.bind = outer
 
 
 def banded_feather(geo, base, direction, normal, length, width, bands, rnd, droop=0.18, fold=0.1,
@@ -134,15 +168,13 @@ TAIL_BANDS = [BLUE_BLACK, D, C, C, D, D, C, C, D, D, C, D]
 ARM_BANDS = [BLUE_BLACK, B, B, C, D, D, C, C, D, D]
 
 
-def leg(geo, rnd, side, angles, splay=0.03):
-    """angles: femur, tibia, metatarsus, toes, measured from straight down, positive = forward."""
+def leg(geo, rnd, side, angles=REST_LEG):
+    sfx = 'L' if side < 0 else 'R'
+    hip, knee, ankle, foot, toe_tip = leg_joints(side, angles)
+    geo.bind = chain_bind([hip, knee, ankle, foot, toe_tip], ['thigh' + sfx, 'shin' + sfx, 'meta' + sfx, 'toes' + sfx], 0.16)
+
     def d(a, out=0.0):
         return Vector((side * out, math.sin(a), -math.cos(a))).normalized()
-
-    hip = Vector((side * 0.064, -0.02, 0.452))
-    knee = hip + d(angles[0], 0.12) * 0.13
-    ankle = knee + d(angles[1], 0.06) * 0.20
-    foot = ankle + d(angles[2], 0.0) * 0.13
 
     def feathered(a, b, r0, r1, around=10, n=8, tufts=True):
         pts = [a.lerp(b, i / (n - 1)) for i in range(n)]
@@ -183,12 +215,12 @@ def leg(geo, rnd, side, angles, splay=0.03):
     bare([ankle + Vector((0, 0, 0.004)), ankle - Vector((0, 0, 0.004))], 0.0155, 0.0155)  # ankle knuckle
     bare([ankle, ankle.lerp(foot, 0.5), foot], 0.0115, 0.0105)
 
-    # three long toes forward, one small toe behind
+    # three long toes forward, one small toe behind; the toes move as one piece
+    geo.bind = [('toes' + sfx, 1.0)]
     toe_a = angles[3]
-    for k, (yaw, length) in enumerate(((-0.42, 0.058), (0.0, 0.076), (0.42, 0.06))):
+    for yaw, length in ((-0.42, 0.058), (0.0, 0.076), (0.42, 0.06)):
         dirv = d(toe_a)
-        fwd = Vector((math.sin(yaw) * 1.0, 0, 0))
-        base_dir = (dirv + Vector((side * 0.0 + math.sin(yaw) * 0.75, 0, 0))).normalized()
+        base_dir = (dirv + Vector((math.sin(yaw) * 0.75, 0, 0))).normalized()
         curl_dir = d(toe_a - 0.55)
         p0 = foot
         p1 = p0 + base_dir * (length * 0.55)
@@ -198,23 +230,25 @@ def leg(geo, rnd, side, angles, splay=0.03):
         geo.tube([p2, p2.lerp(claw_tip, 0.5), claw_tip], lambda t, ang: (0.0052 * (1 - t) + 0.0006,) * 2,
                  lambda t, ang, p: CLAW, 'skin', around=5, up_hint=Y, cap_start=False)
     back = foot + d(toe_a + math.pi * 0.9) * 0.022
+    geo.bind = [('meta' + sfx, 1.0)]
     bare([foot, back], 0.007, 0.004, around=5)
-    return hip, knee, ankle, foot
+    geo.bind = None
 
 
 def arm(geo, rnd, side):
-    shoulder = Vector((side * 0.072, 0.185, 0.535))
-    elbow = Vector((side * 0.118, 0.115, 0.497))
-    hand = Vector((side * 0.165, 0.145, 0.487))
+    sfx = 'L' if side < 0 else 'R'
+    shoulder, elbow, hand = arm_joints(side)
 
     def col(t, ang, p):
         return mix(BLUE_BLACK, SLATE, 0.3 + 0.3 * math.sin(ang))
 
+    geo.bind = chain_bind([shoulder, elbow, hand], ['arm' + sfx, 'hand' + sfx], 0.2)
     geo.tube([shoulder, shoulder.lerp(elbow, 0.5), elbow], lambda t, a: (lerp(0.026, 0.017, t),) * 2, col,
              'feather', around=7)
     geo.tube([elbow, elbow.lerp(hand, 0.5), hand], lambda t, a: (lerp(0.017, 0.011, t),) * 2, col,
              'feather', around=7)
-    # hand feathers: a fan sweeping from sideways round to straight back
+    # hand feathers: a fan sweeping from sideways round to straight back. They ride on the hand.
+    geo.bind = [('hand' + sfx, 1.0)]
     n = 8
     for i in range(n):
         f = i / (n - 1)
@@ -231,13 +265,17 @@ def arm(geo, rnd, side):
         p = elbow.lerp(hand, f) + Z * 0.012
         tuft(geo, rnd, p, Vector((side * 0.6, -0.8, 0)).normalized(), Z, 0.05, 0.014,
              mix(BLUE_BLACK, DEEP_BLUE, rnd.random()), lift=0.15)
+    geo.bind = None
 
 
 def build(seed=5):
+    """Returns (geo, bones). bones: name -> (parent, head, tail), parents listed first."""
     rnd = random.Random(seed)
     geo = Geo()
+    spine_bind = chain_bind([spine_point(k) for k in SPINE_JOINTS], SPINE_BONES, 0.22)
 
     # ---- body: one continuous surface from tail tip to beak tip
+    geo.bind = spine_bind
     count = 64
     ks = [NK * i / (count - 1) for i in range(count)]
     path = [spine_point(k) for k in ks]
@@ -279,7 +317,8 @@ def build(seed=5):
             tuft(geo, rnd, p, -tan, nd, length * (1.0 + 0.4 * ruff), lerp(0.017, 0.01, neck), base_c,
                  lift=0.12 + 0.22 * ruff, tip_gain=1.3)
 
-    # ---- tail fan: long banded feathers along both sides of the tail tip
+    # ---- tail fan: long banded feathers along both sides of the tail tip. They ride on the last tail bone.
+    geo.bind = [('tail2', 1.0)]
     tail_tip = spine_point(0.0)
     tail_axis = (spine_point(0.0) - spine_point(1.6)).normalized()  # points backward
     fan_up = (Z + tail_axis * 0.35).normalized()
@@ -307,15 +346,14 @@ def build(seed=5):
         d = (tail_axis * math.cos(ang) + fan_right * (side * math.sin(ang) * rnd.uniform(0.3, 1.0))).normalized()
         tuft(geo, rnd, p, d, fan_up, 0.07, 0.018, mix(BLUE_BLACK, DEEP_BLUE, rnd.random()), lift=0.12)
 
-    # ---- legs, mid-stride: left reaching forward to land, right kicked up behind
-    leg(geo, rnd, -1, (math.radians(52), math.radians(-6), math.radians(34), math.radians(74)))
-    leg(geo, rnd, 1, (math.radians(-22), math.radians(-64), math.radians(-116), math.radians(-150)))
-
-    # ---- arms with their feather fans
+    # ---- legs and arms, in the rest pose
+    leg(geo, rnd, -1)
+    leg(geo, rnd, 1)
     arm(geo, rnd, -1)
     arm(geo, rnd, 1)
 
     # ---- eyes: gold iris, dark pupil
+    geo.bind = [('head', 1.0)]
     for side in (-1, 1):
         c = spine_point(11.05) + Vector((side * 0.031, 0, 0.008))
         lat, lon = 6, 10
@@ -337,9 +375,33 @@ def build(seed=5):
             return INK
 
         geo.add_grid(rings, ecol, 'eye', close_u=True, flip=(side < 0))
+    geo.bind = None
+
+    # ---- skeleton
+    K = spine_point
+    bones = {
+        'hips': (None, K(3.0), K(4.5)),
+        'chest': ('hips', K(4.5), K(6.0)),
+        'neck1': ('chest', K(6.0), K(7.5)),
+        'neck2': ('neck1', K(7.5), K(9.0)),
+        'head': ('neck2', K(9.0), K(12.5)),
+        'tail1': ('hips', K(3.0), K(1.7)),
+        'tail2': ('tail1', K(1.7), K(0.0)),
+    }
+    for side, sfx in ((-1, 'L'), (1, 'R')):
+        hip, knee, ankle, foot, toe_tip = leg_joints(side)
+        bones['thigh' + sfx] = ('hips', hip, knee)
+        bones['shin' + sfx] = ('thigh' + sfx, knee, ankle)
+        bones['meta' + sfx] = ('shin' + sfx, ankle, foot)
+        bones['toes' + sfx] = ('meta' + sfx, foot, toe_tip)
+        shoulder, elbow, hand = arm_joints(side)
+        bones['arm' + sfx] = ('chest', shoulder, elbow)
+        bones['hand' + sfx] = ('arm' + sfx, elbow, hand)
 
     # rest the lowest point on the ground
     min_z = min(v.z for v in geo.verts)
     for v in geo.verts:
         v.z -= min_z
-    return geo
+    drop = Vector((0, 0, min_z))
+    bones = {name: (parent, Vector(head) - drop, Vector(tail) - drop) for name, (parent, head, tail) in bones.items()}
+    return geo, bones

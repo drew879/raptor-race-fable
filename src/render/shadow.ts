@@ -30,19 +30,38 @@ export class SunShadow {
       side: THREE.DoubleSide,
       colorWrite: false,
       vertexShader: /* glsl */ `
+        #include <skinning_pars_vertex>
         void main() {
+          vec3 transformed = position;
+          #include <skinbase_vertex>
+          #include <skinning_vertex>
           mat4 m = modelMatrix;
           #ifdef USE_INSTANCING
           m = modelMatrix * instanceMatrix;
           #endif
-          gl_Position = projectionMatrix * viewMatrix * m * vec4(position, 1.0);
+          gl_Position = projectionMatrix * viewMatrix * m * vec4(transformed, 1.0);
         }`,
       fragmentShader: /* glsl */ `void main() { gl_FragColor = vec4(1.0); }`,
     });
   }
 
-  render(renderer: THREE.WebGLRenderer, scene: THREE.Scene, focus: THREE.Vector3) {
+  private right = new THREE.Vector3();
+  private upL = new THREE.Vector3();
+  private snapped = new THREE.Vector3();
+
+  render(renderer: THREE.WebGLRenderer, scene: THREE.Scene, focusIn: THREE.Vector3) {
     const sun = world.uSunDir.value;
+    // Move the map in whole-texel steps. Shadows of things that stand still then land on
+    // exactly the same texels after every refresh, so nothing shimmers as the runner moves.
+    this.right.set(0, 1, 0).cross(sun).normalize();
+    this.upL.copy(sun).cross(this.right).normalize();
+    const texel = (this.halfExtent * 2) / SIZE;
+    const fr = focusIn.dot(this.right);
+    const fu = focusIn.dot(this.upL);
+    const focus = this.snapped
+      .copy(focusIn)
+      .addScaledVector(this.right, Math.round(fr / texel) * texel - fr)
+      .addScaledVector(this.upL, Math.round(fu / texel) * texel - fu);
     this.camera.position.copy(focus).addScaledVector(sun, this.depth * 0.6);
     this.camera.up.set(0, 1, 0);
     this.camera.lookAt(focus);

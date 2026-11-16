@@ -153,6 +153,10 @@ class Geo:
         self.mats = []     # per face: role name
         self.smooth = []   # per face: bool
         self.nrm = []      # per face: None, or a normal to use for every corner (soft feather shading)
+        # Skinning. Set `bind` to a list of (bone, weight) or to a function of position that
+        # returns one; every vertex created while it is set gets those weights.
+        self.bind = None
+        self.vbind = []    # per vertex: list of (bone, weight), or None
 
     def face(self, idx, colors, mat, uv=(0.0, 0.0), smooth=True, normal=None):
         """colors: one color for the face, or a list with one per corner. uv likewise."""
@@ -168,7 +172,10 @@ class Geo:
         self.nrm.append(normal)
 
     def vert(self, p):
-        self.verts.append(Vector(p))
+        v = Vector(p)
+        self.verts.append(v)
+        b = self.bind
+        self.vbind.append(b(v) if callable(b) else b)
         return len(self.verts) - 1
 
     def add_grid(self, pts, color_fn, mat, uv_fn=None, close_u=False, smooth=True, flip=False):
@@ -277,6 +284,7 @@ class Geo:
     def merge(self, other):
         off = len(self.verts)
         self.verts.extend(other.verts)
+        self.vbind.extend(other.vbind)
         for f in other.faces:
             self.faces.append(tuple(i + off for i in f))
         self.cols.extend(other.cols)
@@ -337,6 +345,15 @@ class Geo:
 
         obj = bpy.data.objects.new(name, mesh)
         bpy.context.scene.collection.objects.link(obj)
+        if any(b for b in self.vbind):
+            groups = {}
+            for i, b in enumerate(self.vbind):
+                for bone, w in (b or []):
+                    if w <= 0.0:
+                        continue
+                    g = groups.get(bone) or obj.vertex_groups.new(name=bone)
+                    groups[bone] = g
+                    g.add([i], w, 'REPLACE')
         if ao:
             bake_ao(obj, dist=ao_dist, strength=ao_strength, samples=ao_samples, ground=ground_ao)
         return obj
@@ -424,7 +441,56 @@ def reset_scene():
             block.remove(item)
 
 
-def export_glb(objects, path):
+def chain_bind(points, names, blend=0.14):
+    """Weights for a limb or spine: points are the joints in order, names the bone for each
+    segment between them. Vertices near a joint blend between the two bones that meet there."""
+    pts = [Vector(p) for p in points]
+
+    def bind(p):
+        best = None
+        for i in range(len(names)):
+            a, b = pts[i], pts[i + 1]
+            ab = b - a
+            t = clamp01((p - a).dot(ab) / max(ab.length_squared, 1e-9))
+            d = (a + ab * t - p).length
+            if best is None or d < best[0]:
+                best = (d, i, t)
+        _, i, t = best
+        if t < blend and i > 0:
+            w = 0.5 + 0.5 * t / blend
+            return [(names[i], w), (names[i - 1], 1.0 - w)]
+        if t > 1.0 - blend and i < len(names) - 1:
+            w = 0.5 + 0.5 * (1.0 - t) / blend
+            return [(names[i], w), (names[i + 1], 1.0 - w)]
+        return [(names[i], 1.0)]
+
+    return bind
+
+
+def make_armature(name, bones, mesh_obj):
+    """bones: dict of bone name -> (parent name or None, head, tail), in order parents first.
+    Creates the armature and binds mesh_obj to it using the vertex groups it already has."""
+    arm_data = bpy.data.armatures.new(name)
+    arm = bpy.data.objects.new(name, arm_data)
+    bpy.context.scene.collection.objects.link(arm)
+    bpy.context.view_layer.objects.active = arm
+    bpy.ops.object.mode_set(mode='EDIT')
+    for bone_name, (parent, head, tail) in bones.items():
+        eb = arm_data.edit_bones.new(bone_name)
+        eb.head = Vector(head)
+        eb.tail = Vector(tail)
+        eb.roll = 0.0
+        if parent:
+            eb.parent = arm_data.edit_bones[parent]
+            eb.use_connect = False
+    bpy.ops.object.mode_set(mode='OBJECT')
+    mesh_obj.parent = arm
+    mod = mesh_obj.modifiers.new('Armature', 'ARMATURE')
+    mod.object = arm
+    return arm
+
+
+def export_glb(objects, path, skins=False):
     bpy.ops.object.select_all(action='DESELECT')
     for o in objects:
         o.select_set(True)
@@ -442,7 +508,7 @@ def export_glb(objects, path):
         export_all_vertex_colors=False,
         export_active_vertex_color_when_no_material=True,
         export_animations=False,
-        export_skins=False,
+        export_skins=skins,
         export_image_format='NONE',
     )
 

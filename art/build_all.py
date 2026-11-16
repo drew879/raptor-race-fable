@@ -87,22 +87,42 @@ kit('flora_trees', [
     ('treefern_lo', lambda: plants.tree_fern(43, 3.6, lod=1), dict(ao_dist=1.2, ao_strength=0.9, ao_samples=12, ground_ao=0.5)),
     ('ginkgo_lo', lambda: plants.ginkgo(53, 10.0, lod=1), dict(ao_dist=1.6, ao_strength=0.95, ao_samples=12, ground_ao=0.8)),
     ('conifer_lo', lambda: plants.conifer(63, 19.0, 0.45, lod=1), dict(ao_dist=2.0, ao_strength=0.95, ao_samples=12, ground_ao=1.0)),
+    ('conifer_far', lambda: plants.conifer(64, 19.0, 0.45, lod=2), dict(ao_dist=2.0, ao_strength=0.95, ao_samples=8, ground_ao=1.0)),
+    ('ginkgo_far', lambda: plants.ginkgo(54, 10.0, lod=2), dict(ao_dist=1.6, ao_strength=0.95, ao_samples=8, ground_ao=0.8)),
 ], preview=dict(gap=1.5, lens=40))
 
 kit('props', [
     ('log', lambda: plants.fallen_log(71), dict(ao_dist=0.4, ground_ao=0.18)),
+    ('arch', lambda: plants.arch_log(), dict(ao_dist=0.7, ground_ao=0.25)),
+    ('boulder', lambda: plants.boulder(), dict(ao_dist=0.5, ground_ao=0.25)),
+    ('lane_tree', lambda: plants.lane_tree(), dict(ao_dist=0.8, ao_samples=16, ground_ao=0.5)),
     ('amber', lambda: plants.amber_drop(), dict(ao=False)),
     ('egg', lambda: plants.egg(), dict(ao=False)),
 ], preview=dict(lens=60))
 
-try:
-    import hero  # noqa: E402
-    kit('caudipteryx', [
-        ('caudipteryx', lambda: hero.build(), dict(ao_dist=0.25, ao_strength=0.9, ao_samples=28)),
-    ], preview=dict(lens=50, size=(760, 760), views=[
-        ('behind', (0.0, -1.55, 1.15), (0.0, 0.1, 0.42)),
-        ('side', (1.7, 0.1, 0.5), (0.0, 0.1, 0.42)),
-        ('front', (0.9, 1.5, 0.75), (0.0, 0.1, 0.42)),
-    ]))
-except ModuleNotFoundError:
-    pass
+import hero  # noqa: E402
+
+
+def hero_kit():
+    """The rigged hero: one skinned mesh and its skeleton."""
+    name = 'caudipteryx'
+    if only and not any(o in name for o in only):
+        return
+    t0 = time.time()
+    G.reset_scene()
+    g, bones = hero.build()
+    obj = g.to_object(name, ao_dist=0.25, ao_strength=0.9, ao_samples=28)
+    arm = G.make_armature(name + '_rig', bones, obj)
+    tris = sum(len(p.vertices) - 2 for p in obj.data.polygons)
+    G.export_glb([arm, obj], os.path.join(OUT, name + '.glb'), skins=True)
+    size = os.path.getsize(os.path.join(OUT, name + '.glb')) / 1024
+    print(f'[kit] {name}: {tris} tris, {len(bones)} bones, {size:.0f} KB, {time.time() - t0:.1f}s')
+    if not no_preview:
+        for tag, eye, target in (('behind', (0.0, -1.55, 1.15), (0.0, 0.1, 0.42)),
+                                 ('side', (1.7, 0.1, 0.5), (0.0, 0.1, 0.42)),
+                                 ('front', (0.9, 1.5, 0.75), (0.0, 0.1, 0.42))):
+            G.render_preview(os.path.join(PREVIEW, f'{name}_{tag}.png'), eye=eye, target=target, lens=50,
+                             size=(760, 760))
+
+
+hero_kit()

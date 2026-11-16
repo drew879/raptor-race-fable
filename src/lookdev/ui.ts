@@ -26,8 +26,9 @@ export function makeViewerUI(root: HTMLElement, styles: Style[], onPick: (index:
         <div class="title"><b></b><span></span></div>
         <div class="tabs"></div>
       </div>
+      <a class="run-link" href="?mode=run">Try the rough run</a>
       <div class="foot">
-        <span class="hint">Tap the picture to hide controls</span>
+        <span class="tip">Tap the picture to hide controls</span>
         <button class="fit-toggle">build ${BUILD} · fit check</button>
       </div>
     </div>`;
@@ -60,6 +61,8 @@ export function makeViewerUI(root: HTMLElement, styles: Style[], onPick: (index:
       root.style.setProperty('--ui-panel', style.ui.panel);
       root.style.setProperty('--ui-accent', style.ui.accent);
       root.style.setProperty('--ui-text', style.ui.text);
+      const link = root.querySelector('.run-link') as HTMLAnchorElement | null;
+      if (link) link.href = `?mode=run&style=${style.id}`;
     },
     refresh() {
       fitText.textContent = viewportReport();

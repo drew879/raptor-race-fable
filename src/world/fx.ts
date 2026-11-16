@@ -180,3 +180,33 @@ export function makeContactShadow(width: number, length: number, strength = 0.5)
   mesh.name = 'contact-shadow';
   return mesh;
 }
+
+/** Many soft glows drawn in one call (one per amber piece). Scale an instance to zero to hide it. */
+export function makeGlowField(count: number, color: THREE.ColorRepresentation, strength = 1): THREE.InstancedMesh {
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { uColor: { value: new THREE.Color(color) }, uStrength: { value: strength } },
+    vertexShader: /* glsl */ `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        vec4 center = modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+        float size = length(instanceMatrix[0].xyz);
+        vec4 mv = viewMatrix * center;
+        mv.xy += position.xy * size;
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: /* glsl */ `
+      uniform vec3 uColor; uniform float uStrength; varying vec2 vUv;
+      ${DISPLAY}
+      void main() {
+        float d = length(vUv * 2.0 - 1.0);
+        float a = pow(max(0.0, 1.0 - d), 2.2) * uStrength;
+        gl_FragColor = vec4(toDisplay(uColor), a);
+      }`,
+  });
+  softBlend(mat, true);
+  const mesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), mat, count);
+  mesh.frustumCulled = false;
+  mesh.name = 'glow-field';
+  return mesh;
+}

@@ -2,8 +2,10 @@ import './style.css';
 import * as THREE from 'three';
 import { startUpdates } from './app/build';
 import { tickFps, watchViewport } from './app/viewport';
-import { buildLookdev } from './lookdev/scene';
-import { makeViewerUI } from './lookdev/ui';
+import { buildRun } from './game/run';
+import { buildHeroLab } from './herolab/scene';
+import { buildLookdev, type Lookdev } from './lookdev/scene';
+import { makeViewerUI, type ViewerUI } from './lookdev/ui';
 import { Post } from './render/post';
 import { applyStyle, STYLES } from './render/styles';
 
@@ -29,7 +31,6 @@ async function start() {
   const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
   // the paint shaders write finished display colors themselves
   renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
-  renderer.autoClear = true;
   const dpr = Math.min(window.devicePixelRatio || 1, Number(params.get('dpr')) || 2);
   renderer.setPixelRatio(dpr);
   stage.appendChild(renderer.domElement);
@@ -37,13 +38,12 @@ async function start() {
   const post = new Post(renderer, params.get('msaa') === '0' ? 0 : 4);
   post.enabled = params.get('post') !== '0';
 
-  const view = await buildLookdev();
-
-  let styleIndex = Math.max(0, STYLES.findIndex((s) => s.id === (params.get('style') ?? localStorage.getItem('rr-style'))));
-  const pick = (index: number) => {
+  // which look: the link can ask for one, otherwise the last one used, otherwise Golden Journal
+  const wanted = params.get('style') ?? localStorage.getItem('rr-style') ?? 'goldjournal';
+  let styleIndex = Math.max(0, STYLES.findIndex((s) => s.id === wanted));
+  const setStyle = (index: number) => {
     styleIndex = index;
     applyStyle(STYLES[index]);
-    viewer.setStyle(index);
     document.documentElement.style.background = STYLES[index].ui.panel;
     try {
       localStorage.setItem('rr-style', STYLES[index].id);
@@ -51,16 +51,33 @@ async function start() {
       /* private mode */
     }
   };
-  boot.remove();
-  const viewer = makeViewerUI(ui, STYLES, pick);
-  pick(styleIndex);
-  if (params.get('clean') === '1') ui.classList.add('clean');
+  setStyle(styleIndex);
+
+  // modes: the concept frames (default for now), the rough run, and a hero test view
+  const mode = params.get('mode') ?? 'concept';
+  let view: Lookdev;
+  let viewer: ViewerUI | null = null;
+  if (mode === 'run') {
+    view = await buildRun(ui, stage, { styles: STYLES, styleIndex: () => styleIndex, pickStyle: setStyle });
+    boot.remove();
+  } else {
+    view = mode === 'hero' ? await buildHeroLab(params) : await buildLookdev();
+    boot.remove();
+    viewer = makeViewerUI(ui, STYLES, (index) => {
+      setStyle(index);
+      viewer?.setStyle(index);
+    });
+    viewer.setStyle(styleIndex);
+    if (params.get('clean') === '1') ui.classList.add('clean');
+  }
+  // styles set uniforms the scene may have just created materials for
+  setStyle(styleIndex);
 
   watchViewport(({ width, height }) => {
     renderer.setSize(width, height, false);
     post.setSize(width, height, dpr);
     view.resize(width / height);
-    viewer.refresh();
+    viewer?.refresh();
   });
 
   const t0 = performance.now();
@@ -74,14 +91,14 @@ async function start() {
     last = now;
     if (sinceReport > 500) {
       sinceReport = 0;
-      viewer.refresh();
+      viewer?.refresh();
     }
     view.update(time, renderer);
     post.render(view.scene, view.camera);
   });
 
   // handy for checking the picture from the console
-  Object.assign(window, { rr: { renderer, view, post, pick, STYLES } });
+  Object.assign(window, { rr: { renderer, view, post, setStyle, STYLES } });
 }
 
 start().catch((e) => fail(String(e?.message ?? e)));
