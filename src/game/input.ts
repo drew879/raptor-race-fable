@@ -1,5 +1,6 @@
 // Swipes and keys. A swipe fires as soon as the finger has moved far enough,
 // without waiting for it to lift, so moves feel immediate.
+// One touch makes one move: however long the swipe, the runner changes one lane.
 
 export type Move = 'left' | 'right' | 'up' | 'down';
 
@@ -18,8 +19,8 @@ export function listenForMoves(surface: HTMLElement, onMove: (move: Move) => voi
     if (Math.abs(dx) < THRESHOLD && Math.abs(dy) < THRESHOLD) return;
     if (Math.abs(dx) > Math.abs(dy)) onMove(dx > 0 ? 'right' : 'left');
     else onMove(dy > 0 ? 'down' : 'up');
-    // start a fresh swipe from here, so one long drag can chain two moves
-    start = { x: e.clientX, y: e.clientY, id: e.pointerId };
+    // this touch has made its move; the next one starts with a fresh touch
+    start = null;
   };
   const up = (e: PointerEvent) => {
     if (start && e.pointerId === start.id) start = null;

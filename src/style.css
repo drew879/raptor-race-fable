@@ -18,11 +18,25 @@ html {
   -webkit-text-size-adjust: 100%;
 }
 
+/* A Home Screen app on a recent iPhone draws under the status bar, and iOS then hands the
+   page a viewport that is short by the status bar's height and paints nothing below it
+   (WebKit bug 301108). The viewport is only short while the page is shorter than the screen,
+   so here the page is made exactly as tall as the screen. The min() stops it ever being
+   taller than the screen, which would let it scroll. */
+@media (display-mode: standalone) {
+  html {
+    min-height: min(100lvh, calc(100% + env(safe-area-inset-top)));
+    /* iOS blurs a band under the status bar; the top row sits just below it */
+    --blur: 14px;
+  }
+}
+html.standalone {
+  min-height: min(100lvh, calc(100% + env(safe-area-inset-top)));
+  --blur: 14px;
+}
+
 body {
   margin: 0;
-  position: fixed;
-  inset: 0;
-  overflow: hidden;
   background: var(--bg);
   touch-action: none;
   user-select: none;
@@ -31,18 +45,10 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* The 3D view. Sized in CSS first, then corrected in viewport.ts for the Home Screen app. */
+/* The 3D view fills whatever viewport the browser gives us; viewport.ts reads its real size. */
 #stage {
   position: fixed;
-  left: 0;
-  top: 0;
-  width: 100vw;
-  height: 100vh;
-}
-@supports (height: 100dvh) {
-  #stage {
-    height: 100dvh;
-  }
+  inset: 0;
 }
 #stage canvas {
   display: block;
@@ -53,10 +59,7 @@ body {
 /* UI sits above the 3D view and matches its box. Only its children take touches. */
 #ui {
   position: fixed;
-  left: 0;
-  top: 0;
-  width: 100vw;
-  height: 100vh;
+  inset: 0;
   pointer-events: none;
 }
 #ui > * {
@@ -79,7 +82,7 @@ body {
 }
 .hud {
   position: absolute;
-  top: calc(var(--sat) + 8px);
+  top: calc(var(--sat) + 8px + var(--blur, 0px));
   left: calc(var(--sal) + 12px);
   right: calc(var(--sar) + 12px);
   display: flex;
@@ -263,10 +266,10 @@ body {
   pointer-events: none !important;
 }
 .hint {
-  top: calc(var(--sat) + 64px);
+  top: calc(var(--sat) + 64px + var(--blur, 0px));
 }
 .warn {
-  top: calc(var(--sat) + 116px);
+  top: calc(var(--sat) + 116px + var(--blur, 0px));
   font-size: 17px;
   border-color: #d2552b;
 }
@@ -347,9 +350,40 @@ body {
   font-size: 14px;
   opacity: 0.8;
 }
+.sheet .links {
+  display: flex;
+  justify-content: center;
+  gap: 22px;
+}
 .sheet small {
-  font-size: 11.5px;
+  font-size: 11px;
+  line-height: 1.45;
   opacity: 0.6;
+  white-space: pre-line;
+}
+/* tabs with a word on each, like the egg's three ways of rolling */
+.tabs.words button {
+  width: auto;
+  height: 40px;
+  padding: 0 10px;
+  font-size: 14px;
+}
+
+/* ---------- speed test ---------- */
+.bench {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: calc(var(--sat) + 12px + var(--blur, 0px));
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(10, 14, 13, 0.9);
+  color: #f6ecd6;
+  font: 13px/1.6 ui-monospace, Menlo, monospace;
+  white-space: pre-wrap;
+}
+.bench a {
+  color: #f2a93b;
 }
 .picker .run-link {
   display: block;
