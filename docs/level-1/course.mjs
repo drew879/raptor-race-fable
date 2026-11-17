@@ -169,7 +169,7 @@ export const KIND_NAME = {
 export const EGG = {
   startLead: 15, // meters ahead when the chase begins
   closing: 0.13, // meters per second the runner gains while running clean and close behind
-  closingFar: 0.6, // proposed: what that rises to as the egg's lead nears lostAt, so a bad patch can be won back
+  closingFar: 0.6, // what that rises to as the egg's lead nears lostAt, so a bad patch can be won back (agreed 2026-11-16)
   bump: 3.2, // meters the egg gains per bump
   warnAt: 21,
   lostAt: 26,

@@ -7,7 +7,8 @@ Decisions and progress. Read `raptor-race-brief.md` first; it's the source of tr
 - **Milestone 1 (style): done. The look is B, the Painted Diorama.** Drew, 2026-11-16, after trying B+ (B with ink on the animals): "Let's just go with B... it just looks the best." Aidan had picked B too. AB and B+ are out of the code (they are in the history); the pickers are gone.
 - **Milestone 2 (rough playable run): done.**
 - **Milestone 3 (runner, egg and chick up close): approved.** Drew: "Looks excellent overall." Runner from behind in the run: good. Egg: good. Sit pose: reads. Chick: **Slate** (the other two are deleted). Teeth: keep, but they "strangely" pointed straight ahead; they now hang down under the front of the upper jaw with a slight forward lean. The opening nest will hold a **clutch**, not one egg. The turntable stays at `?mode=close`.
-- **Milestone 4 has begun with a plan: the Level 1 course map.** Drew's answers (2026-11-16): order and pacing "looks good"; hollow log "love it"; Psittacosaurus "let's try it out"; Fan out "interested to see how it looks" (now in the rough run); the fork needed explaining (done, see below); losing the egg he "kind of likes", with one point to settle (catch-up). See "Level 1 course map". Nothing of the level itself is built.
+- **The course map is agreed** (2026-11-16, last answers: Fan out "keep, love it"; catch-up "faster when behind"; Wild egg "great", with Lively, Wild and Wilder all offered for now; body turn "perfect"). The fork was explained and drew no objection. **Level building has started** with the first two new obstacles, a creek and a hollow log, both in the rough run to try (build 24). Still to build: the Psittacosaurus, the fork, hidden finds, checkpoints and losing the egg, then the layout itself from `docs/level-1/course.mjs`, then the opening and ending.
+- **Milestone 4 began with a plan: the Level 1 course map.** Drew's answers (2026-11-16): order and pacing "looks good"; hollow log "love it"; Psittacosaurus "let's try it out"; Fan out "interested to see how it looks" (now in the rough run); the fork needed explaining (done, see below); losing the egg he "kind of likes", with one point to settle (catch-up). See "Level 1 course map". Nothing of the level itself is built.
 - **Solid obstacles: approved.** Bump "honestly perfect", over/under/around "perfect". The egg's dodges were "a surprise hit": Aidan "laughed uncontrollably" at it bobbing, weaving and hopping logs, and Drew asked to lean into it and make it "even more agile and livelier". Build 22 adds a Wild egg to compare (see below). The body turn went unnoticed and has been made much stronger.
 - **Frame rate: holding 60 on the phone** (build 18, Home Screen, late in a long session: 60 fps, 2% late, full sharpness). See "Frame rate".
 - Live build: https://drew879.github.io/raptor-race-fable/ now opens the rough run. Close-up: `?mode=close`. Speed test: `?mode=bench`. The old concept frame: `?mode=concept`.
@@ -50,6 +51,15 @@ Aidan pointed out that the runner slowed on a hit but slid through the obstacle,
 **Not built yet:** sounds for the bump and the kick; a creek (a miss there is a splash and a slow wade, nothing to bump); the chick showing in the egg's hole when it kicks.
 
 **The body turns into a lane change** (asked for the same day). The first version followed the runner's real heading (up to 17 degrees) and Drew "literally didn't even notice it": a lane change is over in a sixth of a second, so the turn was gone before it could be seen. Now the body snaps up to 30 degrees toward the lane it is making for and straightens over about 0.4 s, while the head keeps looking down the trail. `st.heading` in `run.ts`.
+
+**New obstacles (build 24), first pieces of the level.**
+- **Creek** (`creek` in `art/plants.py`, role `water` in the paint shader): a bright band of running water across the trail with stones on its banks. Jump it. A miss has nothing to bump, so it is a splash and a slow wade (`wade` in `run.ts`), at the same cost as a bump. The egg hops it as it hops a log.
+- **Hollow log** (`hollow_log`): lies along the trail in one lane, 3.4 m long, with a bore too low to run through upright. Boulders (ordinary obstacles, 2.2 m before its middle) close the other lanes, so the only way is through, sliding. You only have to be sliding at the mouth: once in, the runner stays down until it is out. The camera ducks and follows through the bore. The egg lines up and rolls through like a barrel. Bumping its rim, or a boulder beside it, ends with the runner ducking through.
+- On the test course the third log (113 m) is now a creek and the last arch (337 m) is now a hollow log in the middle lane.
+
+**The egg's three settings (build 23).** Lively, Wild, Wilder (Wobbly is gone). Wild is the default. Wilder turns Wild up: a 1.6 m hop with three skips, a big bounce every other bounce, wider and quicker side-steps, and now and then it lands on its end and spins like a top; it also surges ahead and drops back when the trail is clear. Drew: "eventually we can just pick one."
+
+**The chase rules (build 23), as agreed.** The egg starts 15 m ahead. Running clean you gain 0.13 m/s, rising to 0.6 m/s as its lead nears 26 m. A bump costs 3.2 m. The warning shows from 21 m. In the rough run the lead is simply held at 26 m; in the level that is where the egg is lost.
 
 **The Wild egg (build 22).** The pause sheet's egg choices are now Wobbly, Lively, Wild; Wild is the default (saved under a new key so everyone meets it first). Wild is Lively plus showing off: it shivers and shrinks a little before a hop, hops higher (1.25 m) with a flip and lands in two skips; leaves its swing round trees late and takes it wide with a little hop into it; spins up under arches and pops out the far side; and where the trail is clear, every third bounce is a big one and it side-steps quickly between the lanes. It still never touches anything (same simulated runs, speeds 8 and 11). If Aidan prefers it, retire Lively.
 
@@ -109,6 +119,9 @@ Build numbers here are the ones shown on the phone.
 - **Build 20 on the phone: the blur was not it.** Pause sheet at speed 11, phone at 21% battery after an evening of testing: 51 fps, sharpness 80% (saved from the session before), 9% late frames, and a check at 367 s that found 19% late at 80%, 2% at half, 6% back at 80%. So even at 80% it was missing frames. (The "80 draws" on that sheet is a frame in which the shadow map was redrawn: about 30 extra draws, every 2.5 m.)
 - **What I now think:** the speed test measures short bursts on a cool chip. Minutes into a session the phone is warm and gives less, and what it gives less of shows up as a cost per pixel. So "full sharpness" has to be cheaper than the speed test says it needs to be.
 - **Build 22: edge smoothing is 2 samples, down from 4** (`SAMPLES` in `post.ts`; the speed test put 4x at 1.6 ms of 8.6 and has a line to compare the two). `?msaa=4` brings the old setting back.
+- **Build 22 on the phone, at 6% battery (9:42 pm, after hours of testing):** 35% of frames late at full sharpness, 16% late even at half, 40% late back at full; it settled at 60% with 5% late and a longest frame of 80 ms. Half sharpness not being enough means the phone was slow at everything, which points at the phone's state (nearly flat, used all evening) more than at pixels. Across the evening the readings got worse as the battery fell (30%: fine at full; 25%: needed 60%; 21%: 9% late at 80%; 6%: this), whatever each build changed. **So no conclusion can be drawn about 2x smoothing from that screenshot.**
+- **To get a clean reading (build 23):** the pause sheet now times a burst of frames a moment after it opens and prints "one frame costs X ms right now at N% sharpness". A fresh phone should say about 8 at full. Ask Drew for a pause sheet and a speed test on a charged, cool phone, and compare with one late in a long session.
+- **Shadow map (build 23):** each refresh was drawing every shadow-casting plant in the whole view; now only those within 58 m of the runner. That turned out to save only 15 to 20%, because most of the cost is the detailed plants close by: a refresh still draws 120 to 210 thousand triangles, three or four times a second. If spikes ("longest 80 ms") matter on a healthy phone, the next step is cheaper stand-ins for shadows or leaving ferns out of the map.
 - If that is not enough: draw at 1.75 pixels per point in place of 2; then lighten the forest (about 3.7 ms of the 8.6); then look at the shadow map's redraw, which lands on one frame in fourteen at speed 8 and one in ten at speed 11.
 - Drew and Aidan play at speed 11, not 8. Test at both.
 - **Headroom:** about 8 ms of a 16.7 ms budget by the speed test. If the real level needs more, the lever is forest triangles (lighter middle-distance models, fewer far plants).
@@ -135,12 +148,14 @@ Build numbers here are the ones shown on the phone.
 **For the story scenes later** (from the same fact check): oviraptorosaur nests held many eggs in pairs, in rings, blunt ends up; adults have been found sitting on them with arms spread round the edge; which parent sat is unknown (possibly the father). The game says "parent", which is right. Drew chose a clutch for the opening nest (2026-11-16), with ours the one that rolls away.
 
 ### Not yet verified on the real phone
-- Build 22: the Wild egg, the stronger body turn, Fan out, and whether 2x edge smoothing keeps sharpness at full (and whether edges look any rougher).
+- Builds 23 and 24: the Wilder egg, the creek, the hollow log (including the view through it), the new chase numbers.
+- Speed on a charged, cool phone: the pause sheet's new "one frame costs" line and the speed test.
 
 ### Next
-- Drew's answers: Wild or Lively, the body turn, Fan out, the catch-up rule, and a pause sheet from build 22.
-- Then build the level from `docs/level-1/course.mjs`, new obstacle kinds first (creek, hollow log, Psittacosaurus), then the fork.
+- Drew and Aidan try the creek and the hollow log; a clean speed reading.
+- Keep building the level: the dozing Psittacosaurus (a new animal model, so check its anatomy first), the fork (side lanes swinging out round an island with a giant ginkgo), hidden finds, checkpoints and losing the egg. Then port `docs/level-1/course.mjs` into the game as the level.
 - Known rough spots on the runner: the sitting pose is a first pass; the chick's down is made of flat cards (fine at its size, visible zoomed right in).
+- The creek model is heavy for what it is (8,000 triangles, nearly all stones). Lighten the stones.
 
 ## How the code is laid out
 
@@ -227,7 +242,7 @@ These are the kinds, not a count. They repeat and combine along the course; expe
 
 ## Open questions
 
-- Wild or Lively for the egg? Is the body turn right now? Does Fan out look good, or should it be the magnet?
-- Catch-up: gain faster when far behind (proposed), or one steady pace?
-- Does sharpness stay at full with 2x edge smoothing, and do edges still look clean?
+- Do the creek and the hollow log read at a glance and feel fair? Is the splash-and-wade right for a missed creek?
+- Which egg in the end: Lively, Wild or Wilder?
+- How does the game run on a charged, cool phone (pause sheet line and speed test)?
 - Should a slide be holdable by swiping down again? Drew is on the fence.

@@ -56,6 +56,7 @@ export type Role =
   | 'eye'
   | 'egg'
   | 'amber'
+  | 'water'
   | 'ridge';
 
 export interface RoleLook {
@@ -118,6 +119,7 @@ const ROLE_BASE: Record<Role, RoleBase> = {
   eye: { ...solid, defines: { ROLE_EYE: 1, USE_DETAIL: 1 }, dapple: 0, shadow: 0.2, rim: 0, keepLine: 1 },
   egg: { ...solid, defines: { ROLE_EGG: 1 }, rim: 0.7, dapple: 0.1, shadow: 0.4, ao: 0, keepLine: 1 },
   amber: { ...solid, defines: { ROLE_AMBER: 1 }, dapple: 0, shadow: 0, ao: 0, keepLine: 1 },
+  water: { ...solid, defines: { ROLE_WATER: 1 }, dapple: 0.5, shadow: 0.6, rim: 0.5, line: 0, ao: 0 },
   ridge: { ...solid, defines: { ROLE_RIDGE: 1 }, side: THREE.DoubleSide, dapple: 0, shadow: 0, rim: 0, line: 0.6, ao: 0 },
 };
 
@@ -505,6 +507,18 @@ void main() {
     float lower = smoothstep(-aa, aa, mix(-1.25, -0.5, uBlink) - e.y);
     lid = clamp(upper + lower, 0.0, 1.0);
     albedo = mix(c, uLid, lid);
+  }
+  #endif
+
+  #ifdef ROLE_WATER
+  {
+    // running water: bright glints sliding along the stream, so a creek reads as water at a glance
+    vec2 w = vWorld.xz;
+    float g1 = PLAIN(vec2(w.x * 1.1 + uTime * 0.35, w.y * 2.6)).b;
+    float g2 = PLAIN(vec2(w.x * 2.3 - uTime * 0.22, w.y * 4.1 + 3.0)).a;
+    float glint = smoothstep(0.56, 0.68, g1 * 0.6 + g2 * 0.4);
+    albedo = mix(albedo, vec3(0.86, 0.97, 1.0), glint * 0.75);
+    ao = 1.0;
   }
   #endif
 

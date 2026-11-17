@@ -8,12 +8,12 @@ import type { Segment } from '../world/track';
 export const LANE = 0.68;
 export const DEFAULT_SPEED = 8; // meters per second
 
-export type ObstacleKind = 'log' | 'arch' | 'boulder' | 'tree';
+export type ObstacleKind = 'log' | 'arch' | 'boulder' | 'tree' | 'creek' | 'hollow';
 
 export interface Obstacle {
   s: number;
   kind: ObstacleKind;
-  /** Lanes it blocks. Logs and arches span the trail. */
+  /** Lanes it blocks. Logs, creeks and arches span the trail. A hollow log lies in its one lane, with boulders (their own obstacles) closing the others. */
   lanes: number[];
 }
 
@@ -27,7 +27,7 @@ const ALL = [-1, 0, 1];
 const O = (s: number, kind: ObstacleKind, ...lanes: number[]): Obstacle => ({
   s,
   kind,
-  lanes: kind === 'log' || kind === 'arch' ? ALL : lanes,
+  lanes: kind === 'log' || kind === 'arch' || kind === 'creek' ? ALL : lanes,
 });
 
 export const SEGMENTS: Segment[] = [
@@ -62,7 +62,7 @@ export const OBSTACLES: Obstacle[] = [
   // jumps
   O(86, 'log'),
   O(100, 'log'),
-  O(113, 'log'),
+  O(113, 'creek'),
   // slides
   O(128, 'arch'),
   O(141, 'arch'),
@@ -80,7 +80,10 @@ export const OBSTACLES: Obstacle[] = [
   O(300, 'log'),
   O(313, 'tree', 0),
   O(325, 'log'),
-  O(337, 'arch'),
+  // the hollow log: boulders close the lanes beside its mouth, so the only way is through it
+  O(334.8, 'boulder', -1),
+  O(334.8, 'boulder', 1),
+  O(337, 'hollow', 0),
   // (second drop)
   O(422, 'log'),
   O(434, 'boulder', -1),
@@ -137,7 +140,7 @@ function buildAmber(): Amber[] {
   arc(a, 300, -1);
   line(a, 307, 318, 1);
   arc(a, 325, 0);
-  line(a, 332, 341, 1, 0.26);
+  line(a, 330, 340, 0, 0.26);
   // second drop: the power-up, then amber in all three lanes for as long as it lasts
   line(a, 340, 344, 0);
   for (const lane of [-1, 0, 1]) line(a, 354, 400, lane);

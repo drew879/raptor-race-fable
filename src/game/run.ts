@@ -63,12 +63,14 @@ const EGG_G = 9.5;
 export const EGG_MODES = ['Lively', 'Wild', 'Wilder'];
 
 // how far along the trail each kind of obstacle can catch you
-const DEPTH: Record<Obstacle['kind'], number> = { log: 0.3, arch: 0.45, boulder: 0.42, tree: 0.26 };
+const DEPTH: Record<Obstacle['kind'], number> = { log: 0.3, arch: 0.45, boulder: 0.42, tree: 0.26, creek: 0.5, hollow: 1.7 };
 // Obstacles are solid. A runner that meets one stops where its body touches it (its head and
 // chest reach well ahead of its hips, so that is short of the obstacle's middle by FACE), then
 // gets past by the move it should have made and is set down CLEAR beyond the middle.
-const FACE: Record<Obstacle['kind'], number> = { log: 0.5, arch: 0.74, boulder: 0.74, tree: 0.54 };
-const CLEAR: Record<Obstacle['kind'], number> = { log: 0.8, arch: 1.0, boulder: 0.75, tree: 0.6 };
+const FACE: Record<Obstacle['kind'], number> = { log: 0.5, arch: 0.74, boulder: 0.74, tree: 0.54, creek: 0.5, hollow: 2.44 };
+const CLEAR: Record<Obstacle['kind'], number> = { log: 0.8, arch: 1.0, boulder: 0.75, tree: 0.6, creek: 0.9, hollow: 2.3 };
+const jumps = (kind: Obstacle['kind']) => kind === 'log' || kind === 'creek';
+const slides = (kind: Obstacle['kind']) => kind === 'arch' || kind === 'hollow';
 const IMPACT_TIME = 0.18;
 const RECOVER_TIME = 0.5;
 /** How much further ahead the egg gets for each bump, in meters. */
@@ -88,7 +90,7 @@ const LOW_HALF = 1.4; // meters either side of an arch where it stays on the gro
 const SETTLE = 7.5; // meters before either where it stops bouncing, so it arrives on the ground
 
 interface Bump {
-  kind: 'log' | 'arch' | 'around';
+  kind: 'log' | 'arch' | 'around' | 'hollow';
   t: number;
   /** Where the hips stop, where the recovery ends, and the sideways start and finish. */
   faceS: number;
@@ -175,10 +177,12 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   };
 
   // ---------------------------------------------------------------- obstacles
-  const byModel: Record<string, Placement[]> = { log: [], arch: [], boulder: [], lane_tree: [] };
+  const byModel: Record<string, Placement[]> = { log: [], arch: [], boulder: [], lane_tree: [], creek: [], hollow_log: [] };
   for (const o of OBSTACLES) {
-    if (o.kind === 'log' || o.kind === 'arch') {
+    if (o.kind === 'log' || o.kind === 'arch' || o.kind === 'creek') {
       byModel[o.kind].push({ position: terrain.place(o.s, 0, 0), yaw: 0, scale: 1, tilt: basisAt(o.s) });
+    } else if (o.kind === 'hollow') {
+      byModel.hollow_log.push({ position: terrain.place(o.s, o.lanes[0] * LANE, 0), yaw: 0, scale: 1, tilt: basisAt(o.s) });
     } else {
       for (const lane of o.lanes) {
         const upright = basisAt(o.s, 0); // boulders and trees stand straight on a slope
@@ -302,7 +306,8 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
 
   // ---------------------------------------------------------------- state
   const obstacles = OBSTACLES.map((o) => ({ ...o, hit: false }));
-  const archAt = OBSTACLES.filter((o) => o.kind === 'arch').map((o) => o.s);
+  // where the camera has to duck: under each arch, and all the way through the hollow log
+  const archAt = OBSTACLES.filter((o) => slides(o.kind)).map((o) => ({ s: o.s, half: o.kind === 'hollow' ? 1.9 : 0 }));
   // Obstacles that share a spot on the trail are one decision: a row.
   interface Row {
     s: number;
@@ -318,11 +323,12 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   for (const o of obstacles) {
     let row = rows.find((r) => r.s === o.s);
     if (!row) {
-      row = { s: o.s, kind: o.kind, around: o.kind !== 'log' && o.kind !== 'arch', blocked: [], eggLane: 0, members: [], hit: false };
+      row = { s: o.s, kind: o.kind, around: o.kind === 'boulder' || o.kind === 'tree', blocked: [], eggLane: 0, members: [], hit: false };
       rows.push(row);
     }
     row.members.push(o);
     for (const lane of o.lanes) if (!row.blocked.includes(lane)) row.blocked.push(lane);
+    if (o.kind === 'hollow') row.eggLane = o.lanes[0]; // the egg rolls through it too
   }
   const weave = (s: number) => Math.sin(s * 0.13) * 0.36;
   const openLanes = (row: Row) => [-1, 0, 1].filter((lane) => !row.blocked.includes(lane));
@@ -343,6 +349,13 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     if (wild === 1) u += Math.sin(s * 0.47 + 1.3) * 0.17;
     if (wild === 2) u += Math.sin(s * 0.62 + 1.3) * 0.3;
     for (const row of rows) {
+      if (row.kind === 'hollow') {
+        // lined up with the log's mouth in good time, and out the far end before it wanders again
+        if (s < row.s - 10 || s > row.s + 7) continue;
+        const k = smoothstep(row.s - 9.5, row.s - 4.2, s) * (1 - smoothstep(row.s + 2.6, row.s + 6.5, s));
+        u += (row.eggLane * LANE - u) * k;
+        continue;
+      }
       if (!row.around || s < row.s - 8 || s > row.s + 6) continue;
       const k = wild
         ? smoothstep(row.s - 5.2, row.s - 1.7, s) * (1 - smoothstep(row.s + 1.5, row.s + 4, s))
@@ -351,13 +364,15 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     }
     return u;
   };
+  /** How far either side of a log, creek, arch or hollow log the egg is hopping or staying down. */
+  const lowHalf = (row: Row) => (jumps(row.kind) ? HOP_HALF : row.kind === 'hollow' ? 2.7 : LOW_HALF);
   /** The log or arch the egg is coming up to or passing, if any. It stops bouncing far enough
    *  ahead to be on the ground when it gets there, which is further the faster it is going. */
   const eggRow = (s: number, speed: number): Row | null => {
     const settle = Math.max(SETTLE, speed * 0.8);
     for (const row of rows) {
       if (row.around) continue;
-      const half = row.kind === 'log' ? HOP_HALF : LOW_HALF;
+      const half = lowHalf(row);
       if (s > row.s - half - settle && s < row.s + half) return row;
     }
     return null;
@@ -412,6 +427,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     bump: null as Bump | null,
     /** Time left reeling from a sideways knock, recoiling, shaking the view and showing dust. */
     sideT: 0,
+    wadeT: 0,
     flinch: 0,
     shakeT: 0,
     puffT: 0,
@@ -513,7 +529,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       s: START_S, lane: 0, u: 0, y: 0, vy: 0, slideT: 0, safeT: 0, speed: 0, phase: 0, air: 0,
       slide: 0, camU: 0, camDuck: 0, gap: START_LEAD, eggS: START_S + START_LEAD, eggY: 0, eggVy: 0, eggSpin: 0, eggKick: 0, amber: 0, paused: false,
       finished: false, queued: null, queuedT: 0, hint: 0, hintT: 0,
-      prevLane: 0, du: 0, heading: 0, bump: null, sideT: 0, flinch: 0, shakeT: 0, puffT: 0, camLead: 0, pending: null,
+      prevLane: 0, du: 0, heading: 0, bump: null, sideT: 0, wadeT: 0, flinch: 0, shakeT: 0, puffT: 0, camLead: 0, pending: null,
       pendingT: 0, boostT: 0, eggU: 0, eggV: 0, heroV: 0, eggHop: false, eggPop: 0, eggTip: 0,
       eggWind: 0, eggSkips: 0, eggBounces: 0, eggJink: -1, eggWasLow: false, eggTop: 0, fanT: 0, fan: 0, leafTaken: false,
     });
@@ -612,14 +628,14 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     // what is coming: a log to hop, or an arch to stay down for
     const row = rolling ? eggRow(st.eggS, st.eggV) : null;
     const d = row ? st.eggS - row.s : 0;
-    const hop = row !== null && row.kind === 'log' && Math.abs(d) < HOP_HALF;
-    const low = row !== null && row.kind === 'arch' && Math.abs(d) < LOW_HALF;
+    const hop = row !== null && jumps(row.kind) && Math.abs(d) < HOP_HALF;
+    const low = row !== null && slides(row.kind) && Math.abs(d) < lowHalf(row);
     const settle = row !== null && !hop && !low;
     // the wild egg shivers for a moment before the chick kicks
-    st.eggWind = wild && row !== null && row.kind === 'log' && !hop && d < 0 ? smoothstep(-HOP_HALF - 2.4, -HOP_HALF - 0.3, d) : 0;
+    st.eggWind = wild && row !== null && jumps(row.kind) && !hop && d < 0 ? smoothstep(-HOP_HALF - 2.4, -HOP_HALF - 0.3, d) : 0;
 
     if (row) st.eggTop = 0;
-    if (row && row.kind === 'arch') {
+    if (row && slides(row.kind)) {
       // Under an arch it rolls like a barrel, long way across the trail, so it passes with room
       // to spare. Its long axis is eased round to lie across the trail on the way in.
       eggLong.set(0, 1, 0).applyQuaternion(eggQ);
@@ -725,8 +741,9 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       const nearest = open.filter((lane) => Math.abs(lane - st.lane) === near);
       toLane = nearest.includes(row.eggLane) ? row.eggLane : (nearest[0] ?? st.lane);
     }
+    (puff.material as THREE.ShaderMaterial).uniforms.uColor.value.set('#e6d2a8');
     st.bump = {
-      kind: row.kind === 'log' ? 'log' : row.kind === 'arch' ? 'arch' : 'around',
+      kind: row.kind === 'log' ? 'log' : row.kind === 'arch' ? 'arch' : row.kind === 'hollow' ? 'hollow' : 'around',
       t: 0,
       faceS: Math.min(st.s, member.s - FACE[member.kind]),
       exitS: member.s + CLEAR[member.kind],
@@ -736,17 +753,31 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     st.camLead = 0.4 * Math.min(1, st.speed / 8);
     st.shakeT = 0.3;
     st.puffT = 0.34;
-    terrain.place(member.s - DEPTH[member.kind], st.u, row.kind === 'arch' ? 0.62 : 0.3, puff.position);
+    terrain.place(member.s - DEPTH[member.kind], st.u, slides(row.kind) ? 0.62 : 0.3, puff.position);
     st.gap = Math.min(MAX_LEAD, st.gap + BUMP_COST);
     st.vy = 0;
     st.queued = null;
     st.slideT = 0;
   }
 
+  /** Missed the jump over a creek: nothing to bump, so it is a splash and a slow wade out. */
+  function wade(row: Row) {
+    row.hit = true;
+    for (const o of row.members) o.hit = true;
+    st.wadeT = 0.75;
+    st.safeT = 0.4;
+    st.shakeT = 0.18;
+    st.puffT = 0.34;
+    (puff.material as THREE.ShaderMaterial).uniforms.uColor.value.set('#d6f2fb');
+    terrain.place(row.s, st.u, 0.25, puff.position);
+    st.gap = Math.min(MAX_LEAD, st.gap + BUMP_COST);
+  }
+
   /** A sideways knock: the runner swiped into something beside it and bounces back to its lane. */
   function sideBump(row: Row, member: (typeof obstacles)[number]) {
     row.hit = true;
     for (const o of row.members) o.hit = true;
+    (puff.material as THREE.ShaderMaterial).uniforms.uColor.value.set('#e6d2a8');
     const blockedLane = st.lane;
     st.lane = st.prevLane;
     st.sideT = 0.55;
@@ -769,7 +800,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       st.speed = 0;
       return;
     }
-    const f = Math.min(1, (b.t - IMPACT_TIME) / RECOVER_TIME);
+    const f = Math.min(1, (b.t - IMPACT_TIME) / (b.kind === 'hollow' ? RECOVER_TIME * 1.7 : RECOVER_TIME));
     st.flinch = Math.max(0, 1 - f * 3.2);
     // slow off the mark, moving well by the end
     st.s = b.faceS + (b.exitS - b.faceS) * Math.pow(f, 1.6);
@@ -777,9 +808,9 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       // scrambles over
       st.y = 0.52 * Math.sin(Math.PI * f);
       st.vy = Math.cos(Math.PI * f) * JUMP_V * 0.5;
-    } else if (b.kind === 'arch') {
-      // ducks under, and stands once it is through
-      st.slideT = f < 0.82 ? 0.1 : 0;
+    } else if (b.kind === 'arch' || b.kind === 'hollow') {
+      // ducks under (or through), and stands once it is out the other side
+      st.slideT = f < (b.kind === 'hollow' ? 0.93 : 0.82) ? 0.1 : 0;
     } else {
       // steps round
       st.lane = b.toLane;
@@ -810,7 +841,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     if (st.bump) {
       stepBump(dt);
     } else {
-      const target = cruise * (st.sideT > 0 ? 0.6 : 1);
+      const target = cruise * (st.wadeT > 0 ? 0.42 : st.sideT > 0 ? 0.6 : 1);
       // back up to speed briskly after a bump, so a bump costs about the same whatever was hit
       const pickup = st.boostT > 0 ? 5 : 2.2;
       st.speed += (target - st.speed) * Math.min(1, dt * (st.speed < target ? pickup : 6));
@@ -821,6 +852,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     st.phase += (st.speed * dt) / strideLength(st.speed);
     st.safeT = Math.max(0, st.safeT - dt);
     st.sideT = Math.max(0, st.sideT - dt);
+    st.wadeT = Math.max(0, st.wadeT - dt);
     st.shakeT = Math.max(0, st.shakeT - dt);
     st.puffT = Math.max(0, st.puffT - dt);
     st.boostT = Math.max(0, st.boostT - dt);
@@ -856,24 +888,43 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     st.slide += ((st.slideT > 0 ? 1 : 0) - st.slide) * blend;
 
     // obstacles
+    // stepping round the boulders at a hollow log's mouth leaves the runner inside it: keep it down
+    for (const row of rows) {
+      if (row.kind !== 'hollow' || st.s < row.s - DEPTH.hollow - 0.5 || st.s > row.s + DEPTH.hollow) continue;
+      if (Math.abs(st.u - row.eggLane * LANE) < 0.4 && (st.slide >= 0.5 || st.safeT > 0 || st.bump)) st.slideT = Math.max(st.slideT, 0.12);
+    }
     if (!st.bump && st.safeT <= 0) {
       const inLane = (lane: number) => Math.abs(st.u - lane * LANE) < 0.4;
       for (const row of rows) {
-        if (row.hit || st.s > row.s + 0.5 || st.s < row.s - 1) continue;
+        const reach = Math.max(1, FACE[row.kind] + 0.2);
+        if (row.hit || st.s > row.s + DEPTH[row.kind] + 0.2 || st.s < row.s - reach) continue;
         // the obstacle of this row that stands in the runner's way, if any
-        const member = row.around ? row.members.find((o) => o.lanes.some(inLane)) : row.members[0];
+        const member = row.around || row.kind === 'hollow' ? row.members.find((o) => o.lanes.some(inLane)) : row.members[0];
         if (!member) continue;
         const ahead = member.s - st.s; // how far ahead its middle is
         const depth = DEPTH[member.kind];
-        // inside it without having done what it asks
         const inside = Math.abs(ahead) <= depth;
-        let hit = inside && (row.kind === 'log' ? st.y < 0.3 : row.kind === 'arch' ? st.slide < 0.5 : true);
+        if (row.kind === 'creek') {
+          // in the water without having jumped
+          if (inside && st.y < 0.22) {
+            wade(row);
+            break;
+          }
+          continue;
+        }
+        if (row.kind === 'hollow' && inside && (st.slide >= 0.5 || st.safeT > 0)) {
+          // once in, the runner stays down until it is out the far end
+          st.slideT = Math.max(st.slideT, 0.12);
+          continue;
+        }
+        // inside it without having done what it asks
+        let hit = inside && (row.kind === 'log' ? st.y < 0.3 : slides(row.kind) ? st.slide < 0.5 : true);
         // or about to walk into its face having made no move at all: bump there, where the body
         // meets it. (A move made in time still gets its chance; this never bumps anyone who
         // would have made it.)
         if (!hit && ahead > depth && ahead <= FACE[member.kind]) {
           if (row.kind === 'log') hit = st.y <= 0.001 && st.vy <= 0;
-          else if (row.kind === 'arch') hit = st.slideT <= 0 && st.slide < 0.5 && st.queued !== 'down';
+          else if (slides(row.kind)) hit = st.slideT <= 0 && st.slide < 0.5 && st.queued !== 'down';
           else hit = row.blocked.includes(st.lane);
         }
         if (!hit) continue;
@@ -939,7 +990,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     // own steady pace, so when the runner stops dead the egg rolls on.
     // The further behind you are, the faster you gain, so a bad patch can be won back.
     const closing = 0.13 + 0.47 * smoothstep(START_LEAD, MAX_LEAD, st.gap);
-    if (!st.bump && st.sideT <= 0) st.gap = Math.max(MIN_LEAD, st.gap - closing * dt);
+    if (!st.bump && st.sideT <= 0 && st.wadeT <= 0) st.gap = Math.max(MIN_LEAD, st.gap - closing * dt);
     st.gap = Math.min(st.gap, MAX_LEAD);
     st.heroV += (st.speed - st.heroV) * (1 - Math.exp(-dt / 0.5));
     // the wilder egg surges ahead and drops back when the trail is clear
@@ -1027,7 +1078,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     const camS = st.s - 2.6 + st.camLead;
     // the camera ducks under an arch a moment after the hero does
     let duck = 0;
-    for (const a of archAt) duck = Math.max(duck, 1 - smoothstep(1.0, 3.6, Math.abs(a - camS)));
+    for (const a of archAt) duck = Math.max(duck, 1 - smoothstep(1.0, 3.6, Math.max(0, Math.abs(a.s - camS) - a.half)));
     st.camDuck += (duck - st.camDuck) * 0.3;
     camera.position.copy(terrain.place(camS, st.camU, 1.45 + st.y * 0.22 - 1.05 * st.camDuck));
     if (st.shakeT > 0) {

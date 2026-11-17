@@ -701,3 +701,104 @@ def eggshell(seed=3, upper=False):
                 tri.reverse()
             geo.face(tri, color, 'egg')
     return geo
+
+
+WATER = srgb('#5cc3d6')
+WATER_PALE = srgb('#a5e4e6')
+WET_EARTH = srgb('#3a2f25')
+WET_EARTH_PALE = srgb('#5b4a3a')
+WOOD_END = srgb('#b08f66')
+WOOD_END_DARK = srgb('#7a5a3c')
+HOLLOW_DARK = srgb('#120d0a')
+
+
+def creek(seed=91, reach=3.3, half_width=0.55):
+    """A narrow creek crossing the trail (it lies along X): bright water in a dark wet bed, small
+    stones along its banks and bigger ones where it comes out of the forest and runs back in.
+    It has to say 'jump' at a glance: a clean bright band, no wider than a jump is long."""
+    rnd = random.Random(seed)
+    geo = Geo()
+    n = 16
+
+    def band(hw, z, mat, color_fn):
+        rows = []
+        for i in range(n + 1):
+            x = lerp(-reach, reach, i / n)
+            wander = 0.1 * math.sin(x * 1.3 + seed)
+            w = hw * (1.0 + 0.12 * math.sin(x * 2.1 + 1.0))
+            rows.append([Vector((x, wander - w, z)), Vector((x, wander, z + 0.012)), Vector((x, wander + w, z))])
+        geo.add_grid(rows, color_fn, mat, flip=True)
+
+    band(half_width + 0.2, 0.012, 'rock', lambda i, j, p: WET_EARTH if j == 1 else WET_EARTH_PALE)
+    band(half_width, 0.03, 'water', lambda i, j, p: WATER if j == 1 else WATER_PALE)
+
+    def stone(x, y, size, sd):
+        r = rock(sd, size, moss=0.35)
+        r.transform(Matrix.Translation(Vector((x, y, -size * 0.12))))
+        geo.merge(r)
+
+    k = 0
+    for side in (-1, 1):
+        x = -reach + 0.2
+        while x < reach - 0.1:
+            k += 1
+            on_trail = abs(x) < 1.35
+            # on the trail only pebbles line the banks, so nothing there looks like a thing to dodge
+            size = rnd.uniform(0.1, 0.16) if on_trail else rnd.uniform(0.22, 0.4)
+            stone(x, side * (half_width + 0.2 + size * 0.35) + 0.1 * math.sin(x * 1.3 + seed), size, seed * 10 + k)
+            x += size * rnd.uniform(1.8, 2.8)
+    for side in (-1, 1):
+        stone(side * (reach + 0.1), 0.25, 0.75, seed * 100 + side)
+        stone(side * (reach - 0.25), -0.5, 0.5, seed * 100 + side + 5)
+    return geo
+
+
+def hollow_log(seed=93, length=3.4, outer=0.5, inner=0.36):
+    """A hollow log lying along the trail (along Y), seen end-on as a big round opening: the
+    only way is through it, sliding. The bore is too low to run through upright."""
+    rnd = random.Random(seed)
+    geo = Geo()
+    ph = rnd.uniform(0, 100)
+    zc = inner - 0.05
+    n, around = 12, 20
+    ys = [lerp(-length / 2, length / 2, i / (n - 1)) for i in range(n)]
+    angles = [2 * math.pi * j / around for j in range(around)]
+
+    def r_out(t, ang):
+        return outer * (1.0 + 0.05 * math.sin(ang * 6 + t * 7) + 0.04 * vnoise((ang, t * 5.0, ph)))
+
+    def bark(t, ang, p):
+        streak = fbm((t * 7.0 + ph, math.cos(ang) * 2.0, math.sin(ang) * 2.0), 1.0, 3)
+        c = ramp([(-0.3, BARK_DARK), (0.0, BARK_MID), (0.3, BARK_WARM)], streak)
+        m = smoothstep(0.15, 0.75, math.sin(ang) + fbm((p.x * 2.5, p.y * 3.0, ph), 1.0, 2) * 1.2)
+        return mix(c, mix(MOSS_DARK, MOSS_LIGHT, clamp01(0.45 + streak * 2.0)), m * 0.92)
+
+    def ring(y, t, radius_fn):
+        return [Vector((math.cos(a) * radius_fn(t, a), y, zc + math.sin(a) * radius_fn(t, a))) for a in angles]
+
+    outside = [ring(y, i / (n - 1), r_out) for i, y in enumerate(ys)]
+    inside = [ring(y, i / (n - 1), lambda t, a: inner) for i, y in enumerate(ys)]
+    geo.add_grid(outside, lambda i, j, p: bark(i / (n - 1), angles[j], p), 'prop', close_u=True, flip=True)
+
+    def dark(i, j, p):
+        # light reaches a little way in from each end
+        glow = max(smoothstep(0.25, 0.0, i / (n - 1)), smoothstep(0.75, 1.0, i / (n - 1)))
+        return mix(HOLLOW_DARK, BARK_DARK, glow * 0.8)
+
+    def end_col(i, j, p):
+        rings_ = 0.5 + 0.5 * math.sin((i * 3.0 + j * 0.2) + ph)
+        return mix(WOOD_END_DARK, WOOD_END, 0.35 + 0.5 * rings_) if i == 0 else mix(BARK_DARK, WOOD_END_DARK, 0.5)
+
+    # the inside and the two cut ends are built facing both ways, so they show from any side
+    for flip in (False, True):
+        geo.add_grid(inside, dark, 'prop', close_u=True, flip=flip)
+        for end in (0, n - 1):
+            geo.add_grid([outside[end], inside[end]], end_col, 'prop', close_u=True, flip=flip)
+    # a broken stub on top, so it reads as a fallen tree and never as a pipe
+    for y, heading in ((-0.6, 0.5), (0.7, -0.6)):
+        b = Vector((0.0, y, zc + outer * 0.95))
+        d = Vector((math.sin(heading) * 0.5, 0.25, 1.0)).normalized()
+        pts = [b + d * (0.38 * k / 3) for k in range(4)]
+        geo.tube(pts, lambda t, a: (0.075 * (1 - 0.5 * t),) * 2,
+                 lambda t, a, p: mix(BARK_DARK, BARK_MID, 0.3 + 0.5 * t), 'prop', around=6, cap_start=False)
+    return geo
