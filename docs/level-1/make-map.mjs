@@ -286,7 +286,7 @@ const legend = [
   [`<svg viewBox="0 0 36 30">${sym.find(18, 15)}</svg>`, 'Hidden find', 'off the good line'],
   [`<svg viewBox="0 0 36 30">${sym.power(18, 15)}</svg>`, 'Power-up', 'one, on the second drop'],
   [`<svg viewBox="0 0 36 30"><path class="eggline" d="M2,22 C12,22 12,8 22,8 L34,8"/></svg>`, "The egg's line", 'the safe way through'],
-  [`<svg viewBox="0 0 36 30"><path class="cp" d="M2,15 H34"/></svg>`, 'Checkpoint', 'where you restart'],
+  [`<svg viewBox="0 0 36 30"><path class="cp" d="M2,15 H34"/></svg>`, 'Checkpoint', 'marked, not in use for now'],
 ];
 
 const sectionsHtml = level.sections
@@ -443,7 +443,7 @@ svg text { font-family: var(--body); fill: var(--ink); }
     <div><b>${Math.round(st.seconds)} s</b><span>at speed ${SPEED}, with no bumps</span></div>
     <div><b>${st.movesEasy} or ${st.movesHard}</b><span>moves: easy side or hard side of the fork</span></div>
     <div><b>${st.amber}</b><span>pieces of amber</span></div>
-    <div><b>3</b><span>hidden finds, 1 power-up, 3 checkpoints</span></div>
+    <div><b>3</b><span>hidden finds and 1 power-up</span></div>
     <div><b>${Math.round(st.drop)} m</b><span>downhill, start to finish</span></div>
   </div>
 
@@ -477,20 +477,20 @@ svg text { font-family: var(--body); fill: var(--ink); }
       <tr><td>What a bump costs</td><td>${EGG.bump} m</td></tr>
       <tr><td>How fast you gain on it, running clean</td><td>${EGG.closing} m/s close behind, up to ${EGG.closingFar} m/s far behind</td></tr>
       <tr><td>"The egg is getting away!" warning</td><td>${EGG.warnAt} m</td></tr>
-      <tr><td>Egg lost, back to the last checkpoint</td><td>${EGG.lostAt} m</td></tr>
+      <tr><td>Egg lost, and the level starts over</td><td>${EGG.lostAt} m</td></tr>
       <tr><td>Fork: amber on the hard side against the easy side</td><td>${st.amberLeft} to ${st.amberRight}</td></tr>
     </table>
-    <p class="note">A bump never ends the run by itself. You only lose the egg by letting it get ${EGG.lostAt} m ahead: from the start that takes four bumps close together, late in a clean run six or more. In test runs a player who misses about a third of the obstacles still finishes, and one who misses half loses the egg. Then the picture dims and you start again from the last checkpoint with your amber and finds kept. The level always ends at the clearing. The further behind you are, the faster you gain, so a bad patch can be won back.</p>
+    <p class="note">A bump never ends the run by itself. You only lose the egg by letting it get ${EGG.lostAt} m ahead: from the start that takes four bumps close together, late in a clean run six or more. In test runs a player who misses about a third of the obstacles still finishes, and one who misses half loses the egg. Then the picture dims and the level starts over from the nest. The level always ends at the clearing. The further behind you are, the faster you gain, so a bad patch can be won back.</p>
   </div>
 
   <div class="block">
     <h2>Where it stands</h2>
     <ol class="asks">
       <li><b>Busier after the build 25 playtest.</b> ${st.movesEasy} moves on the safe side of the fork and ${st.movesHard} on the risky side, up from 21 and 23. Most of the long empty stretches are gone, and moves now come about a second and a half apart.</li>
-      <li><b>The fork lives up to its promise.</b> Left is five moves in a row (jump, slide, jump, slide, jump) for ${st.amberLeft} pieces of amber and a hidden find. Right is two logs and ${st.amberRight} pieces. Both labels come up ${level.island[0] - level.labelsFrom} m before the rock, about ${f1((level.island[0] - level.labelsFrom) / SPEED)} s ahead.</li>
+      <li><b>The fork lives up to its promise.</b> Left is five moves in a row (jump, slide, jump, slide, jump) for ${st.amberLeft} pieces of amber and a hidden find. Right is two logs and ${st.amberRight} pieces. Both labels come up ${level.island[0] - level.labelsFrom} m before the rock, about ${f1((level.island[0] - level.labelsFrom) / SPEED)} s ahead, beside the trail at eye height. They can be see-through, or the game can hold still for a moment while they are read: both are in the pause sheet to try.</li>
       <li><b>Young Psittacosaurus cross the trail.</b> Three of them, walking in a file across all three lanes: a jump. The dozing adult stays as scenery beside the trail.</li>
       <li><b>Fan out is measured in meters now.</b> The fans stay out for ${level.power.reach} m, about ${f1(level.power.reach / SPEED)} s at speed ${SPEED}, which ends just past the last amber on the drop at any speed setting.</li>
-      <li><b>Built this round:</b> hidden finds, checkpoints and losing the egg.</li>
+      <li><b>Losing the egg ends the level.</b> A sheet says the egg got away and Try again starts the level over. The checkpoints stay marked here in case restarts from them are wanted later.</li>
       <li><b>Still to come:</b> the opening at the nest, the scoop and hatching, sound and music, and the title, results and Field Journal screens.</li>
     </ol>
   </div>

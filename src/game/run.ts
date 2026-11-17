@@ -88,7 +88,16 @@ const HOP_HEIGHT_WILDER = 1.6;
 const START_LEAD = 15;
 const MIN_LEAD = 4.8;
 const WARN_LEAD = 21;
-const MAX_LEAD = 26; // let it get this far ahead and the egg is lost: back to the last checkpoint
+const MAX_LEAD = 26; // let it get this far ahead and the egg is lost
+/**
+ * What "Try again" does once the egg is lost. Drew's call after build 26: the level starts over
+ * ("just reappearing at an arbitrary spot behind where you were seems too generous"). He may
+ * want designated checkpoints later, so the checkpoint restart is kept and this switches it on.
+ */
+const LOST_RESTART = 'start' as 'start' | 'checkpoint';
+/** How the fork's two labels get read: see-through and the run carries on, or the game holds still for a moment. */
+export const FORK_MODES = ['See-through', 'Pause'];
+const FORK_HOLD = 1.6; // seconds the game holds for the labels, unless a swipe ends it sooner
 const LOW_HALF = 1.4; // meters either side of an arch where it stays on the ground
 const SETTLE = 7.5; // meters before either where it stops bouncing, so it arrives on the ground
 
@@ -565,6 +574,8 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   // (a new key: the list changed when Wild came in, and everyone should meet Wild first)
   const savedEgg = localStorage.getItem('rr-egg3');
   let eggMode = savedEgg === null ? 1 : THREE.MathUtils.clamp(Number(savedEgg) || 0, 0, 2);
+  const savedFork = localStorage.getItem('rr-fork1');
+  let forkMode = savedFork === null ? 1 : THREE.MathUtils.clamp(Number(savedFork) || 0, 0, 1);
   // the egg's turn, in the trail's own frame (x across to the right, y up, z back up the trail)
   const eggQ = new THREE.Quaternion();
   const eggAxis = new THREE.Vector3();
@@ -628,9 +639,11 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     eggTop: 0,
     /** Fan out: time left, how far the fans are spread, and whether the leaf has been taken. */
     fanOn: false,
-    /** Hidden finds picked up, and the countdown after the egg is lost. */
+    /** Hidden finds picked up, and the seconds since the egg was lost (0 while it is still in reach). */
     found: FINDS.map(() => false),
     lostT: 0,
+    /** The hold at the fork: -1 not yet, 0 and up the real seconds since it began, -2 done. */
+    forkT: -1,
     fan: 0,
     leafTaken: false,
     amber: 0,
@@ -661,6 +674,17 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
         /* private mode */
       }
     },
+    forkModes: FORK_MODES,
+    forkMode,
+    onFork: (mode) => {
+      forkMode = mode;
+      try {
+        localStorage.setItem('rr-fork1', String(mode));
+      } catch {
+        /* private mode */
+      }
+    },
+    onRetry: () => (LOST_RESTART === 'checkpoint' ? tryAgain() : reset()),
     onStart: () => {
       st.started = true;
     },
@@ -682,7 +706,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   });
 
   function setPaused(p: boolean) {
-    if (st.finished || !st.started) return;
+    if (st.finished || !st.started || st.lostT > 0) return;
     st.paused = p;
     hud.setPaused(p);
   }
@@ -696,7 +720,9 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       prevLane: 0, du: 0, heading: 0, bump: null, sideT: 0, wadeT: 0, flinch: 0, shakeT: 0, puffT: 0, camLead: 0, pending: null,
       pendingT: 0, boostT: 0, eggU: 0, eggV: 0, heroV: 0, eggHop: false, eggPop: 0, eggTip: 0,
       eggWind: 0, eggSkips: 0, eggBounces: 0, eggJink: -1, eggWasLow: false, eggTop: 0, fanOn: false, fan: 0, leafTaken: false, lostT: 0,
+      forkT: -1,
     });
+    hud.hideLost();
     fly.fill(0);
     flying.length = 0;
     st.found = FINDS.map(() => false);
@@ -723,9 +749,11 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     hud.hideFinish();
   }
 
-  /** Back to the last checkpoint passed, with the egg a fair way ahead again. What was collected is kept. */
+  /** Back to the last checkpoint passed, with the egg a fair way ahead again. What was collected is kept. (Not in use: see LOST_RESTART.) */
   function tryAgain() {
     const from = CHECKPOINTS.filter((c) => c <= st.s).pop() ?? START_S;
+    hud.hideLost();
+    st.forkT = FORK && from <= FORK_LABELS_FROM ? -1 : st.forkT;
     Object.assign(st, {
       s: from, lane: 0, u: 0, y: 0, vy: 0, slideT: 0, safeT: 1, speed: 0, air: 0, slide: 0, camU: 0, camDuck: 0,
       gap: START_LEAD, eggS: from + START_LEAD, eggY: 0, eggVy: 0, eggV: 0, heroV: 0, queued: null, queuedT: 0,
@@ -754,6 +782,8 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
 
   function act(move: Move) {
     if (st.paused || st.finished || !st.started || st.lostT > 0) return;
+    // a swipe while the game is holding for the fork's labels is the choice made: carry on
+    if (st.forkT >= 0 && st.forkT < FORK_HOLD) st.forkT = FORK_HOLD;
     if (st.bump) {
       // mid-bump the runner can't answer, but the swipe is kept for the moment it can
       st.pending = move;
@@ -1210,15 +1240,15 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     rollEgg(dt, st.eggS < END_S - 0.05);
     hud.warn(st.gap > WARN_LEAD && !st.finished && st.lostT <= 0);
     if (st.lostT > 0) {
-      // the egg is out of sight: stop, dim the picture, and go back to the last checkpoint
+      // the egg is out of sight: the runner pulls up, the picture dims, and the level is over
       const before = st.lostT;
-      st.lostT -= dt;
-      if (before > 0.8 && st.lostT <= 0.8) hud.fade(true);
-      if (st.lostT <= 0) tryAgain();
+      st.lostT += dt;
+      if (before < 1.1 && st.lostT >= 1.1) hud.fade(true);
+      if (before < 2.0 && st.lostT >= 2.0) hud.showLost();
     } else if (!noLose && !st.finished && st.gap >= MAX_LEAD - 0.01) {
-      st.lostT = 1.5;
+      st.lostT = 1e-4;
       hud.hint('The egg got away!');
-      st.hintT = 9;
+      st.hintT = 2.0;
     }
 
     // hidden finds
@@ -1232,7 +1262,10 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
         st.hintT = 1.6;
       }
     });
-    hud.fork(FORK !== null && FORK_LABELS_FROM >= 0 && st.s >= FORK_LABELS_FROM && st.s < FORK.from + 1 && st.lostT <= 0);
+    const forkLabels = FORK !== null && FORK_LABELS_FROM >= 0 && st.s >= FORK_LABELS_FROM && st.s < FORK.from + 1 && st.lostT <= 0;
+    hud.fork(forkLabels, st.forkT >= 0);
+    // "Pause": a moment after the labels come up the game holds still so they can be read
+    if (forkLabels && forkMode === 1 && st.forkT === -1 && st.s >= FORK_LABELS_FROM + 2) st.forkT = 0;
 
     // first-time hints: one at a time, shown early enough to act on
     if (st.hint < HINTS.length && st.s >= HINTS[st.hint].s) {
@@ -1443,10 +1476,17 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       camera.fov = aspect <= phone ? base : THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(base / 2)) * Math.min(1, (phone / aspect) * 1.25)));
       camera.updateProjectionMatrix();
     },
-    steady: () => st.started && !st.paused && !st.finished,
+    steady: () => st.started && !st.paused && !st.finished && st.lostT <= 0 && st.forkT < 0,
     update(time: number, renderer: THREE.WebGLRenderer) {
-      const dt = last < 0 ? 0 : Math.min(0.05, Math.max(0, time - last));
+      const real = last < 0 ? 0 : Math.min(0.05, Math.max(0, time - last));
       last = time;
+      let dt = real;
+      if (!st.paused && st.forkT >= 0) {
+        // holding for the fork's labels: everything eases almost to a stop, then picks up again
+        st.forkT += real;
+        dt *= 1 - 0.97 * smoothstep(0, 0.22, st.forkT) * (1 - smoothstep(FORK_HOLD, FORK_HOLD + 0.3, st.forkT));
+        if (st.forkT >= FORK_HOLD + 0.3) st.forkT = -2;
+      }
       if (!st.paused) {
         world.uTime.value += dt;
         if (st.started) step(dt);

@@ -98,7 +98,6 @@ export const SECTIONS = [
     turn: 0.3,
     teaches: 'The fork. Left is riskier and richer: five moves in a row. Right is safer: two easy jumps.',
     checkpoint: 0,
-    hints: [{ at: 0, text: 'The trail splits!' }],
     labels: 0, // the two side labels show from here until the rock
     island: [30, 92],
     rows: [

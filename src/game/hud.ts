@@ -12,6 +12,11 @@ export interface HudHooks {
   speed: number;
   eggModes: string[];
   eggMode: number;
+  forkModes: string[];
+  forkMode: number;
+  onFork(mode: number): void;
+  /** "Try again" on the sheet that says the egg got away. */
+  onRetry(): void;
   /** A short note on how sharp the picture is being drawn, for the pause sheet's small print. */
   quality?(): string;
   /** What one frame costs right now, measured after the sheet is up. */
@@ -29,10 +34,12 @@ export interface Hud {
   setAmber(count: number): void;
   /** Which of the hidden finds have been picked up, in order. */
   setFinds(found: boolean[]): void;
-  /** The two labels that say what each side of the fork holds. */
-  fork(on: boolean): void;
-  /** Dim the picture, for the moment between losing the egg and trying again. */
+  /** The two labels that say what each side of the fork holds. Solid while the game holds still for them, see-through otherwise. */
+  fork(on: boolean, solid?: boolean): void;
+  /** Dim the picture, once the egg is lost. */
   fade(on: boolean): void;
+  showLost(): void;
+  hideLost(): void;
   hint(text: string | null): void;
   warn(on: boolean): void;
   setPaused(paused: boolean): void;
@@ -63,6 +70,7 @@ export function makeHud(root: HTMLElement, hooks: HudHooks): Hud {
         <div class="stepper"><button class="slower" aria-label="Slower">&minus;</button><b class="speed"></b><button class="faster" aria-label="Faster">+</button></div>
       </div>
       <div class="setting"><span>Egg</span><div class="tabs words egg-tabs"></div></div>
+      <div class="setting"><span>Fork labels</span><div class="tabs words fork-tabs"></div></div>
       <div class="links"><a class="link" href="?mode=close">Close-up</a><a class="link" href="?mode=bench">Speed test</a></div>
       <small class="about">Rough test run &middot; build ${BUILD}</small>
     </div>
@@ -70,6 +78,11 @@ export function makeHud(root: HTMLElement, hooks: HudHooks): Hud {
       <h2>Rough test run</h2>
       <p>Swipe left or right to change lanes.<br>Swipe up to jump.<br>Swipe down to slide.</p>
       <button class="big go">Run!</button>
+    </div>
+    <div class="sheet lost-sheet" hidden>
+      <h2>The egg got away!</h2>
+      <p>Every bump lets it roll further ahead.</p>
+      <button class="big retry">Try again</button>
     </div>
     <div class="sheet finish-sheet" hidden>
       <h2>You caught the egg!</h2>
@@ -103,6 +116,7 @@ export function makeHud(root: HTMLElement, hooks: HudHooks): Hud {
   press(q('.resume'), hooks.onResume);
   press(q('.restart'), hooks.onRestart);
   press(q('.again'), hooks.onRestart);
+  press(q('.retry'), hooks.onRetry);
   const showSpeed = () => (speedEl.textContent = speed.toFixed(1));
   press(q('.slower'), () => {
     speed = Math.max(4, speed - 0.5);
@@ -129,6 +143,21 @@ export function makeHud(root: HTMLElement, hooks: HudHooks): Hud {
   });
   markEgg(hooks.eggMode);
 
+  const forkTabs = q<HTMLElement>('.fork-tabs');
+  const markFork = (mode: number) => [...forkTabs.children].forEach((el, i) => el.classList.toggle('on', i === mode));
+  hooks.forkModes.forEach((name, i) => {
+    const b = document.createElement('button');
+    b.textContent = name;
+    press(b, () => {
+      markFork(i);
+      hooks.onFork(i);
+    });
+    forkTabs.appendChild(b);
+  });
+  markFork(hooks.forkMode);
+  const forkEls = [q<HTMLElement>('.fork-label.left'), q<HTMLElement>('.fork-label.right')];
+  let forkShown = '';
+
   hooks.styles.forEach((style, i) => {
     const b = document.createElement('button');
     b.textContent = style.tab;
@@ -150,9 +179,21 @@ export function makeHud(root: HTMLElement, hooks: HudHooks): Hud {
       el.innerHTML = found.map((f) => `<i class="${f ? 'on' : ''}"></i>`).join('');
       el.hidden = found.length === 0;
     },
-    fork(on) {
-      q<HTMLElement>('.fork-label.left').hidden = !on;
-      q<HTMLElement>('.fork-label.right').hidden = !on;
+    fork(on, solid = false) {
+      // asked for every frame, so only touch the page when something changes
+      const want = on ? (solid ? 'solid' : 'clear') : '';
+      if (want === forkShown) return;
+      forkShown = want;
+      for (const el of forkEls) {
+        el.hidden = !on;
+        el.classList.toggle('solid', solid);
+      }
+    },
+    showLost() {
+      q<HTMLElement>('.lost-sheet').hidden = false;
+    },
+    hideLost() {
+      q<HTMLElement>('.lost-sheet').hidden = true;
     },
     fade(on) {
       q<HTMLElement>('.fade').classList.toggle('on', on);

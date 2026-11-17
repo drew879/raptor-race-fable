@@ -4,8 +4,8 @@ Decisions and progress. Read `raptor-race-brief.md` first; it's the source of tr
 
 ## Where things stand
 
-- **The game runs the Level 1 layout and the chase can be lost** (build 26, 2026-11-16). `src/game/course.ts` reads `docs/level-1/course.mjs`, so the map and the game can't drift apart. Open the game and you are on the level.
-- **In and working:** all nine sections; seven obstacle kinds (tree, boulder, log, creek, propped trunk, hollow log, young Psittacosaurus crossing); the fork round the island, with a label on each side of the screen; the Fan out power-up (50 m of trail); the three hidden finds; three checkpoints; losing the egg and starting again from the last checkpoint; the first-time hints; the egg's dodges through all of it.
+- **The game runs the Level 1 layout and the chase can be lost** (build 27, 2026-11-16). `src/game/course.ts` reads `docs/level-1/course.mjs`, so the map and the game can't drift apart. Open the game and you are on the level.
+- **In and working:** all nine sections; seven obstacle kinds (tree, boulder, log, creek, propped trunk, hollow log, young Psittacosaurus crossing); the fork round the island, with a label on each side of the screen; the Fan out power-up (50 m of trail); the three hidden finds; losing the egg, which ends the level; the first-time hints; the egg's dodges through all of it.
 - **Not built yet:** the opening (nest, clutch, the egg tipping out) and the ending (scoop, hatching, Field Journal moment); sounds and music; title, results and journal screens. The hidden finds are collected and counted, but the journal pages they unlock don't exist yet.
 - **First-pass art to come back to:** the Psittacosaurus, young and adult (fine in play, rough up close); the island's rock (plain); the creek's stones; the hidden finds (a pale blue piece of amber with nothing inside it yet, and the brief describes inclusions).
 - **Decided:** look B; chick Slate; egg Lively/Wild/Wilder all offered for now ("eventually we can just pick one"; Wild is the default, Wilder is "Fun!"); body turn "perfect"; bumps "honestly perfect"; hollow log "reads well and enjoyed the view"; 2x edge smoothing looks clean.
@@ -23,9 +23,15 @@ What changed:
 - **Fan out by distance:** `POWER.reach` is 50 m, about 6.25 s at speed 8. It ends just past the last amber on the drop at any speed setting, which a time never did.
 - **Boulders:** 0.6 m wide now (lanes are 0.68 m apart), so one never looks as if it reaches into the lane beside it.
 - **Hidden finds:** the amber model at twice the size with a pale blue heart and edge (`uGemHeart`, `uGemEdge` on the amber material) and a blue glow. Three pips in a chip beside the amber count, a "A hidden find!" hint, and a line on the finish sheet. No journal pages yet.
-- **Losing the egg:** at a 26 m lead the hint says "The egg got away!", the runner stops, the picture dims, and `tryAgain()` puts the runner at the last checkpoint it passed (or the nest) with the egg 15 m ahead. Amber and finds are kept, and the leaf comes back if it is ahead again. Then "Try again from here!". `?nolose=1` turns it off for test runs.
+- **Losing the egg (as first built; changed in Round 4):** at a 26 m lead the hint says "The egg got away!", the runner stops, the picture dims, and `tryAgain()` puts the runner at the last checkpoint it passed (or the nest) with the egg 15 m ahead. Amber and finds are kept, and the leaf comes back if it is ahead again. `?nolose=1` turns losing off for test runs.
 - **Two bugs fixed on the way:** the egg clipped a boulder where two go-around rows sit 3 m apart (its lane now has to be open for every go-around row within 6.5 m), and the crossing was being judged as something to go around.
 - **Test runs** (bots, in the browser): perfect play on either side of the fork finishes with no bumps (right side 79.4 s). A bot that misses 20 to 35% of the obstacles finishes with 7 to 9 bumps and never loses the egg (worst lead about 25 m). One that misses half loses it. With no input at all the egg is lost at the fourth boulder in Fern hollow, before the first checkpoint, so that restart is from the nest.
+
+### Round 4 (build 27, 2026-11-16), from Drew's playtest of build 26
+What he said: busy enough "for a first level"; the fork's left side is "worth it and not too hard"; the crossing reads "much better"; the fan is "about right"; boulders fixed ("Nope, nice job"); finds are easy enough to spot. Three changes asked for:
+- **Fork labels:** drop the hint at the top ("The trail splits!") and keep only the left and right labels. They were "too easy to ignore at the very top of the screen", so move them lower and either make them semi-transparent or "very briefly pause the game so the user can read them, then automatically unpause to resume". Built both, switchable in the pause sheet as "Fork labels: See-through / Pause" (`FORK_MODES`, key `rr-fork1`, default Pause, which is my pick for a six-year-old reader). The labels sit at 46% down the screen. Pause: 2 m after the labels come up everything eases almost to a stop for 1.6 s (`FORK_HOLD`) with the labels solid, then picks up; a swipe ends the hold at once. It is done by scaling the time step in `update`, so nothing else had to know about it.
+- **Losing the egg:** "It was fair but the restart happened too quickly. I think the player should just lose the level and restart, but I may end up wanting them to go back to a designated checkpoint. But just reappearing at an arbitrary spot behind where you were seems too generous." Now: the hint, the runner pulls up, the picture dims at 1.1 s, and at 2 s a sheet says "The egg got away!" with a "Try again" button that starts the level over. The checkpoint restart (`tryAgain`) is kept and `LOST_RESTART` in `run.ts` switches it back on; the checkpoints stay in the layout and on the map.
+- **Opening and ending:** "Both sound good". Plan as sent: opening about 6 s, tap to skip (parent on a clutch, one egg cracks and wobbles, tips over the rim and rolls off, the parent jumps up and the camera drops in behind); ending (egg slows on the moss, swipe up to scoop, the parent curls round it, the shell breaks and the slate chick peeks out, a Field Journal card with the brief's one line, then the results).
 
 ### How Level 1 is put together
 - **Layout:** `docs/level-1/course.mjs` (data and rule checks; `node docs/level-1/check.mjs` prints them), read by `src/game/course.ts`, which turns sections into trail segments (each tips to its slope over its first 30 to 40% and then holds it, so drops fall away at the top), rows into obstacles, and exports `FORK`, `laneU`, `laneMap`, `bowAt`, `POWER`, `FINDS`, `CHECKPOINTS`, `HINTS`, `END_S`. The layout counts from where the chase begins; the trail starts 3 m before that.
@@ -171,11 +177,11 @@ Build numbers here are the ones shown on the phone.
 **For the story scenes later** (from the same fact check): oviraptorosaur nests held many eggs in pairs, in rings, blunt ends up; adults have been found sitting on them with arms spread round the edge; which parent sat is unknown (possibly the father). The game says "parent", which is right. Drew chose a clutch for the opening nest (2026-11-16), with ours the one that rolls away.
 
 ### Not yet verified on the real phone
-- Build 26: the busier layout, the fork's harder left side and its labels, the young Psittacosaurus crossing, the narrower boulders, the shorter fan, hidden finds, and losing the egg with the restart at a checkpoint.
+- Build 27: the fork labels lower down, in both modes; the lost-egg sheet and the restart from the nest.
 
 ### Next
-- Drew and Aidan play build 26. Questions out: is it busy enough now, the fork's left side, the labels, the crossing, the fan's length, the boulders, the finds, and how losing the egg feels.
-- Then: the opening and ending scenes; then sound and music, and the screens around the run.
+- The opening and ending scenes (approved), then sound and music, and the screens around the run.
+- Open with Drew: which fork-label mode to keep, and if Pause, whether it should happen every run or only the first few.
 
 ## How the code is laid out
 

@@ -485,9 +485,11 @@ body {
   opacity: 1;
   box-shadow: 0 0 8px #8fd8ff;
 }
+/* Beside the trail at the height the eye rests while running. See-through, so the trail and
+   its amber show behind them; solid while the game holds still for them to be read. */
 .fork-label {
   position: absolute;
-  top: 34%;
+  top: 46%;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -497,9 +499,15 @@ body {
   font-size: 17px;
   line-height: 1.2;
   color: var(--ui-text);
-  background: color-mix(in srgb, var(--ui-panel) 88%, transparent);
-  border: 1.5px solid color-mix(in srgb, var(--ui-accent) 70%, transparent);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.75);
+  background: color-mix(in srgb, var(--ui-panel) 38%, transparent);
+  border: 1.5px solid color-mix(in srgb, var(--ui-accent) 55%, transparent);
+  transition: background 0.3s, border-color 0.3s;
   pointer-events: none !important;
+}
+.fork-label.solid {
+  background: color-mix(in srgb, var(--ui-panel) 92%, transparent);
+  border-color: var(--ui-accent);
 }
 .fork-label[hidden] {
   display: none;
