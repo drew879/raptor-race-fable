@@ -90,6 +90,9 @@ export const OBSTACLES: Obstacle[] = [
   O(470, 'log'),
 ];
 
+/** The one power-up, "Fan out": the runner spreads its fans and sweeps in amber from every lane. */
+export const POWER = { s: 348, lane: 0, lasts: 6 };
+
 /** Where the egg comes to rest. */
 export const END_S = 512;
 
@@ -135,12 +138,10 @@ function buildAmber(): Amber[] {
   line(a, 307, 318, 1);
   arc(a, 325, 0);
   line(a, 332, 341, 1, 0.26);
-  // second drop
-  line(a, 350, 361, 0);
-  line(a, 364, 375, -1);
-  line(a, 378, 389, 0);
-  line(a, 392, 404, 1);
-  line(a, 408, 414, 0);
+  // second drop: the power-up, then amber in all three lanes for as long as it lasts
+  line(a, 340, 344, 0);
+  for (const lane of [-1, 0, 1]) line(a, 354, 400, lane);
+  line(a, 406, 414, 0);
   arc(a, 422, 0);
   line(a, 428, 439, 1);
   line(a, 442, 450, 0, 0.26);

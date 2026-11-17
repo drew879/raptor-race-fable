@@ -104,6 +104,14 @@ void main() {
 }
 `;
 
+/**
+ * Edge smoothing samples per pixel. It was 4. On the phone, warm and several minutes into a
+ * session, full sharpness at 4 could not hold 60 frames a second while the speed test (short
+ * bursts) said it had room to spare. At two pixels per point, 2 is hard to tell from 4 by eye
+ * and moves half as much memory every frame.
+ */
+export const SAMPLES = 2;
+
 export class Post {
   private target: THREE.WebGLRenderTarget;
   private w = 4;
@@ -113,7 +121,7 @@ export class Post {
   private quadCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   enabled = true;
 
-  constructor(private renderer: THREE.WebGLRenderer, private samples = 4) {
+  constructor(private renderer: THREE.WebGLRenderer, private samples = SAMPLES) {
     this.target = this.makeTarget();
     const mat = new THREE.ShaderMaterial({
       uniforms: postUniforms,
@@ -146,7 +154,7 @@ export class Post {
     return target;
   }
 
-  /** Edge smoothing samples: 4 for the game, 0 to switch it off (the speed test compares them). */
+  /** Edge smoothing samples: SAMPLES for the game, 0 to switch it off (the speed test compares them). */
   setSamples(samples: number) {
     if (samples === this.samples) return;
     this.samples = samples;

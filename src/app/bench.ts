@@ -2,6 +2,7 @@
 // sharpness, without edge smoothing, without the forest and so on), and lists how long a frame
 // takes each way. A screenshot of the list shows exactly what costs the most on a real phone.
 
+import { SAMPLES } from '../render/post';
 import * as THREE from 'three';
 import type { RunView } from '../game/run';
 import type { Post } from '../render/post';
@@ -30,6 +31,7 @@ interface Case {
 const CASES: Case[] = [
   { name: 'as played, full sharpness' },
   { name: 'no edge smoothing', samples: 0 },
+  { name: '4x edge smoothing (the old setting)', samples: 4 },
   { name: 'no ink and paper pass', post: false },
   { name: 'three quarters sharp', scale: 0.75 },
   { name: 'half sharp', scale: 0.5 },
@@ -107,7 +109,7 @@ export async function runBench(rig: Rig) {
   drawFor(500); // the first frames compile shaders; leave them out
   for (const c of CASES) {
     rig.setScale(c.scale ?? 1);
-    post.setSamples(c.samples ?? 4);
+    post.setSamples(c.samples ?? SAMPLES);
     post.enabled = c.post ?? true;
     view.debug.forest.visible = c.forest ?? true;
     view.debug.setShadows(c.shadows ?? true);
@@ -117,7 +119,7 @@ export async function runBench(rig: Rig) {
     lines.push(`${ms.toFixed(1).padStart(6)} ms  ${c.name}`);
   }
   rig.setScale(1);
-  post.setSamples(4);
+  post.setSamples(SAMPLES);
   post.enabled = true;
   view.debug.forest.visible = true;
   view.debug.setShadows(true);

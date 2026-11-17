@@ -7,8 +7,8 @@ Decisions and progress. Read `raptor-race-brief.md` first; it's the source of tr
 - **Milestone 1 (style): done. The look is B, the Painted Diorama.** Drew, 2026-11-16, after trying B+ (B with ink on the animals): "Let's just go with B... it just looks the best." Aidan had picked B too. AB and B+ are out of the code (they are in the history); the pickers are gone.
 - **Milestone 2 (rough playable run): done.**
 - **Milestone 3 (runner, egg and chick up close): approved.** Drew: "Looks excellent overall." Runner from behind in the run: good. Egg: good. Sit pose: reads. Chick: **Slate** (the other two are deleted). Teeth: keep, but they "strangely" pointed straight ahead; they now hang down under the front of the upper jaw with a slight forward lean. The opening nest will hold a **clutch**, not one egg. The turntable stays at `?mode=close`.
-- **Milestone 4 has begun with a plan: the Level 1 course map is drafted and with Drew for sign-off** (he said "Yes, draft it" on 2026-11-16). See "Level 1 course map" below. Nothing of the level is built.
-- **Solid obstacles: built in the rough run (build 20), waiting on Drew and Aidan's playtest.** Aidan had noticed the runner and the egg passed straight through obstacles. See "Solid obstacles" below. The course map for Level 1 comes after they are happy with this.
+- **Milestone 4 has begun with a plan: the Level 1 course map.** Drew's answers (2026-11-16): order and pacing "looks good"; hollow log "love it"; Psittacosaurus "let's try it out"; Fan out "interested to see how it looks" (now in the rough run); the fork needed explaining (done, see below); losing the egg he "kind of likes", with one point to settle (catch-up). See "Level 1 course map". Nothing of the level itself is built.
+- **Solid obstacles: approved.** Bump "honestly perfect", over/under/around "perfect". The egg's dodges were "a surprise hit": Aidan "laughed uncontrollably" at it bobbing, weaving and hopping logs, and Drew asked to lean into it and make it "even more agile and livelier". Build 22 adds a Wild egg to compare (see below). The body turn went unnoticed and has been made much stronger.
 - **Frame rate: holding 60 on the phone** (build 18, Home Screen, late in a long session: 60 fps, 2% late, full sharpness). See "Frame rate".
 - Live build: https://drew879.github.io/raptor-race-fable/ now opens the rough run. Close-up: `?mode=close`. Speed test: `?mode=bench`. The old concept frame: `?mode=concept`.
 - Hero colors are approved. All seven obstacle kinds are approved (they are kinds, to be repeated and combined).
@@ -21,6 +21,8 @@ Decisions and progress. Read `raptor-race-brief.md` first; it's the source of tr
 - **Hidden finds:** three, each off the amber line and needing two planned moves, never a quick double. 1: beside a boulder in Fern hollow, with a tree to step back from. 2: at the top of the jump over the creek on the fork's hard side. 3: behind a tree in the home stretch, with the creek still to jump.
 - **Power-up, proposed:** "Fan out". Grab a golden ginkgo leaf and the runner spreads its fans for 6 s, sweeping in amber from all three lanes. The earlier version's amber magnet is the fallback. Drew to choose.
 - **Checkpoints:** at the top of the first drop, at the fork, at the top of the second drop.
+- **How the fork works (Drew asked):** the path widens. The two side lanes swing out round the rock by themselves and rejoin after it, so the runner follows its lane with no swipe. The one choice is which side lane you are in when you get there; stay in the middle and you bump the rock and get shunted to the easy side.
+- **Losing the egg (Drew's question and my answer):** a bump never ends the run by itself; you lose only by letting the egg get 26 m ahead; the level always ends at the clearing, wherever you are. He asked whether someone further behind catches up faster. Proposed: yes, gently. You gain 0.13 m/s close behind, rising to 0.6 m/s as the lead nears 26 m, so a bad patch can be won back but four quick bumps still lose it. Waiting on his answer.
 - **The chase, proposed numbers:** the egg starts 15 m ahead and a clean run closes that to about 5.5 m by the clearing (0.13 m/s), so you gain on it slowly the whole way, as Drew asked. A bump costs 3.2 m. Warning at 21 m, egg lost at 26 m (back to the last checkpoint): four bumps close together at the start, six or more late in a clean run.
 - **New things this layout needs built:** the creek, the hollow log (with boulders closing the lanes beside it), the dozing Psittacosaurus, the fork (side lanes swinging out round an island), the power-up, hidden finds, checkpoints and losing the egg, the opening with a clutch in the nest, the scoop and the hatching.
 - **Hidden-find pages:** themes only so far, from the brief's own facts (a feathered tail and a baby bird in amber from Myanmar; a spider's web in amber from Spain; ash from the volcanoes preserving the Jehol fossils). Write and fact-check them with the journal.
@@ -47,7 +49,11 @@ Aidan pointed out that the runner slowed on a hit but slid through the obstacle,
 
 **Not built yet:** sounds for the bump and the kick; a creek (a miss there is a splash and a slow wade, nothing to bump); the chick showing in the egg's hole when it kicks.
 
-**The body turns into a lane change** (asked for the same day): the runner's body yaws toward its real heading, up to 17 degrees, on top of the lean it already had. `st.heading` in `run.ts`.
+**The body turns into a lane change** (asked for the same day). The first version followed the runner's real heading (up to 17 degrees) and Drew "literally didn't even notice it": a lane change is over in a sixth of a second, so the turn was gone before it could be seen. Now the body snaps up to 30 degrees toward the lane it is making for and straightens over about 0.4 s, while the head keeps looking down the trail. `st.heading` in `run.ts`.
+
+**The Wild egg (build 22).** The pause sheet's egg choices are now Wobbly, Lively, Wild; Wild is the default (saved under a new key so everyone meets it first). Wild is Lively plus showing off: it shivers and shrinks a little before a hop, hops higher (1.25 m) with a flip and lands in two skips; leaves its swing round trees late and takes it wide with a little hop into it; spins up under arches and pops out the far side; and where the trail is clear, every third bounce is a big one and it side-steps quickly between the lanes. It still never touches anything (same simulated runs, speeds 8 and 11). If Aidan prefers it, retire Lively.
+
+**Fan out (build 22, on trial).** The power-up from the course map, placed on the test course's second drop (`POWER` in `course.ts`): a golden ginkgo leaf (`makeLeaf` in `fx.ts`, drawn by its shader so it faces the camera). Taking it spreads the fans for 6 s (`fan` in the rig: tail fan lifted like a display, hand fans out to the sides) and amber from all three lanes flies in as the runner comes up to it. The test course's slalom there was replaced by amber in every lane.
 
 ### What the rough run has
 - A 530 m test course (about 66 s at 8 m/s) in `src/game/course.ts`: 25 decision points, never closer than 12 m (1.5 s). Order: lanes, jumps, slides, a steep clear drop with a view, a mixed section, a second drop, a short finish. This is a feel test, not the Level 1 layout.
@@ -100,7 +106,11 @@ Build numbers here are the ones shown on the phone.
 - **For the real level:** keep the opening stretch's forest no heavier than the rest.
 - **Build 19 on the phone settled part of this.** Speed test: as played 8.6 ms, half sharp 7.5; start of the run 9.1 ms, start of the run half sharp 5.9. So the start is the one place where pixels clearly cost. Pause sheet, 6 minutes into a session at speed 11: "359s 3 slow seconds (57% late), trying half · 360s half: 2% late, checking · 362s 100%: 68% late again, staying at half · 378s up to 60%". That is no false alarm: at full sharpness more than half the frames were late, at half almost none, and it came straight back. The governor did the right thing.
 - **So why does play struggle when the speed test says a frame takes 8.6 ms?** The speed test hides the on-screen buttons. In play, the amber count and the pause button each blurred the 3D picture behind them (`backdrop-filter`), which makes the phone's compositor redo that blur over the full-size picture every frame, a cost the speed test never saw and one that shrinks with sharpness. That is my best explanation, not yet proven. Build 20 removes the blur from everything that is on screen during play (the sheets keep theirs; they are not judged). The other suspect is the phone slowing its graphics chip when it is warm or when the load looks light.
-- If build 20 still drops sharpness in play, next tries: 2x edge smoothing in place of 4x (the speed test puts 4x at 1.6 ms), then drawing at 1.75 pixels per point in place of 2.
+- **Build 20 on the phone: the blur was not it.** Pause sheet at speed 11, phone at 21% battery after an evening of testing: 51 fps, sharpness 80% (saved from the session before), 9% late frames, and a check at 367 s that found 19% late at 80%, 2% at half, 6% back at 80%. So even at 80% it was missing frames. (The "80 draws" on that sheet is a frame in which the shadow map was redrawn: about 30 extra draws, every 2.5 m.)
+- **What I now think:** the speed test measures short bursts on a cool chip. Minutes into a session the phone is warm and gives less, and what it gives less of shows up as a cost per pixel. So "full sharpness" has to be cheaper than the speed test says it needs to be.
+- **Build 22: edge smoothing is 2 samples, down from 4** (`SAMPLES` in `post.ts`; the speed test put 4x at 1.6 ms of 8.6 and has a line to compare the two). `?msaa=4` brings the old setting back.
+- If that is not enough: draw at 1.75 pixels per point in place of 2; then lighten the forest (about 3.7 ms of the 8.6); then look at the shadow map's redraw, which lands on one frame in fourteen at speed 8 and one in ten at speed 11.
+- Drew and Aidan play at speed 11, not 8. Test at both.
 - **Headroom:** about 8 ms of a 16.7 ms budget by the speed test. If the real level needs more, the lever is forest triangles (lighter middle-distance models, fewer far plants).
 
 ### The close-up (milestone 3, built 2026-11-16)
@@ -125,13 +135,11 @@ Build numbers here are the ones shown on the phone.
 **For the story scenes later** (from the same fact check): oviraptorosaur nests held many eggs in pairs, in rings, blunt ends up; adults have been found sitting on them with arms spread round the edge; which parent sat is unknown (possibly the father). The game says "parent", which is right. Drew chose a clutch for the opening nest (2026-11-16), with ours the one that rolls away.
 
 ### Not yet verified on the real phone
-- Solid obstacles and the body turn (they work on the Mac and pass the simulated runs).
-- Whether removing the blur behind the in-play buttons keeps sharpness at full.
-- The re-angled teeth.
+- Build 22: the Wild egg, the stronger body turn, Fan out, and whether 2x edge smoothing keeps sharpness at full (and whether edges look any rougher).
 
 ### Next
-- Drew's sign-off on the course map (order and pacing, the power-up, the fork, the hollow log, the Psittacosaurus, losing the egg), and his and Aidan's playtest of bumps and the egg's dodges.
-- Then build the level from `docs/level-1/course.mjs`, new obstacle kinds first.
+- Drew's answers: Wild or Lively, the body turn, Fan out, the catch-up rule, and a pause sheet from build 22.
+- Then build the level from `docs/level-1/course.mjs`, new obstacle kinds first (creek, hollow log, Psittacosaurus), then the fork.
 - Known rough spots on the runner: the sitting pose is a first pass; the chick's down is made of flat cards (fine at its size, visible zoomed right in).
 
 ## How the code is laid out
@@ -208,6 +216,7 @@ These are the kinds, not a count. They repeat and combine along the course; expe
 - His favorite colors: blue, black, green and gold. Worth echoing in the game's palette where it stays natural.
 - Phone: iPhone 16 Pro Max (440 by 956 points), iOS 27.2.
 - Each level has a different runner. Planned: Velociraptor (Level 2, Gobi), and others like Acheroraptor, Utahraptor, Deinonychus. Keep hero, level and palette code per level.
+- **A later level: Microraptor, gliding.** Drew wants a Microraptor as the runner in a future level and thinks it would be cool for it to glide for long stretches (2026-11-16). His earlier build had something that lifted the raptor into the air for a while; he does not want that in Level 1.
 - Budget: small spends are fine if they clearly help, under $100 total, and closer to that only for things useful beyond this game.
 
 ## Mac setup
@@ -218,7 +227,7 @@ These are the kinds, not a count. They repeat and combine along the course; expe
 
 ## Open questions
 
-- The course map: does Drew sign it off, and what does he choose for the power-up (Fan out or the magnet), the Psittacosaurus (keep or a boulder) and the losing-the-egg numbers?
-- Do bumps and the egg's dodges feel right to Drew and Aidan (length of the bump, the hop, the barrel roll)?
-- Does sharpness now stay at full through a session?
+- Wild or Lively for the egg? Is the body turn right now? Does Fan out look good, or should it be the magnet?
+- Catch-up: gain faster when far behind (proposed), or one steady pace?
+- Does sharpness stay at full with 2x edge smoothing, and do edges still look clean?
 - Should a slide be holdable by swiping down again? Drew is on the fence.

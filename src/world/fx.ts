@@ -311,6 +311,56 @@ export function makeGlow(color: THREE.ColorRepresentation, size: number, strengt
   return mesh;
 }
 
+/**
+ * A golden ginkgo leaf that always faces the camera, drawn by its shader so its fan shape,
+ * notch and stem stay crisp at any distance. It rocks and bobs gently. The power-up.
+ */
+export function makeLeaf(size: number): THREE.Mesh {
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { uTime: world.uTime },
+    vertexShader: /* glsl */ `
+      uniform float uTime;
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        vec3 p = position;
+        float a = sin(uTime * 2.1) * 0.22; // rocking on its stem
+        p.xy = mat2(cos(a), -sin(a), sin(a), cos(a)) * p.xy;
+        p.y += sin(uTime * 3.0) * 0.06;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+      }`,
+    fragmentShader: /* glsl */ `
+      varying vec2 vUv;
+      ${DISPLAY}
+      void main() {
+        // the blade is a fan spreading up from where the stem joins, with a notch in the middle
+        vec2 p = (vUv - vec2(0.5, 0.34)) * 2.0;
+        float r = length(p);
+        float ang = atan(p.x, p.y); // 0 straight up
+        float reach = 0.92 - 0.1 * cos(ang * 2.0) - 0.26 * exp(-ang * ang * 60.0);
+        float blade = (1.0 - smoothstep(reach - 0.03, reach, r)) * (1.0 - smoothstep(1.02, 1.1, abs(ang)));
+        float stem = (1.0 - smoothstep(0.03, 0.05, abs(p.x))) * step(p.y, 0.05) * step(-0.64, p.y);
+        float a = max(blade, stem);
+        if (a < 0.01) discard;
+        // veins fanning out from the stem, and a darker rim
+        float vein = 0.5 + 0.5 * cos(ang * 46.0);
+        vec3 col = mix(vec3(1.0, 0.86, 0.36), vec3(0.93, 0.6, 0.1), smoothstep(0.1, 0.95, r));
+        col *= 0.9 + 0.1 * vein * smoothstep(0.15, 0.5, r);
+        col = mix(col, vec3(0.6, 0.34, 0.04), smoothstep(reach - 0.12, reach, r) * blade * 0.7);
+        col = mix(vec3(0.62, 0.38, 0.06), col, blade);
+        gl_FragColor = vec4(toDisplay(col), a);
+      }`,
+  });
+  softBlend(mat, false);
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(size, size), mat);
+  mesh.onBeforeRender = (_r, _s, camera) => {
+    mesh.quaternion.copy(camera.quaternion);
+    mesh.updateMatrixWorld();
+  };
+  mesh.name = 'leaf';
+  return mesh;
+}
+
 /** A soft dark patch on the ground under a runner or a prop, so it sits on the trail in any light. */
 export function makeContactShadow(width: number, length: number, strength = 0.5): THREE.Mesh {
   const mat = new THREE.ShaderMaterial({

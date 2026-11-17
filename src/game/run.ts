@@ -9,12 +9,12 @@ import { world } from '../render/paint';
 import { SunShadow } from '../render/shadow';
 import type { Style } from '../render/styles';
 import { instance, instances, loadKit, loadSkinned, materialFor, SHADOW_LAYER, type Placement } from '../world/assets';
-import { makeContactShadow, makeGlow, makeGlowField, makeMistField, makeShaftField } from '../world/fx';
+import { makeContactShadow, makeGlow, makeGlowField, makeLeaf, makeMistField, makeShaftField } from '../world/fx';
 import { rng, smoothstep } from '../world/noise';
 import { makeRidges, makeSky, makeVolcano } from '../world/sky';
 import { Terrain } from '../world/terrain';
 import { Track } from '../world/track';
-import { AMBER, DEFAULT_SPEED, END_S, HINTS, LANE, OBSTACLES, SEGMENTS, START_SLOPE, VISTAS, type Obstacle } from './course';
+import { AMBER, DEFAULT_SPEED, END_S, HINTS, LANE, OBSTACLES, POWER, SEGMENTS, START_SLOPE, VISTAS, type Obstacle } from './course';
 import { Flora } from './flora';
 import { makeHud } from './hud';
 import { listenForMoves, type Move } from './input';
@@ -51,8 +51,13 @@ const EGG_SCALE = 0.56;
 const EGG_R = 0.275 * EGG_SCALE; // half its width
 const EGG_HALF = 0.5 * EGG_SCALE; // half its length
 const EGG_G = 9.5;
-/** How the egg travels: 0 steady end over end, 1 wobbling, 2 wobbling with bounces that depend on how it lands. */
-export const EGG_MODES = ['Steady', 'Wobbly', 'Lively'];
+/**
+ * How the egg travels. Wobbly: tumbling at changing angles with even bounces. Lively: each
+ * bounce depends on how it lands. Wild: Lively, and it shows off: it shivers before a hop and
+ * flips over the log, jinks late and hard round trees, shoots out from under arches, and
+ * throws in big bounces and quick side-steps when the trail is clear.
+ */
+export const EGG_MODES = ['Wobbly', 'Lively', 'Wild'];
 
 // how far along the trail each kind of obstacle can catch you
 const DEPTH: Record<Obstacle['kind'], number> = { log: 0.3, arch: 0.45, boulder: 0.42, tree: 0.26 };
@@ -69,6 +74,7 @@ const BUMP_COST = 3.2;
 // and swings into an open lane round trees and boulders.
 const HOP_HALF = 2.3; // meters either side of a log that a hop covers
 const HOP_HEIGHT = 0.85;
+const HOP_HEIGHT_WILD = 1.25;
 const LOW_HALF = 1.4; // meters either side of an arch where it stays on the ground
 const SETTLE = 7.5; // meters before either where it stops bouncing, so it arrives on the ground
 
@@ -200,10 +206,18 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   const v3 = new THREE.Vector3();
   let shownFrom = 0; // pieces shownFrom up to (not including) shownTo are in the list
   let shownTo = 0;
+  const flyAt = new THREE.Vector3();
   const putAmber = (i: number) => {
-    const size = collected[i] ? 0 : 1;
-    amberMesh.setMatrixAt(i - shownFrom, m4.compose(amberPos[i], qI, v3.setScalar(0.19 * size)));
-    amberGlow.setMatrixAt(i - shownFrom, m4.compose(amberPos[i], qI, v3.setScalar(0.8 * size)));
+    let size = collected[i] ? 0 : 1;
+    let at = amberPos[i];
+    if (!collected[i] && fly[i] > 0) {
+      // swept toward the runner, quick at first, shrinking as it arrives
+      const k = 1 - (1 - fly[i]) ** 2;
+      at = flyAt.copy(amberPos[i]).lerp(chest, k);
+      size = 1 - 0.55 * k;
+    }
+    amberMesh.setMatrixAt(i - shownFrom, m4.compose(at, qI, v3.setScalar(0.19 * size)));
+    amberGlow.setMatrixAt(i - shownFrom, m4.compose(at, qI, v3.setScalar(0.8 * size)));
     amberMesh.instanceMatrix.needsUpdate = true;
     amberGlow.instanceMatrix.needsUpdate = true;
   };
@@ -313,25 +327,48 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     row.eggLane = pick.reduce((best, lane) => (Math.abs(lane * LANE - from) < Math.abs(best * LANE - from) ? lane : best), pick[0] ?? 0);
   }
   /** Where the egg is across the trail: weaving between the lanes, so it never sits on a line of
-   *  amber, and swinging into an open lane in good time to pass a tree or a boulder. */
-  const eggUAt = (s: number): number => {
+   *  amber, and swinging into an open lane in good time to pass a tree or a boulder. The wild
+   *  egg adds quick side-steps, and leaves its swing late and takes it wide. */
+  const eggUAt = (s: number, wild = false): number => {
     let u = weave(s);
+    if (wild) u += Math.sin(s * 0.47 + 1.3) * 0.17;
     for (const row of rows) {
       if (!row.around || s < row.s - 8 || s > row.s + 6) continue;
-      const k = smoothstep(row.s - 7.5, row.s - 2.5, s) * (1 - smoothstep(row.s + 1.5, row.s + 5.5, s));
-      u += (row.eggLane * LANE - u) * k;
+      const k = wild
+        ? smoothstep(row.s - 5.2, row.s - 1.7, s) * (1 - smoothstep(row.s + 1.5, row.s + 4, s))
+        : smoothstep(row.s - 7.5, row.s - 2.5, s) * (1 - smoothstep(row.s + 1.5, row.s + 5.5, s));
+      u += (row.eggLane * LANE * (wild ? 1.12 : 1) - u) * k;
     }
     return u;
   };
-  /** The log or arch the egg is coming up to or passing, if any. */
-  const eggRow = (s: number): Row | null => {
+  /** The log or arch the egg is coming up to or passing, if any. It stops bouncing far enough
+   *  ahead to be on the ground when it gets there, which is further the faster it is going. */
+  const eggRow = (s: number, speed: number): Row | null => {
+    const settle = Math.max(SETTLE, speed * 0.8);
     for (const row of rows) {
       if (row.around) continue;
       const half = row.kind === 'log' ? HOP_HALF : LOW_HALF;
-      if (s > row.s - half - SETTLE && s < row.s + half) return row;
+      if (s > row.s - half - settle && s < row.s + half) return row;
     }
     return null;
   };
+  /** True where the trail ahead of the egg is clear for long enough to show off. */
+  const eggFree = (s: number): boolean => !rows.some((row) => row.s > s - 3 && row.s < s + 17);
+  // The power-up: a golden ginkgo leaf in the air. Taking it is "Fan out".
+  const leafAt = terrain.place(POWER.s, POWER.lane * LANE, 0.66);
+  const leaf = makeLeaf(0.95);
+  leaf.position.copy(leafAt);
+  leaf.renderOrder = 5;
+  const leafGlow = makeGlow('#ffcf5a', 2.1, 0.5);
+  leafGlow.position.copy(leafAt);
+  const fanGlow = makeGlow('#ffcf6a', 2.2, 0);
+  fanGlow.renderOrder = 4;
+  scene.add(leaf, leafGlow, fanGlow);
+  /** Amber on its way to the runner while the fans are out: 0 = not flying, else how far along (0..1). */
+  const fly = new Float32Array(AMBER.length);
+  const flying: number[] = [];
+  const chest = new THREE.Vector3();
+
   // a puff of dust where the runner bumps something
   const puff = makeGlow('#e6d2a8', 1, 0);
   puff.visible = false;
@@ -339,7 +376,8 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   scene.add(puff);
   const collected: boolean[] = AMBER.map(() => false);
   let baseSpeed = Number(localStorage.getItem('rr-speed2')) || DEFAULT_SPEED;
-  const savedEgg = localStorage.getItem('rr-egg');
+  // (a new key: the list changed when Wild came in, and everyone should meet Wild first)
+  const savedEgg = localStorage.getItem('rr-egg2');
   let eggMode = savedEgg === null ? 2 : THREE.MathUtils.clamp(Number(savedEgg) || 0, 0, 2);
   // the egg's turn, in the trail's own frame (x across to the right, y up, z back up the trail)
   const eggQ = new THREE.Quaternion();
@@ -393,6 +431,16 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     eggHop: false,
     eggPop: 0,
     eggTip: 0,
+    /** The wild egg: winding up before a hop, skips owed after one, bounces counted, and what it last did. */
+    eggWind: 0,
+    eggSkips: 0,
+    eggBounces: 0,
+    eggJink: -1,
+    eggWasLow: false,
+    /** Fan out: time left, how far the fans are spread, and whether the leaf has been taken. */
+    fanT: 0,
+    fan: 0,
+    leafTaken: false,
     amber: 0,
     paused: false,
     finished: false,
@@ -415,7 +463,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     onEgg: (mode) => {
       eggMode = mode;
       try {
-        localStorage.setItem('rr-egg', String(mode));
+        localStorage.setItem('rr-egg2', String(mode));
       } catch {
         /* private mode */
       }
@@ -454,7 +502,11 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       finished: false, queued: null, queuedT: 0, hint: 0, hintT: 0,
       prevLane: 0, du: 0, heading: 0, bump: null, sideT: 0, flinch: 0, shakeT: 0, puffT: 0, camLead: 0, pending: null,
       pendingT: 0, boostT: 0, eggU: 0, eggV: 0, heroV: 0, eggHop: false, eggPop: 0, eggTip: 0,
+      eggWind: 0, eggSkips: 0, eggBounces: 0, eggJink: -1, eggWasLow: false, fanT: 0, fan: 0, leafTaken: false,
     });
+    fly.fill(0);
+    flying.length = 0;
+    leaf.visible = leafGlow.visible = true;
     eggQ.setFromAxisAngle(v3.set(1, 0, 0), -0.5); // tipped a little forward, about to roll
     for (const o of obstacles) o.hit = false;
     for (const row of rows) row.hit = false;
@@ -523,9 +575,10 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
    * and spins faster; flat on its side, it skips low. No physics engine: a few lines of rules.
    */
   function rollEgg(dt: number, rolling: boolean) {
-    const wander = eggMode === 0 ? 0 : 1;
+    const lively = eggMode >= 1;
+    const wild = eggMode === 2;
     // lean the axis the way the egg is drifting across the trail, and tip it slowly up and down
-    eggAxis.set(-1, wander * 0.32 * Math.sin(st.eggS * 0.137 + 0.4), wander * -0.45 * Math.cos(st.eggS * 0.13)).normalize();
+    eggAxis.set(-1, 0.32 * Math.sin(st.eggS * 0.137 + 0.4), -0.45 * Math.cos(st.eggS * 0.13)).normalize();
     const wanted = rolling ? st.eggV * 1.5 * (1 + st.eggKick) : 0;
     st.eggSpin += (wanted - st.eggSpin) * Math.min(1, dt * (rolling ? 8 : 3));
     st.eggKick = Math.max(0, st.eggKick - dt * 1.6);
@@ -533,11 +586,13 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     eggQ.premultiply(eggTurn.setFromAxisAngle(eggAxis, st.eggSpin * dt)).normalize();
 
     // what is coming: a log to hop, or an arch to stay down for
-    const row = rolling ? eggRow(st.eggS) : null;
+    const row = rolling ? eggRow(st.eggS, st.eggV) : null;
     const d = row ? st.eggS - row.s : 0;
     const hop = row !== null && row.kind === 'log' && Math.abs(d) < HOP_HALF;
     const low = row !== null && row.kind === 'arch' && Math.abs(d) < LOW_HALF;
     const settle = row !== null && !hop && !low;
+    // the wild egg shivers for a moment before the chick kicks
+    st.eggWind = wild && row !== null && row.kind === 'log' && !hop && d < 0 ? smoothstep(-HOP_HALF - 2.4, -HOP_HALF - 0.3, d) : 0;
 
     if (row && row.kind === 'arch') {
       // Under an arch it rolls like a barrel, long way across the trail, so it passes with room
@@ -547,28 +602,49 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       eggTurn.setFromUnitVectors(eggLong, eggSide);
       eggQ.premultiply(eggNudge.identity().slerp(eggTurn, Math.min(1, dt * 5))).normalize();
       st.eggTip = 1.1; // once through, it is tipped back into its tumble
+      if (wild && low) st.eggKick = Math.max(st.eggKick, 0.9); // and the wild one spins up as it goes under
     } else if (st.eggTip > 0) {
       const turn = Math.min(st.eggTip, dt * 4.5);
       st.eggTip -= turn;
       eggQ.premultiply(eggTurn.setFromAxisAngle(eggBack, turn)).normalize();
     }
+    if (wild && st.eggWasLow && !low && rolling && eggRow(st.eggS, st.eggV) === null) {
+      // out from under the arch with a pop
+      st.eggY = 0.001;
+      st.eggVy = Math.sqrt(2 * EGG_G * 0.5);
+      st.eggKick = 1.1;
+      st.eggPop = 0.8;
+    }
+    st.eggWasLow = low;
 
     if (hop) {
       if (!st.eggHop) {
         // the chick kicks, and the egg jumps
         st.eggHop = true;
-        st.eggKick = 1.3;
+        st.eggKick = wild ? 2.6 : 1.3;
         st.eggPop = 1;
+        st.eggSkips = wild ? 2 : 0;
       }
-      st.eggY = Math.max(st.eggY * 0.5, HOP_HEIGHT * (1 - (d / HOP_HALF) ** 2));
+      st.eggY = Math.max(st.eggY * 0.5, (wild ? HOP_HEIGHT_WILD : HOP_HEIGHT) * (1 - (d / HOP_HALF) ** 2));
       st.eggVy = 0;
       return;
     }
     if (st.eggHop) {
-      // down from the hop: a small skip, then back to its own bouncing
+      // down from the hop: a skip, then back to its own bouncing
       st.eggHop = false;
       st.eggY = 0;
       st.eggVy = Math.sqrt(2 * EGG_G * 0.1);
+    }
+    if (wild && rolling && st.eggY <= 0.02) {
+      // a little hop into each swerve round a tree or a boulder
+      for (const r of rows) {
+        if (!r.around || st.eggJink === r.s || st.eggS < r.s - 5 || st.eggS > r.s - 3.4) continue;
+        st.eggJink = r.s;
+        st.eggY = 0.001;
+        st.eggVy = Math.sqrt(2 * EGG_G * 0.3);
+        st.eggKick = 1.0;
+        st.eggPop = 0.6;
+      }
     }
     if (!rolling && st.eggY <= 0) return;
     st.eggVy -= (low ? 40 : EGG_G) * dt;
@@ -579,9 +655,23 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       if (rolling && !settle && !low) {
         // how upright the egg is as it lands: 1 on an end, 0 flat on its side
         const onEnd = Math.abs(eggLong.set(0, 1, 0).applyQuaternion(eggQ).y);
-        const height = eggMode === 2 ? 0.1 + 0.32 * onEnd * onEnd : 0.2;
+        let height = lively ? 0.1 + 0.32 * onEnd * onEnd : 0.2;
+        if (lively) st.eggKick = 0.5 * onEnd * onEnd;
+        if (wild) {
+          st.eggBounces++;
+          if (st.eggSkips > 0) {
+            // two quick skips coming down from a hop
+            height = st.eggSkips === 2 ? 0.42 : 0.2;
+            st.eggSkips--;
+            st.eggPop = 0.5;
+          } else if (st.eggBounces % 3 === 0 && eggFree(st.eggS)) {
+            // every third bounce, where there is room, is a big one with a flip
+            height = 0.66;
+            st.eggKick = 1.3;
+            st.eggPop = 0.7;
+          }
+        }
         st.eggVy = Math.sqrt(2 * EGG_G * height);
-        if (eggMode === 2) st.eggKick = 0.5 * onEnd * onEnd;
       }
     }
   }
@@ -699,10 +789,13 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     st.boostT = Math.max(0, st.boostT - dt);
     st.pendingT = Math.max(0, st.pendingT - dt);
     st.camLead *= Math.exp(-dt / 0.14);
-    // the body turns to face the way it is really going
+    // The body turns toward the lane it is making for. The move itself is over in a blink, so
+    // the turn snaps in and then straightens slowly: that is what makes it something you see.
     st.du = dt > 0 ? (st.u - uBefore) / dt : 0;
-    const headingTo = THREE.MathUtils.clamp(Math.atan2(st.du, Math.max(st.speed, 4)), -0.3, 0.3);
-    st.heading += (headingTo - st.heading) * (1 - Math.exp(-dt / 0.07));
+    const toGo = (st.lane * LANE - st.u) / LANE;
+    const headingTo = THREE.MathUtils.clamp(toGo * 0.8 + Math.atan2(st.du, Math.max(st.speed, 4)) * 0.4, -0.55, 0.55);
+    const quick = Math.abs(headingTo) > Math.abs(st.heading);
+    st.heading += (headingTo - st.heading) * (1 - Math.exp(-dt / (quick ? 0.035 : 0.22)));
 
     // up and down
     if (!st.bump && st.y > 0) {
@@ -757,9 +850,43 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       }
     }
 
+    // Fan out: take the leaf and the fans spread; while they are out, amber from every lane
+    // is swept in as the runner comes up to it.
+    if (!st.leafTaken && Math.abs(POWER.s - st.s) < 0.7 && Math.abs(st.u - POWER.lane * LANE) < 0.45) {
+      st.leafTaken = true;
+      st.fanT = POWER.lasts;
+      leaf.visible = leafGlow.visible = false;
+      hud.hint('Fan out! Catch it all');
+      st.hintT = 2.2;
+    }
+    st.fanT = Math.max(0, st.fanT - dt);
+    st.fan += ((st.fanT > 0 && !st.bump ? 1 : 0) - st.fan) * (1 - Math.exp(-dt / 0.12));
+    terrain.place(st.s + 0.25, st.u, st.y + 0.5, chest);
+    if (st.fanT > 0) {
+      for (let i = 0; i < AMBER.length; i++) {
+        const a = AMBER[i];
+        if (a.s < st.s - 0.6) continue;
+        if (a.s > st.s + 3.6) break;
+        if (collected[i] || fly[i] > 0) continue;
+        fly[i] = 1e-4;
+        flying.push(i);
+      }
+    }
+    for (let k = flying.length - 1; k >= 0; k--) {
+      const i = flying[k];
+      fly[i] = Math.min(1, fly[i] + dt / 0.26);
+      if (fly[i] >= 1) {
+        collected[i] = true;
+        flying.splice(k, 1);
+        st.amber++;
+        hud.setAmber(st.amber);
+      }
+      if (i >= shownFrom && i < shownTo) putAmber(i);
+    }
+
     // amber
     for (let i = 0; i < AMBER.length; i++) {
-      if (collected[i]) continue;
+      if (collected[i] || fly[i] > 0) continue;
       const a = AMBER[i];
       if (a.s < st.s - 1) continue;
       if (a.s > st.s + 1) break;
@@ -820,6 +947,12 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     heroState.slide = st.slide;
     heroState.flinch = st.flinch;
     heroState.blink = st.flinch;
+    heroState.fan = st.fan;
+    // the head keeps looking down the trail while the body turns under it
+    heroState.lookYaw = -st.heading * 0.75;
+    fanGlow.position.copy(chest);
+    (fanGlow.material as THREE.ShaderMaterial).uniforms.uStrength.value = 0.18 * st.fan;
+    fanGlow.visible = st.fan > 0.01;
     heroState.lean = THREE.MathUtils.clamp((st.lane * LANE - st.u) / LANE, -1, 1) + wobble;
     rig.pose(heroState);
     heroShadow.position.copy(terrain.place(st.s + 0.08, st.u, 0.02));
@@ -829,14 +962,21 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
 
     // egg: bouncing and tumbling down the trail ahead
     // it weaves between the lanes, so it never sits on top of a line of amber
-    const eggU = eggUAt(st.eggS);
+    const wildEgg = eggMode === 2;
+    const eggU = eggUAt(st.eggS, wildEgg);
     st.eggU = eggU;
-    egg.scale.setScalar(EGG_SCALE * (1 + 0.16 * st.eggPop));
+    egg.scale.setScalar(EGG_SCALE * (1 + (wildEgg ? 0.26 : 0.16) * st.eggPop) * (1 - 0.08 * st.eggWind));
     // an egg standing on its end rides higher than one lying on its side
     const up = eggLong.set(0, 1, 0).applyQuaternion(eggQ).y;
     const rest = Math.sqrt(EGG_HALF * EGG_HALF * up * up + EGG_R * EGG_R * (1 - up * up));
     egg.position.copy(terrain.place(st.eggS, eggU, rest + 0.015 + st.eggY));
-    egg.quaternion.copy(basisAt(st.eggS)).multiply(eggQ);
+    egg.quaternion.copy(basisAt(st.eggS));
+    if (wildEgg) {
+      // it leans into its swerves, and shivers as it winds up for a hop
+      const lean = THREE.MathUtils.clamp((eggUAt(st.eggS + 0.4, true) - eggUAt(st.eggS - 0.4, true)) * 1.4, -0.6, 0.6);
+      egg.quaternion.multiply(eggTurn.setFromAxisAngle(eggBack, lean + Math.sin(st.clock * 52) * 0.2 * st.eggWind));
+    }
+    egg.quaternion.multiply(eggQ);
     eggShadow.position.copy(terrain.place(st.eggS + 0.04, eggU, 0.02));
     eggShadow.quaternion.copy(basisAt(st.eggS));
     (eggShadow.material as THREE.ShaderMaterial).uniforms.uStrength.value = 0.55 * (1 - Math.min(0.75, st.eggY * 1.6));

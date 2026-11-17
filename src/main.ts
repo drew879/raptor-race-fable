@@ -9,7 +9,7 @@ import { buildRun, type RunView } from './game/run';
 import { buildHeroLab } from './herolab/scene';
 import { buildLookdev, type Lookdev } from './lookdev/scene';
 import { makeViewerUI, type ViewerUI } from './lookdev/ui';
-import { Post } from './render/post';
+import { Post, SAMPLES } from './render/post';
 import { applyStyle, STYLES } from './render/styles';
 
 startUpdates();
@@ -38,7 +38,7 @@ async function start() {
   const fullDpr = Math.min(window.devicePixelRatio || 1, Number(params.get('dpr')) || 2);
   stage.appendChild(renderer.domElement);
 
-  const post = new Post(renderer, params.get('msaa') === '0' ? 0 : 4);
+  const post = new Post(renderer, params.has('msaa') ? Number(params.get('msaa')) || 0 : SAMPLES);
   post.enabled = params.get('post') !== '0';
 
   // one look for now (see styles.ts); the link can still ask for another by name if more are added

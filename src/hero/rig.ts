@@ -140,6 +140,8 @@ export interface HeroState {
   idle?: number;
   /** 0..1, recoiling from a bump: rears back, neck drawn in, arms and fans thrown wide. */
   flinch?: number;
+  /** 0..1, "Fan out": arms held wide with the hand fans fully open and the tail fan lifted. */
+  fan?: number;
 }
 
 /** A natural blink for a clock in seconds: shut for about a tenth of a second every few seconds. */
@@ -228,6 +230,7 @@ export class HeroRig {
     const TAU = Math.PI * 2;
     const sit = s.sit ?? 0;
     const flinch = s.flinch ?? 0;
+    const fan = s.fan ?? 0;
     const run = s.run * (1 - s.slide) * (1 - sit);
     const grounded = 1 - s.air;
     const breath = s.idle === undefined ? 0 : Math.sin(s.idle * 1.9);
@@ -305,7 +308,7 @@ export class HeroRig {
     if (this.model.eye) this.model.eye.uniforms.uBlink.value = s.blink ?? 0;
 
     // ---- tail: counters the hips, lifts in the air, lies flat in a slide (up is negative)
-    const tailPitch = (bounce * 3 * run - run * 3 - s.air * 14 + s.slide * 7 + sit * 6 - flinch * 14) * DEG - hipsPitch * 0.5;
+    const tailPitch = (bounce * 3 * run - run * 3 - s.air * 14 + s.slide * 7 + sit * 6 - flinch * 14 - fan * 16) * DEG - hipsPitch * 0.5;
     this.turn('tail1', tailPitch, -hipsYaw * 0.9 + swing * -4 * DEG * run, 0);
     this.turn('tail2', tailPitch * 0.8, swing * -6 * DEG * run + s.lean * 8 * DEG, 0);
 
@@ -314,13 +317,13 @@ export class HeroRig {
       const side = sfx === 'L' ? -1 : 1;
       const beat = Math.sin(s.phase * TAU * 2 + (side > 0 ? 0.6 : 0));
       // sitting, the arms open out and forward, so the fans lie over the edge of the nest
-      const lift = (run * 8 + beat * 5 * run + s.air * 30 - s.slide * 4 + sit * 26 + flinch * 34 + breath * 0.8 * (1 - run)) * DEG;
-      const sweep = (run * 6 + s.air * 14 + s.slide * 16 - sit * 30 - flinch * 12) * DEG;
+      const lift = (run * 8 + beat * 5 * run * (1 - fan) + s.air * 30 - s.slide * 4 + sit * 26 + flinch * 34 + fan * 24 + breath * 0.8 * (1 - run)) * DEG;
+      const sweep = (run * 6 + s.air * 14 + s.slide * 16 - sit * 30 - flinch * 12 - fan * 4) * DEG;
       this.turn('arm' + sfx, 0, -side * sweep, side * lift);
       this.turn('hand' + sfx, 0, -side * sweep * 0.5, side * lift * 0.5);
       // the hand opens the fan when it is in use and folds it back against the body at rest
       if (this.has('fan' + sfx)) {
-        const open = (run * 10 + s.air * 22 + sit * 24 + flinch * 26 - s.slide * 6) * DEG;
+        const open = (run * 10 + s.air * 22 + sit * 24 + flinch * 26 + fan * 44 - s.slide * 6) * DEG;
         this.turn('fan' + sfx, 0, side * open, side * open * 0.3);
       }
     }
