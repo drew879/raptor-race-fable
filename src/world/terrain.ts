@@ -20,6 +20,11 @@ export interface TerrainOptions {
   laneMap?: (u: number, s: number) => number;
   /** Trail distances where a creek crosses: the lips along the trail's edges open there to let it through. */
   creeks?: number[];
+  /**
+   * The last of the trail is a spur of rock: toward `lip`, where the ground ends, the ground
+   * further than `half(s)` either side of the trail falls away too.
+   */
+  spur?: { lip: number; half(s: number): number };
 }
 
 const hex = (h: string) => new THREE.Color(h);
@@ -31,6 +36,8 @@ const MOSS_DARK = hex('#3c5627');
 const MOSS = hex('#5f8233');
 const MOSS_LIGHT = hex('#8fa843');
 const SOIL = hex('#4a3a2a');
+const CLIFF_ROCK = hex('#5d5950');
+const CLIFF_PALE = hex('#8b8474');
 
 export class Terrain {
   readonly track: Track;
@@ -49,6 +56,15 @@ export class Terrain {
     let k = 0;
     for (const c of this.opts.creeks ?? []) k = Math.max(k, 1 - smoothstep(0.55, 1.5, Math.abs(s - c)));
     return k;
+  }
+
+  /** How far the ground has fallen away at (s, u) beside the spur at the trail's end, in meters. */
+  spurDrop(s: number, u: number): number {
+    const spur = this.opts.spur;
+    if (!spur || s < spur.lip - 30) return 0;
+    const over = Math.abs(u) - spur.half(s);
+    if (over <= 0) return 0;
+    return smoothstep(spur.lip - 30, spur.lip - 16, s) * Math.min(70, over * 2.8 + over * over * 0.3);
   }
 
   profile(s: number, u0: number): number {
@@ -71,7 +87,7 @@ export class Terrain {
     }
     y += (fbm(s * 0.06, u * 0.06) - 0.5) * 3.0 * smoothstep(1.5, 12, d);
     y += (vnoise(s * 0.33, u * 0.33) - 0.5) * 0.45 * smoothstep(0.3, 3, d);
-    return y;
+    return y - this.spurDrop(s, u0);
   }
 
   /** World position of a point in trail space, sitting on the ground plus an optional lift. */
@@ -133,6 +149,9 @@ export class Terrain {
         else c.copy(floor);
         // dark, wet ground along a creek's banks
         c.lerp(SOIL, this.creekAt(s) * 0.55);
+        // bare rock where the ground falls away beside the spur
+        const fallen = this.spurDrop(s, u);
+        if (fallen > 0) c.lerp(floor.copy(CLIFF_ROCK).lerp(CLIFF_PALE, fbm(s * 0.5, u * 0.3 + 2)), smoothstep(0.2, 2.2, fallen));
         paint.set([c.r, c.g, c.b, onTrail], i * 4);
         // the ground shader reads trail coordinates from here: meters across, meters along
         uv.set([lu, s], i * 2);

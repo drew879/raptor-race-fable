@@ -9,6 +9,7 @@ export interface LevelSection {
   slope: number;
   turn: number | number[];
   drop?: boolean;
+  edge?: number;
   start: number;
   end: number;
 }
@@ -30,6 +31,7 @@ export interface Level {
   power: { s: number; lane: number; reach: number } | null;
   island: [number, number] | null;
   labelsFrom: number | null;
+  retryFrom: number | null;
   end: number;
   chaseEnd: number;
   total: number;

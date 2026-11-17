@@ -147,19 +147,20 @@ export const SECTIONS = [
       { at: 90, kind: 'arch' },
     ],
     amber: [arc(10, 0), A(17, 27, 0, true), A(30, 39, -1), arc(46, -1), A(52, 55, -1), A(60, 72, 0), arc(78, 0), A(85, 93, 0, true)],
+    retry: 49, // miss the catch at the edge and the run picks up again from here, about ten seconds back
     finds: [{ at: 66, lane: -1, n: 3, risk: 'Dart back in behind the tree, grab it, and still jump the creek.' }],
   },
   {
-    id: 'clearing',
-    name: 'The clearing',
+    id: 'edge',
+    name: 'The edge',
     length: 30,
     slope: -0.02,
     turn: 0.2,
-    teaches: 'The egg slows on the moss. Swipe up to scoop it. Then the hatching.',
-    hints: [{ at: 7, text: 'Swipe up to scoop the egg!' }], // where the runner starts to slow, 9 m short of the egg
+    teaches: 'The trail runs out on a shelf of rock over the valley. The egg stops, then rolls for the edge. Swipe up to dive and catch it.',
+    hints: [{ at: 13, text: 'Swipe up!' }], // where the egg sets off again, 9 m short of the edge
     rows: [],
     amber: [A(1, 9, 0)],
-    rest: 16, // where the egg comes to rest
+    edge: 22, // where the ground ends
   },
 ];
 
@@ -196,6 +197,7 @@ export function build() {
   let power = null;
   let island = null;
   let labelsFrom = null;
+  let retryFrom = null;
   let end = 0;
   for (const sec of SECTIONS) {
     const s0 = start;
@@ -218,13 +220,14 @@ export function build() {
     if (sec.power) power = { ...sec.power, s: s0 + sec.power.at };
     if (sec.island) island = [s0 + sec.island[0], s0 + sec.island[1]];
     if (sec.labels !== undefined) labelsFrom = s0 + sec.labels;
-    if (sec.rest !== undefined) end = s0 + sec.rest;
+    if (sec.retry !== undefined) retryFrom = s0 + sec.retry;
+    if (sec.edge !== undefined) end = s0 + sec.edge;
     start += sec.length;
   }
   rows.sort((a, b) => a.s - b.s);
   amber.sort((a, b) => a.s - b.s);
-  const chaseEnd = sections[sections.length - 1].start; // where the clearing begins
-  return { sections, rows, amber, finds, hints, checkpoints, power, island, labelsFrom, end, chaseEnd, total: start };
+  const chaseEnd = sections[sections.length - 1].start; // where the last shelf begins
+  return { sections, rows, amber, finds, hints, checkpoints, power, island, labelsFrom, retryFrom, end, chaseEnd, total: start };
 }
 
 const blocked = (row) => [...new Set(row.parts.flatMap((p) => p.lanes))];

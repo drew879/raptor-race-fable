@@ -41,7 +41,8 @@ export interface Hud {
   fork(on: boolean): void;
   /** Dim the picture, once the egg is lost. */
   fade(on: boolean): void;
-  showLost(): void;
+  /** The sheet that says the egg got away, with a line about why. */
+  showLost(why?: string): void;
   hideLost(): void;
   /** The small "Tap to skip" under the opening. */
   skip(on: boolean): void;
@@ -213,7 +214,8 @@ export function makeHud(root: HTMLElement, hooks: HudHooks): Hud {
     hideJournal() {
       q<HTMLElement>('.journal').hidden = true;
     },
-    showLost() {
+    showLost(why = 'Every bump lets it roll further ahead.') {
+      q<HTMLElement>('.lost-sheet p').textContent = why;
       q<HTMLElement>('.lost-sheet').hidden = false;
     },
     hideLost() {

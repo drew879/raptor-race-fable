@@ -152,7 +152,7 @@ function strip(sec) {
   // the egg's line
   const eggPts = [];
   for (let s = from; s <= to + 0.01; s += 1.5) eggPts.push(`${f1(laneX(eggLaneAt(s), s))},${y(s)}`);
-  if (sec.id !== 'clearing') o.push(`<path class="eggline" d="M${eggPts.join(' L')}"/>`);
+  if (sec.id !== 'edge') o.push(`<path class="eggline" d="M${eggPts.join(' L')}"/>`);
 
   // checkpoint
   for (const c of level.checkpoints) {
@@ -219,9 +219,21 @@ function strip(sec) {
     lines.forEach((line, i) => o.push(`<text class="hint-t" x="${GUT_L - 5}" y="${f1(top + i * 11)}" text-anchor="end">${esc(line)}</text>`));
     o.push(`<path class="hint-l" d="M${GUT_L - 2},${f1(top - 3)} h10"/>`);
   }
-  if (sec.rest !== undefined) {
-    const e = sec.start + sec.rest;
-    o.push(`<ellipse class="eggrest" cx="${X0}" cy="${y(e)}" rx="7" ry="9.5"/><text class="kind" x="${GUT_R + 4}" y="${y(e) + 3.5}">the egg comes to rest</text>`);
+  if (sec.edge !== undefined) {
+    // where the ground ends, and where the egg stops and waits before its last dash
+    const e = sec.start + sec.edge;
+    const x1 = laneX(-1, e) - LW / 2 - 17;
+    const x2 = laneX(1, e) + LW / 2 + 17;
+    o.push(`<rect class="void" x="${x1}" y="${y(e)}" width="${x2 - x1}" height="${Math.max(0, y(to) - y(e))}"/>`);
+    o.push(`<path class="lip" d="M${x1},${y(e)} H${x2}"/>`);
+    o.push(`<text class="kind" x="${GUT_R + 4}" y="${y(e) + 3.5}">the edge</text>`);
+    const w = e - 9;
+    o.push(`<ellipse class="eggrest" cx="${X0}" cy="${y(w)}" rx="7" ry="9.5"/><text class="kind" x="${GUT_R + 4}" y="${y(w) + 1}">the egg waits here,</text><text class="kind" x="${GUT_R + 4}" y="${y(w) + 11.5}">then rolls for the edge</text>`);
+  }
+  if (level.retryFrom !== null && level.retryFrom >= from && level.retryFrom < to) {
+    const c = level.retryFrom;
+    o.push(`<path class="cp" d="M${laneX(-1, c) - LW / 2 - 17},${y(c)} H${laneX(1, c) + LW / 2 + 17}"/>`);
+    o.push(`<text class="cp-name" x="${GUT_R + 4}" y="${y(c) + 3.5}">Miss the catch: back to here</text>`);
   }
   return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(sec.name)}: ${esc(sec.teaches)}">${o.join('')}</svg>`;
 }
@@ -270,7 +282,7 @@ function planView() {
     void next;
     o.push(`<text class="pv-name${sec.drop ? ' drop' : ''}" x="${f1(nx)}" y="${f1(14 + mid.y * sc + 3.5)}" text-anchor="${right ? 'start' : 'end'}">${esc(sec.name)}</text>`);
   }
-  return `<svg viewBox="0 0 ${PW} ${PH}" role="img" aria-label="The trail from above, winding downhill from the nest to the clearing">${o.join('')}</svg>`;
+  return `<svg viewBox="0 0 ${PW} ${PH}" role="img" aria-label="The trail from above, winding downhill from the nest to the edge of the cliff">${o.join('')}</svg>`;
 }
 
 // ---------------------------------------------------------------- page
@@ -391,6 +403,8 @@ svg text { font-family: var(--body); fill: var(--ink); }
 .amber { fill: var(--amber); }
 .eggline { fill: none; stroke: var(--egg); stroke-width: 1.7; stroke-dasharray: 2 4; stroke-linecap: round; }
 .eggrest { fill: #58cdbf; stroke: var(--egg); stroke-width: 1.2; }
+.lip { fill: none; stroke: #5d5950; stroke-width: 3.5; stroke-linecap: round; }
+.void { fill: #a9c4cf; opacity: 0.55; }
 .cp { fill: none; stroke: var(--flag); stroke-width: 1.6; stroke-dasharray: 7 4; }
 .cp-name { font-size: 10.5px; font-weight: 600; fill: var(--flag); }
 .rock ellipse { fill: var(--rock); stroke: var(--forest-deep); stroke-width: 1; }
@@ -439,7 +453,7 @@ svg text { font-family: var(--body); fill: var(--ink); }
   </div>
 
   <div class="facts">
-    <div><b>${st.chase} m</b><span>from the nest to the clearing</span></div>
+    <div><b>${st.chase} m</b><span>from the nest to the last shelf of rock</span></div>
     <div><b>${Math.round(st.seconds)} s</b><span>at speed ${SPEED}, with no bumps</span></div>
     <div><b>${st.movesEasy} or ${st.movesHard}</b><span>moves: easy side or hard side of the fork</span></div>
     <div><b>${st.amber}</b><span>pieces of amber</span></div>
@@ -473,7 +487,7 @@ svg text { font-family: var(--body); fill: var(--ink); }
     <h2>The chase, in numbers</h2>
     <table>
       <tr><td>The egg's lead when the chase begins</td><td>${EGG.startLead} m</td></tr>
-      <tr><td>Its lead at the clearing after a clean run</td><td>${f1(EGG.startLead - EGG.closing * st.seconds)} m</td></tr>
+      <tr><td>Its lead at the end after a clean run</td><td>${f1(EGG.startLead - EGG.closing * st.seconds)} m</td></tr>
       <tr><td>What a bump costs</td><td>${EGG.bump} m</td></tr>
       <tr><td>How fast you gain on it, running clean</td><td>${EGG.closing} m/s close behind, up to ${EGG.closingFar} m/s far behind</td></tr>
       <tr><td>"The egg is getting away!" warning</td><td>${EGG.warnAt} m</td></tr>
@@ -491,7 +505,9 @@ svg text { font-family: var(--body); fill: var(--ink); }
       <li><b>Young Psittacosaurus cross the trail.</b> Three of them, walking in a file across all three lanes: a jump. The dozing adult stays as scenery beside the trail.</li>
       <li><b>Fan out is measured in meters now.</b> The fans stay out for ${level.power.reach} m, about ${f1(level.power.reach / SPEED)} s at speed ${SPEED}, which ends just past the last amber on the drop at any speed setting.</li>
       <li><b>Losing the egg ends the level.</b> A sheet says the egg got away and Try again starts the level over. The checkpoints stay marked here in case restarts from them are wanted later.</li>
-      <li><b>The opening and the ending are in.</b> The level opens on the nest: the egg cracks, tips out and rolls off, and the parent gets up and gives chase. In the clearing a swipe up scoops the egg, the parent settles round it, and the chick peeks out.</li>
+      <li><b>The opening.</b> The egg stands on the rim of the nest, which sits on a shelf above a short steep pitch. Three taps from inside rock it, it hangs on the point of balance, tips over and rolls away down the slope. It plays once per visit.</li>
+      <li><b>The ending is a catch at a cliff.</b> The trail runs out on a spur of rock over the valley. The egg stops 9 m short of the edge and waits until the runner is right behind it. Then it rolls for the edge, and there are about two seconds to swipe up. In time, the runner dives and pins it at the very edge, turns back with it, and it hatches there. Too late, and the egg goes over: Try again picks the run up from the marked point in the home stretch, about seven seconds back.</li>
+      <li><b>One egg size.</b> The egg is the same size in the nest, in the chase and at the hatching. Two sizes are in the pause sheet to compare.</li>
       <li><b>Still to come:</b> sound and music, and the title, results and Field Journal screens.</li>
     </ol>
   </div>

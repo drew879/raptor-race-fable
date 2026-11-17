@@ -39,6 +39,8 @@ export const SEGMENTS: Segment[] = [];
 /** The nest sits on a level shelf this long from the trail's start, and the trail tips away below it at this slope. */
 export const NEST_SHELF = 3.95;
 const NEST_PITCH = -0.4;
+/** How steeply the ground falls away at the end of the trail, in radians. */
+const CLIFF = -1.25;
 level.sections.forEach((sec, i) => {
   const turns = Array.isArray(sec.turn) ? sec.turn : [sec.turn];
   const length = sec.length + (i === 0 ? LEAD_IN : 0);
@@ -54,6 +56,16 @@ level.sections.forEach((sec, i) => {
     );
     return;
   }
+  if (sec.edge !== undefined) {
+    // The last shelf: level out to its edge, and there the ground stops. A short lip, and a long way down.
+    SEGMENTS.push(
+      { length: sec.edge * 0.3, turn: turns[0] * 0.3, slope: sec.slope },
+      { length: sec.edge * 0.7, turn: turns[0] * 0.7, slope: sec.slope },
+      { length: 1, slope: CLIFF },
+      { length: 80, slope: CLIFF },
+    );
+    return;
+  }
   const lead = sec.drop ? 0.4 : 0.3;
   turns.forEach((turn, k) => {
     const part = length / turns.length;
@@ -65,11 +77,11 @@ level.sections.forEach((sec, i) => {
     }
   });
 });
-SEGMENTS.push({ length: 50, turn: 0.1, slope: -0.02 }); // ground beyond the clearing
 export const START_SLOPE = -0.02;
 
 /** Stretches where tall trees stay off the valley side so the view opens up: the two drops. */
 export const VISTAS: [number, number][] = level.sections.filter((s) => s.drop).map((s) => [at(s.start - 22), at(s.end + 12)]);
+VISTAS.push([at(level.end - 46), at(level.end + 5)]); // and the last of the trail, where it runs out over the valley
 
 // ---------------------------------------------------------------- the fork
 const BOW = 1.05; // meters each side lane swings out round the island
@@ -125,12 +137,14 @@ export const FINDS = level.finds.map((f) => ({ s: at(f.s), lane: f.lane, lift: f
 /** Where a run restarts if the egg gets away. */
 export const CHECKPOINTS = level.checkpoints.map(at);
 
-/** Where the egg comes to rest. */
+/** Where the ground ends: the edge the egg makes for. */
 export const END_S = at(level.end);
+/** Where the run picks up again if the catch at the edge is missed. */
+export const RETRY_S = level.retryFrom === null ? at(0) : at(level.retryFrom);
 
-/** First-time hints. (Fan out's shows when the leaf is taken; the scoop's comes with the ending.) */
+/** First-time hints. (Fan out's shows when the leaf is taken; the last one comes with the egg's dash for the edge.) */
 export const HINTS: { s: number; text: string }[] = level.hints
-  .filter((h) => !h.text.startsWith('Fan out') && !h.text.includes('scoop'))
+  .filter((h) => !h.text.startsWith('Fan out') && h.text !== 'Swipe up!')
   .map((h) => ({ s: at(h.s), text: h.text }));
 
 /** The chase's numbers, as agreed with the layout. */
