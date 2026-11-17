@@ -138,6 +138,8 @@ export interface HeroState {
   blink?: number;
   /** Seconds, for breathing and other small idle movement. Leave out to hold still. */
   idle?: number;
+  /** 0..1, recoiling from a bump: rears back, neck drawn in, arms and fans thrown wide. */
+  flinch?: number;
 }
 
 /** A natural blink for a clock in seconds: shut for about a tenth of a second every few seconds. */
@@ -225,6 +227,7 @@ export class HeroRig {
   pose(s: HeroState) {
     const TAU = Math.PI * 2;
     const sit = s.sit ?? 0;
+    const flinch = s.flinch ?? 0;
     const run = s.run * (1 - s.slide) * (1 - sit);
     const grounded = 1 - s.air;
     const breath = s.idle === undefined ? 0 : Math.sin(s.idle * 1.9);
@@ -270,7 +273,7 @@ export class HeroRig {
     // hanging leg forward, which is the same turn that lifts the nose. So nose-down is negative.
     const swing = Math.sin(s.phase * TAU);
     const bounce = Math.cos(s.phase * TAU * 2);
-    const hipsPitch = (run * -7 + s.airTilt * 11 * s.air + s.slide * -3 + sit * 4) * DEG;
+    const hipsPitch = (run * -7 + s.airTilt * 11 * s.air + s.slide * -3 + sit * 4 + flinch * 10) * DEG;
     const hipsYaw = swing * 5 * DEG * run * grounded + s.lean * -10 * DEG;
     const hipsRoll = (Math.cos(s.phase * TAU) * 3 * run * grounded + s.lean * 14) * DEG;
     this.turn('hips', hipsPitch, hipsYaw, -hipsRoll);
@@ -281,7 +284,7 @@ export class HeroRig {
     // ---- spine, neck and head: the neck reaches forward at speed and lies low in a slide,
     // while the head stays level and steady, like a running bird's
     // sitting, the neck draws back into an S and the head comes down toward the nest
-    const reach = run * 10 + s.slide * 46 - s.air * 4 - sit * 14;
+    const reach = run * 10 + s.slide * 46 - s.air * 4 - sit * 14 - flinch * 26;
     const chestPitch = s.slide * -8 * DEG + breath * 0.6 * DEG * (1 - run);
     const lookYaw = s.lookYaw ?? 0;
     const lookPitch = s.lookPitch ?? 0;
@@ -302,7 +305,7 @@ export class HeroRig {
     if (this.model.eye) this.model.eye.uniforms.uBlink.value = s.blink ?? 0;
 
     // ---- tail: counters the hips, lifts in the air, lies flat in a slide (up is negative)
-    const tailPitch = (bounce * 3 * run - run * 3 - s.air * 14 + s.slide * 7 + sit * 6) * DEG - hipsPitch * 0.5;
+    const tailPitch = (bounce * 3 * run - run * 3 - s.air * 14 + s.slide * 7 + sit * 6 - flinch * 14) * DEG - hipsPitch * 0.5;
     this.turn('tail1', tailPitch, -hipsYaw * 0.9 + swing * -4 * DEG * run, 0);
     this.turn('tail2', tailPitch * 0.8, swing * -6 * DEG * run + s.lean * 8 * DEG, 0);
 
@@ -311,13 +314,13 @@ export class HeroRig {
       const side = sfx === 'L' ? -1 : 1;
       const beat = Math.sin(s.phase * TAU * 2 + (side > 0 ? 0.6 : 0));
       // sitting, the arms open out and forward, so the fans lie over the edge of the nest
-      const lift = (run * 8 + beat * 5 * run + s.air * 30 - s.slide * 4 + sit * 26 + breath * 0.8 * (1 - run)) * DEG;
-      const sweep = (run * 6 + s.air * 14 + s.slide * 16 - sit * 30) * DEG;
+      const lift = (run * 8 + beat * 5 * run + s.air * 30 - s.slide * 4 + sit * 26 + flinch * 34 + breath * 0.8 * (1 - run)) * DEG;
+      const sweep = (run * 6 + s.air * 14 + s.slide * 16 - sit * 30 - flinch * 12) * DEG;
       this.turn('arm' + sfx, 0, -side * sweep, side * lift);
       this.turn('hand' + sfx, 0, -side * sweep * 0.5, side * lift * 0.5);
       // the hand opens the fan when it is in use and folds it back against the body at rest
       if (this.has('fan' + sfx)) {
-        const open = (run * 10 + s.air * 22 + sit * 24 - s.slide * 6) * DEG;
+        const open = (run * 10 + s.air * 22 + sit * 24 + flinch * 26 - s.slide * 6) * DEG;
         this.turn('fan' + sfx, 0, side * open, side * open * 0.3);
       }
     }

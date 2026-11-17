@@ -101,10 +101,10 @@ body {
   font-size: 18px;
   letter-spacing: 0.02em;
   color: var(--ui-text);
-  background: color-mix(in srgb, var(--ui-panel) 78%, transparent);
+  /* No blur behind these: they are on screen all through play, and blurring a 3D picture
+     behind a button makes the phone redo that blur every frame. */
+  background: color-mix(in srgb, var(--ui-panel) 86%, transparent);
   border: 1.5px solid color-mix(in srgb, var(--ui-accent) 70%, transparent);
-  -webkit-backdrop-filter: blur(6px);
-  backdrop-filter: blur(6px);
   font-variant-numeric: tabular-nums;
 }
 .chip.score {

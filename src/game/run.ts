@@ -9,7 +9,7 @@ import { world } from '../render/paint';
 import { SunShadow } from '../render/shadow';
 import type { Style } from '../render/styles';
 import { instance, instances, loadKit, loadSkinned, materialFor, SHADOW_LAYER, type Placement } from '../world/assets';
-import { makeContactShadow, makeGlowField, makeMistField, makeShaftField } from '../world/fx';
+import { makeContactShadow, makeGlow, makeGlowField, makeMistField, makeShaftField } from '../world/fx';
 import { rng, smoothstep } from '../world/noise';
 import { makeRidges, makeSky, makeVolcano } from '../world/sky';
 import { Terrain } from '../world/terrain';
@@ -56,6 +56,31 @@ export const EGG_MODES = ['Steady', 'Wobbly', 'Lively'];
 
 // how far along the trail each kind of obstacle can catch you
 const DEPTH: Record<Obstacle['kind'], number> = { log: 0.3, arch: 0.45, boulder: 0.42, tree: 0.26 };
+// Obstacles are solid. A runner that meets one stops where its body touches it (its head and
+// chest reach well ahead of its hips, so that is short of the obstacle's middle by FACE), then
+// gets past by the move it should have made and is set down CLEAR beyond the middle.
+const FACE: Record<Obstacle['kind'], number> = { log: 0.5, arch: 0.74, boulder: 0.74, tree: 0.54 };
+const CLEAR: Record<Obstacle['kind'], number> = { log: 0.8, arch: 1.0, boulder: 0.75, tree: 0.6 };
+const IMPACT_TIME = 0.18;
+const RECOVER_TIME = 0.5;
+/** How much further ahead the egg gets for each bump, in meters. */
+const BUMP_COST = 3.2;
+// The egg never touches an obstacle. It hops logs (the chick kicks), stays down under arches,
+// and swings into an open lane round trees and boulders.
+const HOP_HALF = 2.3; // meters either side of a log that a hop covers
+const HOP_HEIGHT = 0.85;
+const LOW_HALF = 1.4; // meters either side of an arch where it stays on the ground
+const SETTLE = 7.5; // meters before either where it stops bouncing, so it arrives on the ground
+
+interface Bump {
+  kind: 'log' | 'arch' | 'around';
+  t: number;
+  /** Where the hips stop, where the recovery ends, and the sideways start and finish. */
+  faceS: number;
+  exitS: number;
+  u0: number;
+  toLane: number;
+}
 
 export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHooks): Promise<RunView> {
   const [trees, small, props, heroModel] = await Promise.all([
@@ -255,6 +280,63 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   // ---------------------------------------------------------------- state
   const obstacles = OBSTACLES.map((o) => ({ ...o, hit: false }));
   const archAt = OBSTACLES.filter((o) => o.kind === 'arch').map((o) => o.s);
+  // Obstacles that share a spot on the trail are one decision: a row.
+  interface Row {
+    s: number;
+    kind: Obstacle['kind'];
+    around: boolean;
+    blocked: number[];
+    /** The lane the egg takes past a tree or a boulder. */
+    eggLane: number;
+    members: typeof obstacles;
+    hit: boolean;
+  }
+  const rows: Row[] = [];
+  for (const o of obstacles) {
+    let row = rows.find((r) => r.s === o.s);
+    if (!row) {
+      row = { s: o.s, kind: o.kind, around: o.kind !== 'log' && o.kind !== 'arch', blocked: [], eggLane: 0, members: [], hit: false };
+      rows.push(row);
+    }
+    row.members.push(o);
+    for (const lane of o.lanes) if (!row.blocked.includes(lane)) row.blocked.push(lane);
+  }
+  const weave = (s: number) => Math.sin(s * 0.13) * 0.36;
+  const openLanes = (row: Row) => [-1, 0, 1].filter((lane) => !row.blocked.includes(lane));
+  for (const row of rows) {
+    if (!row.around) continue;
+    const open = openLanes(row);
+    // of two open lanes the egg takes the one without amber, so it never hides the line worth following
+    const quiet = open.filter((lane) => !AMBER.some((a) => a.lane === lane && Math.abs(a.s - row.s) < 4));
+    const pick = quiet.length ? quiet : open;
+    const from = weave(row.s);
+    row.eggLane = pick.reduce((best, lane) => (Math.abs(lane * LANE - from) < Math.abs(best * LANE - from) ? lane : best), pick[0] ?? 0);
+  }
+  /** Where the egg is across the trail: weaving between the lanes, so it never sits on a line of
+   *  amber, and swinging into an open lane in good time to pass a tree or a boulder. */
+  const eggUAt = (s: number): number => {
+    let u = weave(s);
+    for (const row of rows) {
+      if (!row.around || s < row.s - 8 || s > row.s + 6) continue;
+      const k = smoothstep(row.s - 7.5, row.s - 2.5, s) * (1 - smoothstep(row.s + 1.5, row.s + 5.5, s));
+      u += (row.eggLane * LANE - u) * k;
+    }
+    return u;
+  };
+  /** The log or arch the egg is coming up to or passing, if any. */
+  const eggRow = (s: number): Row | null => {
+    for (const row of rows) {
+      if (row.around) continue;
+      const half = row.kind === 'log' ? HOP_HALF : LOW_HALF;
+      if (s > row.s - half - SETTLE && s < row.s + half) return row;
+    }
+    return null;
+  };
+  // a puff of dust where the runner bumps something
+  const puff = makeGlow('#e6d2a8', 1, 0);
+  puff.visible = false;
+  puff.renderOrder = 4;
+  scene.add(puff);
   const collected: boolean[] = AMBER.map(() => false);
   let baseSpeed = Number(localStorage.getItem('rr-speed2')) || DEFAULT_SPEED;
   const savedEgg = localStorage.getItem('rr-egg');
@@ -263,7 +345,10 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   const eggQ = new THREE.Quaternion();
   const eggAxis = new THREE.Vector3();
   const eggTurn = new THREE.Quaternion();
+  const eggNudge = new THREE.Quaternion();
   const eggLong = new THREE.Vector3();
+  const eggSide = new THREE.Vector3();
+  const eggBack = new THREE.Vector3(0, 0, 1);
   const st = {
     s: START_S,
     lane: 0,
@@ -271,8 +356,23 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     y: 0,
     vy: 0,
     slideT: 0,
-    stumbleT: 0,
     safeT: 0,
+    prevLane: 0,
+    /** Sideways speed, and the angle the body is turned to its real heading. */
+    du: 0,
+    heading: 0,
+    bump: null as Bump | null,
+    /** Time left reeling from a sideways knock, recoiling, shaking the view and showing dust. */
+    sideT: 0,
+    flinch: 0,
+    shakeT: 0,
+    puffT: 0,
+    /** The view runs on a little when the runner stops dead, then settles back. */
+    camLead: 0,
+    /** A swipe made mid-bump, kept for when the runner can act again. */
+    pending: null as Move | null,
+    pendingT: 0,
+    boostT: 0,
     speed: 0,
     phase: 0,
     air: 0,
@@ -286,6 +386,13 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     eggVy: 0,
     eggSpin: 0,
     eggKick: 0,
+    eggU: 0,
+    eggV: 0,
+    /** The runner's speed with its stops smoothed out; the egg keeps pace with this. */
+    heroV: 0,
+    eggHop: false,
+    eggPop: 0,
+    eggTip: 0,
     amber: 0,
     paused: false,
     finished: false,
@@ -342,12 +449,15 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   /** Put every single thing back to the start. */
   function reset() {
     Object.assign(st, {
-      s: START_S, lane: 0, u: 0, y: 0, vy: 0, slideT: 0, stumbleT: 0, safeT: 0, speed: 0, phase: 0, air: 0,
+      s: START_S, lane: 0, u: 0, y: 0, vy: 0, slideT: 0, safeT: 0, speed: 0, phase: 0, air: 0,
       slide: 0, camU: 0, camDuck: 0, gap: 9, eggS: START_S + 9, eggY: 0, eggVy: 0, eggSpin: 0, eggKick: 0, amber: 0, paused: false,
       finished: false, queued: null, queuedT: 0, hint: 0, hintT: 0,
+      prevLane: 0, du: 0, heading: 0, bump: null, sideT: 0, flinch: 0, shakeT: 0, puffT: 0, camLead: 0, pending: null,
+      pendingT: 0, boostT: 0, eggU: 0, eggV: 0, heroV: 0, eggHop: false, eggPop: 0, eggTip: 0,
     });
     eggQ.setFromAxisAngle(v3.set(1, 0, 0), -0.5); // tipped a little forward, about to roll
     for (const o of obstacles) o.hit = false;
+    for (const row of rows) row.hit = false;
     collected.fill(false);
     showAmberNear(START_S, true);
     shadowAt = -1e9;
@@ -364,9 +474,19 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
 
   function act(move: Move) {
     if (st.paused || st.finished || !st.started) return;
-    if (move === 'left') st.lane = Math.max(-1, st.lane - 1);
-    else if (move === 'right') st.lane = Math.min(1, st.lane + 1);
-    else if (move === 'up') {
+    if (st.bump) {
+      // mid-bump the runner can't answer, but the swipe is kept for the moment it can
+      st.pending = move;
+      st.pendingT = 0.6;
+      return;
+    }
+    if (move === 'left' || move === 'right') {
+      const to = THREE.MathUtils.clamp(st.lane + (move === 'left' ? -1 : 1), -1, 1);
+      if (to !== st.lane) {
+        st.prevLane = st.lane;
+        st.lane = to;
+      }
+    } else if (move === 'up') {
       if (st.y <= 0.001) {
         st.vy = JUMP_V;
         st.y = 0.001;
@@ -406,18 +526,57 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     const wander = eggMode === 0 ? 0 : 1;
     // lean the axis the way the egg is drifting across the trail, and tip it slowly up and down
     eggAxis.set(-1, wander * 0.32 * Math.sin(st.eggS * 0.137 + 0.4), wander * -0.45 * Math.cos(st.eggS * 0.13)).normalize();
-    const wanted = rolling ? st.speed * 1.5 * (1 + st.eggKick) : 0;
+    const wanted = rolling ? st.eggV * 1.5 * (1 + st.eggKick) : 0;
     st.eggSpin += (wanted - st.eggSpin) * Math.min(1, dt * (rolling ? 8 : 3));
     st.eggKick = Math.max(0, st.eggKick - dt * 1.6);
+    st.eggPop = Math.max(0, st.eggPop - dt * 5);
     eggQ.premultiply(eggTurn.setFromAxisAngle(eggAxis, st.eggSpin * dt)).normalize();
 
+    // what is coming: a log to hop, or an arch to stay down for
+    const row = rolling ? eggRow(st.eggS) : null;
+    const d = row ? st.eggS - row.s : 0;
+    const hop = row !== null && row.kind === 'log' && Math.abs(d) < HOP_HALF;
+    const low = row !== null && row.kind === 'arch' && Math.abs(d) < LOW_HALF;
+    const settle = row !== null && !hop && !low;
+
+    if (row && row.kind === 'arch') {
+      // Under an arch it rolls like a barrel, long way across the trail, so it passes with room
+      // to spare. Its long axis is eased round to lie across the trail on the way in.
+      eggLong.set(0, 1, 0).applyQuaternion(eggQ);
+      eggSide.set(eggLong.x >= 0 ? 1 : -1, 0, 0);
+      eggTurn.setFromUnitVectors(eggLong, eggSide);
+      eggQ.premultiply(eggNudge.identity().slerp(eggTurn, Math.min(1, dt * 5))).normalize();
+      st.eggTip = 1.1; // once through, it is tipped back into its tumble
+    } else if (st.eggTip > 0) {
+      const turn = Math.min(st.eggTip, dt * 4.5);
+      st.eggTip -= turn;
+      eggQ.premultiply(eggTurn.setFromAxisAngle(eggBack, turn)).normalize();
+    }
+
+    if (hop) {
+      if (!st.eggHop) {
+        // the chick kicks, and the egg jumps
+        st.eggHop = true;
+        st.eggKick = 1.3;
+        st.eggPop = 1;
+      }
+      st.eggY = Math.max(st.eggY * 0.5, HOP_HEIGHT * (1 - (d / HOP_HALF) ** 2));
+      st.eggVy = 0;
+      return;
+    }
+    if (st.eggHop) {
+      // down from the hop: a small skip, then back to its own bouncing
+      st.eggHop = false;
+      st.eggY = 0;
+      st.eggVy = Math.sqrt(2 * EGG_G * 0.1);
+    }
     if (!rolling && st.eggY <= 0) return;
-    st.eggVy -= EGG_G * dt;
+    st.eggVy -= (low ? 40 : EGG_G) * dt;
     st.eggY += st.eggVy * dt;
     if (st.eggY <= 0) {
       st.eggY = 0;
       st.eggVy = 0;
-      if (rolling) {
+      if (rolling && !settle && !low) {
         // how upright the egg is as it lands: 1 on an end, 0 flat on its side
         const onEnd = Math.abs(eggLong.set(0, 1, 0).applyQuaternion(eggQ).y);
         const height = eggMode === 2 ? 0.1 + 0.32 * onEnd * onEnd : 0.2;
@@ -427,27 +586,126 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     }
   }
 
-  function stumble() {
-    st.stumbleT = 0.9;
-    st.safeT = 1.3;
-    st.gap += 3.2;
+  /** The runner has walked into something. It stops where its body meets it, then gets past. */
+  function startBump(row: Row, member: (typeof obstacles)[number]) {
+    row.hit = true;
+    for (const o of row.members) o.hit = true;
+    let toLane = st.lane;
+    if (row.around && row.blocked.includes(st.lane)) {
+      // step round to the nearest open lane; with one on each side, the one the egg took
+      const open = openLanes(row);
+      const near = Math.min(...open.map((lane) => Math.abs(lane - st.lane)));
+      const nearest = open.filter((lane) => Math.abs(lane - st.lane) === near);
+      toLane = nearest.includes(row.eggLane) ? row.eggLane : (nearest[0] ?? st.lane);
+    }
+    st.bump = {
+      kind: row.kind === 'log' ? 'log' : row.kind === 'arch' ? 'arch' : 'around',
+      t: 0,
+      faceS: Math.min(st.s, member.s - FACE[member.kind]),
+      exitS: member.s + CLEAR[member.kind],
+      u0: st.u,
+      toLane,
+    };
+    st.camLead = 0.4 * Math.min(1, st.speed / 8);
+    st.shakeT = 0.3;
+    st.puffT = 0.34;
+    terrain.place(member.s - DEPTH[member.kind], st.u, row.kind === 'arch' ? 0.62 : 0.3, puff.position);
+    st.gap = Math.min(17, st.gap + BUMP_COST);
+    st.vy = 0;
+    st.queued = null;
+    st.slideT = 0;
+  }
+
+  /** A sideways knock: the runner swiped into something beside it and bounces back to its lane. */
+  function sideBump(row: Row, member: (typeof obstacles)[number]) {
+    row.hit = true;
+    for (const o of row.members) o.hit = true;
+    const blockedLane = st.lane;
+    st.lane = st.prevLane;
+    st.sideT = 0.55;
+    st.safeT = 0.5;
+    st.shakeT = 0.22;
+    st.puffT = 0.3;
+    terrain.place(member.s, (st.u + blockedLane * LANE) / 2, 0.35, puff.position);
+    st.gap = Math.min(17, st.gap + BUMP_COST);
+  }
+
+  function stepBump(dt: number) {
+    const b = st.bump as Bump;
+    b.t += dt;
+    const before = st.s;
+    if (b.t < IMPACT_TIME) {
+      // thrown back to where its body meets the obstacle
+      st.s += (b.faceS - st.s) * (1 - Math.exp(-dt / 0.035));
+      st.y = Math.max(0, st.y - dt * 5);
+      st.flinch = 1;
+      st.speed = 0;
+      return;
+    }
+    const f = Math.min(1, (b.t - IMPACT_TIME) / RECOVER_TIME);
+    st.flinch = Math.max(0, 1 - f * 3.2);
+    // slow off the mark, moving well by the end
+    st.s = b.faceS + (b.exitS - b.faceS) * Math.pow(f, 1.6);
+    if (b.kind === 'log') {
+      // scrambles over
+      st.y = 0.52 * Math.sin(Math.PI * f);
+      st.vy = Math.cos(Math.PI * f) * JUMP_V * 0.5;
+    } else if (b.kind === 'arch') {
+      // ducks under, and stands once it is through
+      st.slideT = f < 0.82 ? 0.1 : 0;
+    } else {
+      // steps round
+      st.lane = b.toLane;
+      st.u = b.u0 + (b.toLane * LANE - b.u0) * smoothstep(0, 0.62, f);
+    }
+    st.speed = dt > 0 ? Math.max(0, (st.s - before) / dt) : 0;
+    if (f >= 1) {
+      st.bump = null;
+      st.y = 0;
+      st.vy = 0;
+      st.flinch = 0;
+      st.safeT = 0.3;
+      st.boostT = 1.0;
+      st.prevLane = st.lane;
+      if (st.pending && st.pendingT > 0) {
+        const move = st.pending;
+        st.pending = null;
+        act(move);
+      }
+    }
   }
 
   function step(dt: number) {
     st.clock += dt;
     const ending = st.s > END_S - 9;
-    const target = st.finished ? 0 : baseSpeed * (st.stumbleT > 0 ? 0.5 : 1) * (ending ? THREE.MathUtils.clamp((END_S - 1.0 - st.s) / 8, 0.12, 1) : 1);
-    st.speed += (target - st.speed) * Math.min(1, dt * (st.speed < target ? 2.2 : 6));
-    st.s += st.speed * dt;
+    const cruise = st.finished ? 0 : baseSpeed * (ending ? THREE.MathUtils.clamp((END_S - 1.0 - st.s) / 8, 0.12, 1) : 1);
+    const uBefore = st.u;
+    if (st.bump) {
+      stepBump(dt);
+    } else {
+      const target = cruise * (st.sideT > 0 ? 0.6 : 1);
+      // back up to speed briskly after a bump, so a bump costs about the same whatever was hit
+      const pickup = st.boostT > 0 ? 5 : 2.2;
+      st.speed += (target - st.speed) * Math.min(1, dt * (st.speed < target ? pickup : 6));
+      st.s += st.speed * dt;
+      // side to side
+      st.u += (st.lane * LANE - st.u) * (1 - Math.exp(-dt / 0.055));
+    }
     st.phase += (st.speed * dt) / strideLength(st.speed);
-    st.stumbleT = Math.max(0, st.stumbleT - dt);
     st.safeT = Math.max(0, st.safeT - dt);
-
-    // side to side
-    st.u += (st.lane * LANE - st.u) * (1 - Math.exp(-dt / 0.055));
+    st.sideT = Math.max(0, st.sideT - dt);
+    st.shakeT = Math.max(0, st.shakeT - dt);
+    st.puffT = Math.max(0, st.puffT - dt);
+    st.boostT = Math.max(0, st.boostT - dt);
+    st.pendingT = Math.max(0, st.pendingT - dt);
+    st.camLead *= Math.exp(-dt / 0.14);
+    // the body turns to face the way it is really going
+    st.du = dt > 0 ? (st.u - uBefore) / dt : 0;
+    const headingTo = THREE.MathUtils.clamp(Math.atan2(st.du, Math.max(st.speed, 4)), -0.3, 0.3);
+    st.heading += (headingTo - st.heading) * (1 - Math.exp(-dt / 0.07));
 
     // up and down
-    if (st.y > 0) {
+    if (!st.bump && st.y > 0) {
       st.vy -= GRAVITY * dt;
       st.y += st.vy * dt;
       if (st.y <= 0) {
@@ -468,18 +726,34 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     st.slide += ((st.slideT > 0 ? 1 : 0) - st.slide) * blend;
 
     // obstacles
-    if (st.safeT <= 0) {
-      for (const o of obstacles) {
-        if (o.hit || Math.abs(o.s - st.s) > DEPTH[o.kind]) continue;
-        let hit = false;
-        if (o.kind === 'log') hit = st.y < 0.3;
-        else if (o.kind === 'arch') hit = st.slide < 0.5;
-        else hit = o.lanes.some((lane) => Math.abs(st.u - lane * LANE) < 0.4);
-        if (hit) {
-          o.hit = true;
-          stumble();
-          break;
+    if (!st.bump && st.safeT <= 0) {
+      const inLane = (lane: number) => Math.abs(st.u - lane * LANE) < 0.4;
+      for (const row of rows) {
+        if (row.hit || st.s > row.s + 0.5 || st.s < row.s - 1) continue;
+        // the obstacle of this row that stands in the runner's way, if any
+        const member = row.around ? row.members.find((o) => o.lanes.some(inLane)) : row.members[0];
+        if (!member) continue;
+        const ahead = member.s - st.s; // how far ahead its middle is
+        const depth = DEPTH[member.kind];
+        // inside it without having done what it asks
+        const inside = Math.abs(ahead) <= depth;
+        let hit = inside && (row.kind === 'log' ? st.y < 0.3 : row.kind === 'arch' ? st.slide < 0.5 : true);
+        // or about to walk into its face having made no move at all: bump there, where the body
+        // meets it. (A move made in time still gets its chance; this never bumps anyone who
+        // would have made it.)
+        if (!hit && ahead > depth && ahead <= FACE[member.kind]) {
+          if (row.kind === 'log') hit = st.y <= 0.001 && st.vy <= 0;
+          else if (row.kind === 'arch') hit = st.slideT <= 0 && st.slide < 0.5 && st.queued !== 'down';
+          else hit = row.blocked.includes(st.lane);
         }
+        if (!hit) continue;
+        // swiped into it from an open lane while alongside: a sideways knock, not a head-on bump
+        const fromSide =
+          row.around && inside && row.blocked.includes(st.lane) && !row.blocked.includes(st.prevLane) &&
+          Math.abs(st.u - st.prevLane * LANE) < Math.abs(st.u - st.lane * LANE) + 0.2;
+        if (fromSide) sideBump(row, member);
+        else startBump(row, member);
+        break;
       }
     }
 
@@ -497,11 +771,15 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       }
     }
 
-    // the egg: clean running closes the gap, a stumble lets it roll further ahead
-    if (st.stumbleT <= 0) st.gap = Math.max(4.8, st.gap - 0.28 * dt);
+    // The egg: clean running closes the gap, a bump lets it roll further ahead. It keeps its
+    // own steady pace, so when the runner stops dead the egg rolls on.
+    if (!st.bump && st.sideT <= 0) st.gap = Math.max(4.8, st.gap - 0.28 * dt);
     st.gap = Math.min(st.gap, 17);
-    const wanted = Math.min(st.s + st.gap, END_S);
-    st.eggS += (wanted - st.eggS) * Math.min(1, dt * 3);
+    st.heroV += (st.speed - st.heroV) * (1 - Math.exp(-dt / 0.5));
+    const wantS = Math.min(st.s + st.gap, END_S);
+    const eggSpeed = THREE.MathUtils.clamp(st.heroV + (wantS - st.eggS) * 1.6, 0, baseSpeed * 1.3 + 0.5);
+    st.eggV += (eggSpeed - st.eggV) * Math.min(1, dt * 6);
+    st.eggS = Math.min(END_S, st.eggS + st.eggV * dt);
     rollEgg(dt, st.eggS < END_S - 0.05);
     hud.warn(st.gap > 12.5 && !st.finished);
 
@@ -526,17 +804,22 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
 
   const tmp = new THREE.Vector3();
   const look = new THREE.Vector3();
+  const heroYaw = new THREE.Quaternion();
+  const upAxis = new THREE.Vector3(0, 1, 0);
   function draw(renderer: THREE.WebGLRenderer) {
     // hero
     hero.position.copy(terrain.place(st.s, st.u, st.y + 0.005));
-    hero.quaternion.copy(basisAt(st.s, 0.8));
-    const wobble = st.stumbleT > 0 ? Math.sin(st.clock * 34) * 0.35 * (st.stumbleT / 0.9) : 0;
+    // turned a little toward where it is really heading (to its right is a turn the negative way)
+    hero.quaternion.copy(basisAt(st.s, 0.8)).multiply(heroYaw.setFromAxisAngle(upAxis, -st.heading));
+    const wobble = st.sideT > 0 ? Math.sin(st.clock * 34) * 0.35 * (st.sideT / 0.55) : 0;
     heroState.phase = st.phase;
     heroState.speed = st.speed;
     heroState.run = Math.min(1, st.speed / 3);
     heroState.air = st.air;
     heroState.airTilt = THREE.MathUtils.clamp(st.vy / JUMP_V, -1, 1);
-    heroState.slide = Math.max(st.slide, st.stumbleT > 0.55 ? 0.3 : 0);
+    heroState.slide = st.slide;
+    heroState.flinch = st.flinch;
+    heroState.blink = st.flinch;
     heroState.lean = THREE.MathUtils.clamp((st.lane * LANE - st.u) / LANE, -1, 1) + wobble;
     rig.pose(heroState);
     heroShadow.position.copy(terrain.place(st.s + 0.08, st.u, 0.02));
@@ -546,7 +829,9 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
 
     // egg: bouncing and tumbling down the trail ahead
     // it weaves between the lanes, so it never sits on top of a line of amber
-    const eggU = Math.sin(st.eggS * 0.13) * 0.36;
+    const eggU = eggUAt(st.eggS);
+    st.eggU = eggU;
+    egg.scale.setScalar(EGG_SCALE * (1 + 0.16 * st.eggPop));
     // an egg standing on its end rides higher than one lying on its side
     const up = eggLong.set(0, 1, 0).applyQuaternion(eggQ).y;
     const rest = Math.sqrt(EGG_HALF * EGG_HALF * up * up + EGG_R * EGG_R * (1 - up * up));
@@ -558,16 +843,23 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
 
     // camera: behind and above, easing sideways with the hero, looking well down the trail
     st.camU += (st.u * 0.7 - st.camU) * 0.12;
-    const camS = st.s - 2.6;
+    const camS = st.s - 2.6 + st.camLead;
     // the camera ducks under an arch a moment after the hero does
     let duck = 0;
     for (const a of archAt) duck = Math.max(duck, 1 - smoothstep(1.0, 3.6, Math.abs(a - camS)));
     st.camDuck += (duck - st.camDuck) * 0.3;
     camera.position.copy(terrain.place(camS, st.camU, 1.45 + st.y * 0.22 - 1.05 * st.camDuck));
-    if (st.stumbleT > 0) {
-      const k = (st.stumbleT / 0.9) * 0.05;
+    if (st.shakeT > 0) {
+      const k = (st.shakeT / 0.3) * 0.045;
       camera.position.x += Math.sin(st.clock * 47) * k;
       camera.position.y += Math.cos(st.clock * 53) * k;
+    }
+    // dust where the bump landed: a quick swelling, fading puff
+    puff.visible = st.puffT > 0;
+    if (puff.visible) {
+      const age = 1 - st.puffT / 0.34;
+      puff.scale.setScalar(0.5 + age * 1.3);
+      (puff.material as THREE.ShaderMaterial).uniforms.uStrength.value = 0.5 * (1 - age) ** 1.5;
     }
     terrain.place(st.s + 13, st.u * 0.3, 0.5 - 0.2 * st.camDuck, look);
     camera.lookAt(look);
@@ -613,7 +905,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
 
   reset();
   // for testing from the console: read the state, make moves, pause, start over
-  Object.assign(window, { rrGame: { st, act, setPaused, reset, obstacles, collected, DEPTH } });
+  Object.assign(window, { rrGame: { st, act, setPaused, reset, obstacles, rows, collected, DEPTH } });
   if (testing) {
     st.started = true;
     (ui.querySelector('.start-sheet') as HTMLElement).hidden = true;
