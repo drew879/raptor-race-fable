@@ -5,8 +5,9 @@
 // governor that lowers sharpness whenever frames run late softens the picture for nothing.
 // Three versions of this file did exactly that on the phone, so this one is built to doubt:
 //
-// - It only judges frames during play. Sheets (start, pause, finish) blur the picture behind
-//   them, which costs frames that have nothing to do with how fast the forest draws.
+// - It only judges frames during play, and not the first few seconds after a sheet. Sheets
+//   (start, pause, finish) blur the picture behind them, which costs frames that have nothing
+//   to do with how fast the forest draws, and a run begins at its heaviest view.
 // - It waits for three slow seconds in a row: a hitch is not a slow phone.
 // - Then it runs a there-and-back trial. Half sharpness for a second; if that is no better,
 //   pixels are not the problem. If it is better, that still proves nothing (a hitch that passed
@@ -43,7 +44,7 @@ export class Quality {
   private calm = 0;
   private resting = 2500;
   private noRaise = 0;
-  private wait = 45000;
+  private wait = 30000;
   private raised = false;
   private phase: Phase = { name: 'watch' };
   private failedTrials = 0;
@@ -71,7 +72,7 @@ export class Quality {
 
   /** The last few things the governor did, for the pause sheet. Empty if it has done nothing. */
   history(): string {
-    return this.log.slice(-4).join(' · ');
+    return this.log.slice(-8).join(' · ');
   }
 
   private note(text: string) {
@@ -92,7 +93,9 @@ export class Quality {
   tick(ms: number, steady = true) {
     if (!this.enabled) return;
     this.noRaise = Math.max(0, this.noRaise - ms);
-    if (!steady) return this.rest(1000);
+    // The first seconds of play after a sheet are not judged either: the top of the trail is
+    // the heaviest view in the run, and it passes in a few seconds.
+    if (!steady) return this.rest(6000);
     if (ms > 250) return this.rest();
     if (this.resting > 0) {
       this.resting -= ms;
@@ -145,7 +148,7 @@ export class Quality {
         if (this.slowRun < 2) return;
         // we had just tried one step sharper and it didn't hold: go back and wait longer
         this.noRaise = this.wait;
-        this.wait = Math.min(this.wait * 2, 600000);
+        this.wait = Math.min(this.wait * 2, 120000);
         this.note(`${pct(this.scale)} didn't hold`);
         this.set(this.scale - STEP, false, true);
         return;

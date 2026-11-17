@@ -46,12 +46,12 @@ export function makeHud(root: HTMLElement, hooks: HudHooks): Hud {
       <h2>Paused</h2>
       <button class="big resume">Keep running</button>
       <button class="big ghost restart">Start over</button>
-      <div class="setting"><span>Look</span><div class="tabs"></div></div>
+      <div class="setting look-row"><span>Look</span><div class="tabs"></div></div>
       <div class="setting"><span>Speed</span>
         <div class="stepper"><button class="slower" aria-label="Slower">&minus;</button><b class="speed"></b><button class="faster" aria-label="Faster">+</button></div>
       </div>
       <div class="setting"><span>Egg</span><div class="tabs words egg-tabs"></div></div>
-      <div class="links"><a class="link" href="?mode=close">Close-up</a><a class="link" href="?mode=bench">Speed test</a><a class="link" href="?">Concept frames</a></div>
+      <div class="links"><a class="link" href="?mode=close">Close-up</a><a class="link" href="?mode=bench">Speed test</a></div>
       <small class="about">Rough test run &middot; build ${BUILD}</small>
     </div>
     <div class="sheet start-sheet">
@@ -72,6 +72,8 @@ export function makeHud(root: HTMLElement, hooks: HudHooks): Hud {
   const finishSheet = q<HTMLElement>('.finish-sheet');
   const speedEl = q<HTMLElement>('.speed');
   const tabs = q<HTMLElement>('.pause-sheet .tabs');
+  // with one look there is nothing to pick
+  q<HTMLElement>('.look-row').hidden = hooks.styles.length < 2;
   let speed = hooks.speed;
 
   const press = (el: HTMLElement, fn: () => void) => {

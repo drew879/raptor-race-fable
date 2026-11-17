@@ -41,19 +41,12 @@ async function start() {
   const post = new Post(renderer, params.get('msaa') === '0' ? 0 : 4);
   post.enabled = params.get('post') !== '0';
 
-  // which look: the link can ask for one, otherwise the last one used, otherwise Inked Diorama
-  const wanted = params.get('style') ?? localStorage.getItem('rr-style2') ?? 'inkdiorama';
-  let styleIndex = STYLES.findIndex((s) => s.id === wanted);
-  if (styleIndex < 0) styleIndex = STYLES.findIndex((s) => s.id === 'inkdiorama');
+  // one look for now (see styles.ts); the link can still ask for another by name if more are added
+  let styleIndex = Math.max(0, STYLES.findIndex((s) => s.id === params.get('style')));
   const setStyle = (index: number) => {
     styleIndex = index;
     applyStyle(STYLES[index]);
     document.documentElement.style.background = STYLES[index].ui.panel;
-    try {
-      localStorage.setItem('rr-style2', STYLES[index].id);
-    } catch {
-      /* private mode */
-    }
   };
   setStyle(styleIndex);
 
@@ -68,9 +61,9 @@ async function start() {
     renderer.setSize(size.width, size.height, false);
     post.setSize(size.width, size.height, dpr);
   };
-  // modes: the concept frames (default for now), the rough run, its speed test, the close-up
-  // turntable, and a hero test view
-  const mode = params.get('mode') ?? 'concept';
+  // modes: the rough run (the default), its speed test, the close-up turntable, the old concept
+  // frame, and a hero test view
+  const mode = params.get('mode') ?? 'run';
   const fixedScale = Number(params.get('scale'));
   const quality = new Quality(applySize, !fixedScale && mode !== 'bench' && params.get('auto') !== '0');
   if (fixedScale) quality.scale = Math.min(1, Math.max(0.25, fixedScale));

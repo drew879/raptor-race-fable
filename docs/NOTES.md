@@ -4,12 +4,25 @@ Decisions and progress. Read `raptor-race-brief.md` first; it's the source of tr
 
 ## Where things stand
 
-- **Milestone 1 (style): B, with touches of the inked looks kept.** On 2026-11-16 Aidan picked B. Drew agrees B's color and softness look good but called it "the least memorable from an artistic point of view" and asked to keep some of A+/AB. My answer is a new look, **B+ (Inked Diorama)**: B's world untouched, with a thin warm ink line on the living things and the things you play with (runner, egg, amber, obstacles), a little paper tooth, and journal-paper menus. It is the default now. AB and B are still on the pickers for comparison; A+ is retired. Waiting on Drew's reaction to B+.
-- **Milestone 2 (rough playable run): done.** Three playtests on the phone. Swipes, speed 8, the Lively egg, the lanes ("perfect"), the longer stride, the Home Screen fit, the top row and the sun rays ("looked good") all got a yes.
-- **Milestone 3 (runner, egg and chick up close): built, waiting on Drew's review.** The turntable is at `?mode=close`. See "The close-up" below.
-- **Frame rate: holding 60 on the phone.** See "Frame rate" below. The sharpness governor was still dipping to 70% on build 16 and has been rebuilt again.
-- Live build: https://drew879.github.io/raptor-race-fable/ (close-up: add `?mode=close`; rough run: `?mode=run`)
+- **Milestone 1 (style): done. The look is B, the Painted Diorama.** Drew, 2026-11-16, after trying B+ (B with ink on the animals): "Let's just go with B... it just looks the best." Aidan had picked B too. AB and B+ are out of the code (they are in the history); the pickers are gone.
+- **Milestone 2 (rough playable run): done.**
+- **Milestone 3 (runner, egg and chick up close): approved.** Drew: "Looks excellent overall." Runner from behind in the run: good. Egg: good. Sit pose: reads. Chick: **Slate** (the other two are deleted). Teeth: keep, but they "strangely" pointed straight ahead; they now hang down under the front of the upper jaw with a slight forward lean. The opening nest will hold a **clutch**, not one egg. The turntable stays at `?mode=close`.
+- **Before the Level 1 layout: obstacles have to be solid.** Aidan noticed the runner and the egg pass straight through obstacles. See "Solid obstacles" below. A plan went to Drew on 2026-11-16; wait for his answer before building it or the course map.
+- **Frame rate: holding 60 on the phone** (build 18, Home Screen, late in a long session: 60 fps, 2% late, full sharpness). See "Frame rate".
+- Live build: https://drew879.github.io/raptor-race-fable/ now opens the rough run. Close-up: `?mode=close`. Speed test: `?mode=bench`. The old concept frame: `?mode=concept`.
 - Hero colors are approved. All seven obstacle kinds are approved (they are kinds, to be repeated and combined).
+
+### Solid obstacles (asked for 2026-11-16, plan sent, not built)
+Aidan pointed out that the runner slows on a hit but slides through the obstacle, and the egg rolls through everything. Drew's instinct: the runner bumps, takes the time penalty, then gets past in a natural way (hops a log, shimmies round a tree or rock); the egg avoids obstacles altogether (changes lanes round tall ones, stays low under slide ones, bounces over jump ones). He wanted my response before any layout work.
+
+What I proposed back (check the conversation for his answer before building):
+- **Runner: stop, then do the move you missed.** The runner stops dead at the obstacle's face with a flinch, then gets past by the move that obstacle asks for: scrambles over a log, ducks under an arch after bonking it, steps round a tree or boulder. So every mistake shows the right answer. A creek has nothing to bump: a miss is a splash and a slow wade.
+- **A sideways hit bounces back.** Swiping into a tree beside you is a shoulder bump back into the lane you came from.
+- **Stepping round a tree or boulder ends in the lane the egg took.** One rule, always a clear lane, and it teaches "follow the egg".
+- **Same cost every time.** Whatever the obstacle, a hit costs the same ground against the egg as now (about 3 m), and the runner can't be hit again until it is past.
+- **Egg: it never touches anything, and it shows the way.** It reaches each obstacle a moment before the runner, so its dodge is a hint: over, under or round. Reasons that suit an egg: it follows the worn ruts round trees and rocks, the chick kicks just before a log and the egg hops, and it rolls flat under arches. Its path becomes planned from the course, not random.
+- **Build it in the rough run first**, because how far the runner travels during a recovery feeds the spacing rule for the layout.
+- Open points put to Drew: which side the runner steps to (my pick: the egg's side), and whether the chick's kick as the reason for a hop appeals.
 
 ### What the rough run has
 - A 530 m test course (about 66 s at 8 m/s) in `src/game/course.ts`: 25 decision points, never closer than 12 m (1.5 s). Order: lanes, jumps, slides, a steep clear drop with a view, a mixed section, a second drop, a short finish. This is a feel test, not the Level 1 layout.
@@ -17,7 +30,7 @@ Decisions and progress. Read `raptor-race-brief.md` first; it's the source of tr
 - Swipe and arrow-key controls, jump buffering, fast-fall into slide. One touch makes one move.
 - Four obstacle kinds so far: boulder and lane tree (go around), log (jump), propped trunk arch (slide). Creek, hollow log and Psittacosaurus are still to build.
 - The egg tumbles ahead; clean running closes the gap (down to 4.8 m), a hit adds 3.2 m, capped at 17 m with a warning. Losing the egg is not in yet.
-- Amber lines and arcs, a count, first-time hints, a pause sheet (resume, start over, look AB/B+/B, speed 4 to 11 m/s, egg Steady/Wobbly/Lively), a finish sheet with "Run again" that resets everything.
+- Amber lines and arcs, a count, first-time hints, a pause sheet (resume, start over, speed 4 to 11 m/s, egg Steady/Wobbly/Lively), a finish sheet with "Run again" that resets everything.
 - The camera ducks under arches a moment after the hero.
 - Lane hints: each lane is a slightly paler worn track, with a thin broken seam of moss and litter between lanes. Drawn in the ground shader from trail coordinates (no grass: it had not evolved yet).
 - Forest is laid out in 13 m chunks at four levels of detail (`src/game/flora.ts`) and drawn with one call per model part for the whole view. Ground is one mesh showing only the stretch near the runner; amber, mist and sun shafts are one call each. About 50 draw calls and 0.4 to 0.6 million triangles a frame.
@@ -56,14 +69,18 @@ Build numbers here are the ones shown on the phone.
   - It keeps a short history, printed in the pause sheet's small print as "sharpness log: ...", so the next screenshot says what it did and why. No more guessing.
   - Simulated on made-up phones (healthy, short and long hitches, slow under a sheet, always slow, truly bound by pixels): all end where they should.
   - The saved setting's key is `rr-scale4`, so the phone starts at full sharpness.
+- **What build 18's log said** (Drew's pause sheet, 14 minutes into a session at speed 11): "143s half: 0% late, checking · 144s 80%: 2% late, it passed · 263s up to 90% · 856s up to 100%", and full sharpness at the end. So the hitch check worked as designed at 143 s. But the picture was already at 80% by then, which means an earlier check, in the first two minutes, did find slowness that came back at full sharpness. Its lines had scrolled off (only four were shown).
+- **A likely cause, measured on the Mac:** the first 40 m of the test course has the most forest in view of anywhere, 600 to 640 thousand triangles against 400 to 500 thousand for the rest (the speed test's two spots are at 405 and 435). Every run starts there. Not proven on the phone.
+- **Changes after that:** play is not judged for six seconds after any sheet (the heavy stretch passes in five at speed 8); the log shows eight lines; a failed step up waits 30 s, doubling to two minutes at most (it was 45 s to ten minutes), so a dip can't linger; and the speed test has two new lines, "start of the run" and "start of the run, half sharp", so the phone can say whether the start is really slower.
+- **For the real level:** keep the opening stretch's forest no heavier than the rest.
 - **Headroom:** about 8 ms of a 16.7 ms budget by the speed test. If the real level needs more, the lever is forest triangles (lighter middle-distance models, fewer far plants).
 
 ### The close-up (milestone 3, built 2026-11-16)
-`?mode=close` is a turntable: drag to spin, pinch to zoom. Subjects: Runner (Stand, Run, Sit), Egg, Chick (Stand, Hatched; three colors), Family (all three at true size). The animals blink, breathe, glance at the camera and call now and then. Code in `src/closeup/scene.ts`.
+`?mode=close` is a turntable: drag to spin, pinch to zoom. Subjects: Runner (Stand, Run, Sit), Egg, Chick (Stand, Hatched), Family (all three at true size). The animals blink, breathe, glance at the camera and call now and then. Code in `src/closeup/scene.ts`.
 
 **The runner was rebuilt for close range** (`art/hero.py`). What changed, and where it comes from:
 - A real head: short and deep with a large eye (the skull is 76 mm in the first skeleton found; ours is about 86 mm with feathers and beak, a small stylization). Upper beak and a lower jaw on its own bone, so the beak opens. A drawn gold eye with pupil, iris, a catchlight and lids that blink.
-- Four small teeth on each side at the very tip of the upper jaw, pointing forward, the first the largest. That is what the fossils show; the lower jaw had none. The horny beak itself is inferred, not preserved.
+- Four small teeth on each side under the front of the upper jaw, the first the largest; the lower jaw had none. In the fossils they lean forward. Modeled that way they looked like tusks (Drew: "strangely pointing straight ahead"), so they hang mostly down with a slight forward lean and a hooked tip. The horny beak itself is inferred, not preserved.
 - Fourteen feathers on each hand, on the second finger, shortest at the fingertip (about 30, 64 and 95 mm from the tip inward in the fossils; the longest known is 182 mm). Three fingers, claws on the first two; the third was a small splint and is hidden.
 - Eleven tail feathers a side (eleven are preserved on one side of the first skeleton). They are 20 to 26 cm here, a little shorter than before; the fossils' own lengths are not well published (15 to 20 cm in popular sources).
 - Toes: third longest, then second, then fourth, with a small first toe held off the ground on the inner side (whether it pointed backward is debated).
@@ -73,21 +90,19 @@ Build numbers here are the ones shown on the phone.
 
 **The rig** (`src/hero/rig.ts`) gained: `sit` (folded legs like a bird on a nest, arms and fans spread), `lookYaw` / `lookPitch`, `beak`, `blink` (with `blinkAt(time)` for a natural rhythm), `idle` (breathing). `new HeroRig(model, scale)` takes the legs' size against the parent's, so the chick uses the same poses.
 
-**The chick** is the same script with a different `Form` (proportions, down in place of fans, colors), so it shares the skeleton. Nothing is known about a real hatchling: no Caudipteryx egg or chick has been found. Its relatives' embryos have well-formed bones, so chicks were probably up and walking soon after hatching; the down and colors are our choice. Three colors are offered for Drew and Aidan: Striped (buff with dark stripes, my pick: it stands out against the blue-green shell and the blue-black parent, and ground-nesting chicks really are striped), Slate (the parent's colors gone soft), Gold. Once one is picked, delete the other two models (1.9 MB each).
+**The chick** is the same script with a different `Form` (proportions, down in place of fans, colors), so it shares the skeleton. Nothing is known about a real hatchling: no Caudipteryx egg or chick has been found. Its relatives' embryos have well-formed bones, so chicks were probably up and walking soon after hatching; the down and colors are our choice. Its colors are the parent's gone soft: slate down, cream below, a first hint of the gold collar ("Slate", picked by Drew and Aidan from three; I had favored a striped one). The model is `chick.glb`, 1.9 MB, fetched the first time it is shown.
 
 **The egg up close** is its own model (`egg_true`, 2.2 times as long as wide, about 8 cm), matte and finely speckled with a faint lengthwise grain, plus two broken shell pieces. Size and shape come from oviraptorosaur eggs (always at least twice as long as wide; the smallest well-known kind is 9 to 11 cm; one kind has blue-green pigment). The chase egg stays short, fat and oversized so it reads from far away.
 
-**For the story scenes later** (from the same fact check): oviraptorosaur nests held many eggs in pairs, in rings, blunt ends up; adults have been found sitting on them with arms spread round the edge; which parent sat is unknown (possibly the father). The game says "parent", which is right. Ask Drew whether the opening nest holds one egg or a clutch.
+**For the story scenes later** (from the same fact check): oviraptorosaur nests held many eggs in pairs, in rings, blunt ends up; adults have been found sitting on them with arms spread round the edge; which parent sat is unknown (possibly the father). The game says "parent", which is right. Drew chose a clutch for the opening nest (2026-11-16), with ours the one that rolls away.
 
 ### Not yet verified on the real phone
-- The new sharpness governor (the pause sheet should say "full sharpness" and show no log, or a log that ends back at full).
-- The close-up page: looks, touch controls, loading time (the runner is 1.6 MB, each chick 1.9 MB).
-- It does run in the iPhone simulator (Safari, iOS 26.3), so the new shader code compiles on Apple's engine.
+- The re-angled teeth (they look right on the Mac).
+- The sharpness changes after build 18, and the two new speed test lines.
 
 ### Next
-- Drew's review of the close-up: the runner's face and feathers, B+, the chick's color.
-- Then a course map for sign-off before building the real level (milestone 4).
-- Known rough spots on the runner, to fix with his feedback: the sitting pose is a first pass; the chick's down is still made of flat cards (fine at its size, visible when zoomed right in); a few real feathers sit oddly where two colors meet.
+- Drew's answer on solid obstacles. Then build that in the rough run, playtest it, and only then the course map for sign-off (milestone 4).
+- Known rough spots on the runner: the sitting pose is a first pass; the chick's down is made of flat cards (fine at its size, visible zoomed right in).
 
 ## How the code is laid out
 
@@ -173,9 +188,5 @@ These are the kinds, not a count. They repeat and combine along the course; expe
 
 ## Open questions
 
-- B+: is this the right way to keep some of A+/AB in B? (Drew)
-- Chick color: Striped, Slate or Gold? (Drew and Aidan)
-- The runner up close: anything about the face, feathers, hands or feet that looks off?
-- The four small teeth at the tip of the beak: keep them? They are real, and a nice journal fact.
-- The opening nest: one egg, or a clutch with ours on top?
+- Solid obstacles: does Drew agree with the plan? Which side does the runner step to round a tree (my pick: the egg's side)? Does the chick's kick as the reason for the egg's hops appeal?
 - Should a slide be holdable by swiping down again? Drew is on the fence.

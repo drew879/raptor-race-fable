@@ -318,6 +318,9 @@ body {
   color: var(--ui-text);
   border: 1.5px solid color-mix(in srgb, var(--ui-text) 40%, transparent);
 }
+.setting[hidden] {
+  display: none;
+}
 .setting {
   display: flex;
   align-items: center;
@@ -452,4 +455,11 @@ body {
   background: color-mix(in srgb, var(--ui-panel) 82%, transparent);
   border: 1.5px solid color-mix(in srgb, var(--ui-accent) 55%, transparent);
   pointer-events: none !important;
+}
+.picker.closeup .foot .back {
+  color: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  opacity: 1;
+  padding: 6px 4px;
 }

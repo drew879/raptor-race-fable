@@ -134,5 +134,4 @@ def hero_kit(form, previews=True):
 
 
 hero_kit(hero.PARENT)
-for chick in hero.CHICKS:
-    hero_kit(chick, previews=False)
+hero_kit(hero.CHICK, previews=False)

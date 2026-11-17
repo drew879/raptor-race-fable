@@ -723,17 +723,20 @@ def head(geo, rnd, fm):
                   lambda u: 0.0011 * s * math.sin(math.pi * clamp01(u)) + 0.0001,
                   lambda u, sd: scale(fm.horn[0], 0.18), 'skin', segs=4, sway=(0.0, 0.0))
 
-    # ---- teeth: a few slender ones at the very front of the upper jaw, pointing forward and down
+    # ---- teeth: four small ones each side under the front of the upper jaw. In the fossils they
+    # lean forward; here they lean only a little, hang mostly down and hook back at the tip, so
+    # they read as teeth and never as tusks.
     for side in (-1, 1):
         for i in range(fm.teeth):
-            x = H.x1 - 0.0025 - i * 0.0042
-            w = H.width(x) * 0.78
-            base = H.at(x, side * w, H.mouth(x) + 0.0006)
-            dv = (H.F * 0.82 - H.U * 0.55 + X * side * 0.1).normalized()
-            length = (0.0044, 0.003, 0.0026, 0.0023, 0.002)[min(i, 4)] * s
-            geo.tube([base, base + dv * length * 0.5, base + dv * length],
-                     lambda t, ang: ((0.00075 * (1 - t) + 0.0001) * s,) * 2,
-                     lambda t, ang, p: TOOTH, 'skin', around=4, up_hint=Z,
+            x = H.x1 - 0.0045 - i * 0.0042
+            w = H.width(x) * 0.84
+            base = H.at(x, side * w, H.mouth(x) + 0.0009)
+            dv = (H.F * 0.34 - H.U * 0.93 + X * side * 0.04).normalized()
+            length = (0.0036, 0.0028, 0.0024, 0.0021, 0.002)[min(i, 4)] * s
+            tip = base + dv * length - H.F * (0.0007 * s)
+            geo.tube([base, base + dv * length * 0.55, tip],
+                     lambda t, ang: ((0.0008 * (1 - t) ** 0.8 + 0.0001) * s,) * 2,
+                     lambda t, ang, p: TOOTH, 'skin', around=5, up_hint=Z,
                      detail_fn=lambda t, ang, p: detail(HORNY, 0.0, t))
 
     # ---- lower jaw, on its own bone so the beak can open
@@ -1022,15 +1025,15 @@ PARENT.face_feather = 1.0
 # Nothing is known about what a hatchling looked like: no Caudipteryx egg or chick has been
 # found. Its relatives' embryos have well-formed bones, so the young were probably up and about
 # soon after hatching, like a chicken's or an emu's. So this is a downy, big-eyed, sturdy-legged
-# chick, with down in place of the fans. Its colors are a choice; three are offered.
+# chick, with down in place of the fans. Its colors are a choice: the parent's gone soft (slate
+# down, cream below, a first hint of the gold collar). Drew and Aidan picked it from three on
+# 2026-11-16; the striped and gold ones are in the repo's history.
 
-BUFF = srgb('#d9b877')
-BUFF_PALE = srgb('#f1e2b8')
-UMBER = srgb('#3b2a1f')
 SLATE_DOWN = srgb('#56667f')
+SLATE_PALE = srgb('#7f8ea4')
 SLATE_DARK = srgb('#28324a')
+DOWN_CREAM = srgb('#ece2c8')
 GOLD_DOWN = srgb('#e2ad45')
-GOLD_DOWN_DEEP = srgb('#b97f2c')
 CHICK_SKIN = (srgb('#74685f'), srgb('#a8998b'))
 CHICK_HORN = (srgb('#4a433d'), srgb('#b7a894'))
 
@@ -1097,50 +1100,25 @@ def _down_noise(p, f=60.0):
     return fbm((p.x * f, p.y * f, p.z * f), 1.0, 2)
 
 
-def chick_form(name, back, back_pale, belly, stripe, legs, eye, lid, stripes=True, collar=None):
-    """One chick. back / back_pale: the down on top; belly: underneath; stripe: the dark marks."""
-
-    def body(fm, k, s, p):
-        n = _down_noise(p)
-        c = mix(back, back_pale, clamp01(0.4 + n * 2.0))
-        if stripes:
-            # dark stripes run the length of the back, as on many chicks that hide on the ground
-            mid = smoothstep(0.9, 0.97, s + n * 0.05)
-            sides = smoothstep(0.36, 0.46, s + n * 0.06) * smoothstep(0.78, 0.68, s + n * 0.06)
-            c = mix(c, stripe, clamp01((mid + sides) * smoothstep(0.6, 1.6, k) * 0.92))
-        else:
-            c = mix(c, stripe, smoothstep(0.55, 1.0, s + n * 0.2) * 0.55)
-        if collar is not None:
-            c = mix(c, collar, smoothstep(5.9, 6.3, k) * smoothstep(7.2, 6.8, k) * smoothstep(-0.5, 0.0, s) * 0.8)
-        under = smoothstep(-0.05, -0.55, s + n * 0.3)
-        return mix(c, belly, under)
-
-    def head_c(fm, x, z, p):
-        ex, ez, _ = fm.eye
-        n = _down_noise(p, 90.0)
-        dz = z - ez + n * 0.003
-        c = mix(belly, back_pale, smoothstep(-0.004, 0.012, dz))
-        # a dark line through the eye, like the parent's, and a dark crown
-        line = smoothstep(-0.0065, -0.004, dz) * smoothstep(0.006, 0.0035, dz) * smoothstep(0.058, 0.05, x)
-        c = mix(c, stripe, line * 0.9)
-        crown = smoothstep(0.016, 0.021, dz)
-        if stripes:
-            c = mix(c, stripe, crown * 0.9)
-        else:
-            c = mix(c, mix(back, stripe, 0.5), crown * 0.8)
-        return c
-
-    return Form(name=name, body_color=body, head_color=head_c,
-                leg_color=lambda v: mix(legs, back_pale, clamp01(v) * 0.5), eye_color=eye, lid=lid, **CHICK_BASE)
+def _chick_body(fm, k, s, p):
+    n = _down_noise(p)
+    c = mix(SLATE_DOWN, SLATE_PALE, clamp01(0.4 + n * 2.0))
+    c = mix(c, SLATE_DARK, smoothstep(0.55, 1.0, s + n * 0.2) * 0.55)
+    c = mix(c, GOLD_DOWN, smoothstep(5.9, 6.3, k) * smoothstep(7.2, 6.8, k) * smoothstep(-0.5, 0.0, s) * 0.8)
+    return mix(c, DOWN_CREAM, smoothstep(-0.05, -0.55, s + n * 0.3))
 
 
-CHICKS = [
-    # warm buff with dark stripes, the camouflage of chicks that leave the nest early
-    chick_form('chick_striped', BUFF, BUFF_PALE, BUFF_PALE, UMBER, BUFF, srgb('#3a2414'), srgb('#2a211c')),
-    # the parent's colors gone soft: slate down, cream below, a first hint of the gold collar
-    chick_form('chick_slate', SLATE_DOWN, srgb('#7f8ea4'), srgb('#ece2c8'), SLATE_DARK, SLATE_DOWN, srgb('#3a2414'),
-               srgb('#20242c'), stripes=False, collar=GOLD_DOWN),
-    # gold all over, the color of amber and of the parent's collar
-    chick_form('chick_gold', GOLD_DOWN, srgb('#f0cf7a'), srgb('#f6e8c0'), GOLD_DOWN_DEEP, GOLD_DOWN, srgb('#3a2414'),
-               srgb('#3a2c1c'), stripes=False),
-]
+def _chick_head(fm, x, z, p):
+    ex, ez, _ = fm.eye
+    n = _down_noise(p, 90.0)
+    dz = z - ez + n * 0.003
+    c = mix(DOWN_CREAM, SLATE_PALE, smoothstep(-0.004, 0.012, dz))
+    # a dark line through the eye, like the parent's, and a darker crown
+    line = smoothstep(-0.0065, -0.004, dz) * smoothstep(0.006, 0.0035, dz) * smoothstep(0.058, 0.05, x)
+    c = mix(c, SLATE_DARK, line * 0.9)
+    return mix(c, mix(SLATE_DOWN, SLATE_DARK, 0.5), smoothstep(0.016, 0.021, dz) * 0.8)
+
+
+CHICK = Form(name='chick', body_color=_chick_body, head_color=_chick_head,
+             leg_color=lambda v: mix(SLATE_DOWN, SLATE_PALE, clamp01(v) * 0.5), eye_color=srgb('#3a2414'),
+             lid=srgb('#20242c'), **CHICK_BASE)

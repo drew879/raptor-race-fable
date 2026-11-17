@@ -17,9 +17,7 @@ import { Track } from '../world/track';
 import type { Lookdev } from '../lookdev/scene';
 
 import parentUrl from '../assets/models/caudipteryx.glb?url';
-import stripedUrl from '../assets/models/chick_striped.glb?url';
-import slateUrl from '../assets/models/chick_slate.glb?url';
-import goldUrl from '../assets/models/chick_gold.glb?url';
+import chickUrl from '../assets/models/chick.glb?url';
 import propsUrl from '../assets/models/props.glb?url';
 import smallUrl from '../assets/models/flora_small.glb?url';
 
@@ -39,18 +37,12 @@ const CHICK_LEGS = 0.145;
 const SUBJECTS = ['Runner', 'Egg', 'Chick', 'Family'] as const;
 const RUNNER_POSES = ['Stand', 'Run', 'Sit'] as const;
 const CHICK_POSES = ['Stand', 'Hatched'] as const;
-const CHICKS = [
-  { name: 'Striped', url: stripedUrl, why: 'Buff with dark stripes, like chicks that hide on the forest floor.' },
-  { name: 'Slate', url: slateUrl, why: "The parent's colors gone soft, with a first hint of the gold collar." },
-  { name: 'Gold', url: goldUrl, why: "Gold all over: the color of amber and of the parent's collar." },
-];
-
 const CAPTIONS: Record<(typeof SUBJECTS)[number], string> = {
   Runner:
     'Caudipteryx zoui, 70 to 90 cm long. Fourteen banded feathers on each hand, eleven on each side of the tail, and four small teeth at the tip of the beak. All of that is from the fossils.',
   Egg: "About 8 cm long. No Caudipteryx egg has been found, so the size and shape come from its cousins' eggs: long ovals, and one kind has blue-green pigment in the shell.",
   Chick:
-    "No chick has been found either. Its cousins' unhatched young had well-formed bones, so chicks were probably up and walking soon after hatching. The down and its colors are our choice.",
+    "No chick has been found either. Its cousins' unhatched young had well-formed bones, so chicks were probably up and walking soon after hatching. The down and its colors are our choice: the parent's colors gone soft, with a first hint of the gold collar.",
   Family: 'All three at their true sizes.',
 };
 
@@ -129,8 +121,9 @@ export async function buildCloseup(ui: HTMLElement, stage: HTMLElement, hooks: C
     };
   };
   const parent = animal(parentModel, 1, 1);
-  const chicks: (Animal | null)[] = CHICKS.map(() => null);
-  const chickLoads: (Promise<void> | null)[] = CHICKS.map(() => null);
+  // the chick is fetched the first time it is wanted
+  let chick: Animal | null = null;
+  let chickLoad: Promise<void> | null = null;
 
   const egg = eggMesh(props, 'egg_true', 0);
   const cup = eggMesh(props, 'eggshell_cup', 0);
@@ -143,17 +136,15 @@ export async function buildCloseup(ui: HTMLElement, stage: HTMLElement, hooks: C
   let subject = 0;
   let runnerPose = 0;
   let chickPose = 0;
-  let chickColor = 0;
   const cam = { yaw: Math.PI - 0.7, pitch: 0.2, dist: 2.5, target: new THREE.Vector3(), zoom: 1, touched: -1e9 };
   const want = { dist: 2.5, height: 0.4 };
   const at = (x: number, y: number, z: number) => origin.clone().add(new THREE.Vector3(x, y, z));
 
-  function showChick(index: number) {
-    chickColor = index;
-    if (!chickLoads[index]) {
-      chickLoads[index] = loadSkinned(CHICKS[index].url, true).then((model) => {
+  function showChick() {
+    if (!chickLoad) {
+      chickLoad = loadSkinned(chickUrl, true).then((model) => {
         if (model.eye) model.eye.uniforms.uLid.value.set(0.05, 0.04, 0.035);
-        chicks[index] = animal(model, CHICK_LEGS, CHICK_SIZE);
+        chick = animal(model, CHICK_LEGS, CHICK_SIZE);
         hooks.pickStyle(hooks.styleIndex()); // new materials take the current look
         arrange();
       });
@@ -180,20 +171,19 @@ export async function buildCloseup(ui: HTMLElement, stage: HTMLElement, hooks: C
     else if (sitting) egg.position.copy(at(0.03, eggRest, -0.4));
     else egg.position.copy(at(0.3, eggRest, -0.22));
 
-    chicks.forEach((c, i) => {
-      if (!c) return;
-      c.group.visible = i === chickColor && (name === 'Chick' || family);
+    if (chick) {
+      chick.group.visible = name === 'Chick' || family;
       if (family) {
-        c.group.position.copy(at(0.36, 0, -0.42));
-        c.group.rotation.y = -2.2;
+        chick.group.position.copy(at(0.36, 0, -0.42));
+        chick.group.rotation.y = -2.2;
       } else if (hatching) {
-        c.group.position.copy(at(-0.02, 0, 0.01));
-        c.group.rotation.y = 0.25;
+        chick.group.position.copy(at(-0.02, 0, 0.01));
+        chick.group.rotation.y = 0.25;
       } else {
-        c.group.position.copy(origin);
-        c.group.rotation.y = 0;
+        chick.group.position.copy(origin);
+        chick.group.rotation.y = 0;
       }
-    });
+    }
     // just out of the egg: the two pieces of shell lie where they fell, beside the chick
     const shellRest = 0.226 * EGG_LENGTH * 0.96;
     cup.position.copy(at(0.062, shellRest, -0.012));
@@ -217,9 +207,8 @@ export async function buildCloseup(ui: HTMLElement, stage: HTMLElement, hooks: C
     <div class="picker closeup">
       <div class="row"><div class="tabs words subjects"></div></div>
       <div class="row opt-row"><span class="lbl"></span><div class="tabs words opts"></div></div>
-      <div class="row color-row"><span class="lbl">Color</span><div class="tabs words colors"></div></div>
-      <div class="row"><span class="lbl">Look</span><div class="tabs looks"></div><a class="run-link small" href="?mode=run">Rough run</a></div>
-      <div class="foot"><span>Drag to spin. Pinch to zoom.</span><span>build ${BUILD}</span></div>
+      <div class="row look-row"><span class="lbl">Look</span><div class="tabs looks"></div></div>
+      <div class="foot"><span>Drag to spin. Pinch to zoom.</span><a class="back" href="?mode=run">Back to the run</a><span>build ${BUILD}</span></div>
     </div>`;
   const q = <T extends HTMLElement>(sel: string) => ui.querySelector(sel) as T;
   const caption = q('.closeup-cap');
@@ -239,11 +228,10 @@ export async function buildCloseup(ui: HTMLElement, stage: HTMLElement, hooks: C
   const mark = (el: HTMLElement, index: number) => [...el.children].forEach((c, i) => c.classList.toggle('on', i === index));
   fill(q('.subjects'), SUBJECTS, (i) => {
     subject = i;
-    if (SUBJECTS[i] === 'Chick' || SUBJECTS[i] === 'Family') showChick(chickColor);
+    if (SUBJECTS[i] === 'Chick' || SUBJECTS[i] === 'Family') showChick();
     cam.zoom = 1;
     arrange();
   });
-  fill(q('.colors'), CHICKS.map((c) => c.name), (i) => showChick(i));
   fill(q('.looks'), hooks.styles.map((s) => s.tab), (i) => {
     hooks.pickStyle(i);
     refreshUi();
@@ -253,10 +241,9 @@ export async function buildCloseup(ui: HTMLElement, stage: HTMLElement, hooks: C
     const name = SUBJECTS[subject];
     mark(q('.subjects'), subject);
     mark(q('.looks'), hooks.styleIndex());
-    mark(q('.colors'), chickColor);
+    q('.look-row').hidden = hooks.styles.length < 2;
     const optRow = q('.opt-row');
     const opts = q('.opts');
-    q('.color-row').hidden = !(name === 'Chick' || name === 'Family');
     optRow.hidden = !(name === 'Runner' || name === 'Chick');
     if (name === 'Runner') {
       q('.opt-row .lbl').textContent = 'Pose';
@@ -273,9 +260,8 @@ export async function buildCloseup(ui: HTMLElement, stage: HTMLElement, hooks: C
       });
       mark(opts, chickPose);
     }
-    const loading = (name === 'Chick' || name === 'Family') && !chicks[chickColor];
-    caption.textContent =
-      (loading ? 'Loading the chick…\n' : '') + CAPTIONS[name] + (name === 'Chick' ? `\n${CHICKS[chickColor].name}: ${CHICKS[chickColor].why}` : '');
+    const loading = (name === 'Chick' || name === 'Family') && !chick;
+    caption.textContent = (loading ? 'Loading the chick…\n' : '') + CAPTIONS[name];
     const style = hooks.styles[hooks.styleIndex()];
     ui.style.setProperty('--ui-ink', style.ui.ink);
     ui.style.setProperty('--ui-panel', style.ui.panel);
@@ -397,7 +383,6 @@ export async function buildCloseup(ui: HTMLElement, stage: HTMLElement, hooks: C
         const pose = name === 'Runner' ? RUNNER_POSES[runnerPose] : 'Stand';
         live(parent, time, dt, 0, { sit: pose === 'Sit' ? 1 : 0, run: pose === 'Run', down: pose === 'Sit' ? -0.5 : name === 'Family' ? -0.25 : 0 });
       }
-      const chick = chicks[chickColor];
       if (chick && chick.group.visible) {
         const hatching = name === 'Chick' && CHICK_POSES[chickPose] === 'Hatched';
         live(chick, time, dt, 0.61, { sit: hatching ? 1 : 0, down: name === 'Family' ? 0.35 : 0.1 });

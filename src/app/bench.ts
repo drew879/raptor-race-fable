@@ -23,6 +23,8 @@ interface Case {
   post?: boolean;
   forest?: boolean;
   shadows?: boolean;
+  /** Measure at this one spot on the trail, in place of the usual two. */
+  at?: number;
 }
 
 const CASES: Case[] = [
@@ -35,6 +37,9 @@ const CASES: Case[] = [
   { name: 'no sun shadows', shadows: false },
   { name: 'half sharp, no forest', scale: 0.5, forest: false },
   { name: 'half sharp, no smoothing', scale: 0.5, samples: 0 },
+  // the top of the trail looks down the whole hill: the most forest in view anywhere
+  { name: 'start of the run', at: 4 },
+  { name: 'start of the run, half sharp', at: 4, scale: 0.5 },
 ];
 
 export async function runBench(rig: Rig) {
@@ -108,7 +113,7 @@ export async function runBench(rig: Rig) {
     view.debug.setShadows(c.shadows ?? true);
     show('measuring…');
     await breathe();
-    const ms = (measure(150) + measure(330)) / 2;
+    const ms = c.at !== undefined ? measure(c.at) : (measure(150) + measure(330)) / 2;
     lines.push(`${ms.toFixed(1).padStart(6)} ms  ${c.name}`);
   }
   rig.setScale(1);
