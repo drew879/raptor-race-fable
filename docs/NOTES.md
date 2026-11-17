@@ -7,10 +7,23 @@ Decisions and progress. Read `raptor-race-brief.md` first; it's the source of tr
 - **Milestone 1 (style): done. The look is B, the Painted Diorama.** Drew, 2026-11-16, after trying B+ (B with ink on the animals): "Let's just go with B... it just looks the best." Aidan had picked B too. AB and B+ are out of the code (they are in the history); the pickers are gone.
 - **Milestone 2 (rough playable run): done.**
 - **Milestone 3 (runner, egg and chick up close): approved.** Drew: "Looks excellent overall." Runner from behind in the run: good. Egg: good. Sit pose: reads. Chick: **Slate** (the other two are deleted). Teeth: keep, but they "strangely" pointed straight ahead; they now hang down under the front of the upper jaw with a slight forward lean. The opening nest will hold a **clutch**, not one egg. The turntable stays at `?mode=close`.
+- **Milestone 4 has begun with a plan: the Level 1 course map is drafted and with Drew for sign-off** (he said "Yes, draft it" on 2026-11-16). See "Level 1 course map" below. Nothing of the level is built.
 - **Solid obstacles: built in the rough run (build 20), waiting on Drew and Aidan's playtest.** Aidan had noticed the runner and the egg passed straight through obstacles. See "Solid obstacles" below. The course map for Level 1 comes after they are happy with this.
 - **Frame rate: holding 60 on the phone** (build 18, Home Screen, late in a long session: 60 fps, 2% late, full sharpness). See "Frame rate".
 - Live build: https://drew879.github.io/raptor-race-fable/ now opens the rough run. Close-up: `?mode=close`. Speed test: `?mode=bench`. The old concept frame: `?mode=concept`.
 - Hero colors are approved. All seven obstacle kinds are approved (they are kinds, to be repeated and combined).
+
+### Level 1 course map (draft sent 2026-11-16, not signed off)
+- **Where it lives:** `docs/level-1/course.mjs` is the layout as data, with its own rule checks (`node docs/level-1/course.mjs`). `docs/level-1/make-map.mjs` draws the map page from it into `docs/level-1/course-map.html`. That page is published for Drew, privately, at https://claude.ai/artifact/ASwXiNq9ozW86Wx6d43zQL (republish the same file from a session that has the Artifact tool, passing that link, to update it in place). When the layout is approved, port `course.mjs` into the game's level file so what was agreed is what gets built.
+- **The shape:** 584 m of chase, 73 s at speed 8 with no bumps, 78 m of descent. Sections, each teaching one thing: Off the nest (34 m, nothing in the way), Fern hollow (110 m, lanes), First drop (65 m, steep and clear), Windfall (85 m, jumps: two logs, the first creek, a boulder then a log), Under the giants (75 m, slides: two propped trunks, then the hollow log), The old ginkgo (80 m, the fork), Second drop (55 m, the power-up over amber in all three lanes), Home stretch (80 m, everything mixed), The clearing (30 m, the scoop).
+- **Moves:** 21 on the easy side of the fork, 23 on the hard side, never closer than 12 m (1.5 s). Nothing but amber on either drop; the first obstacle after each is 12 m or more past its foot and in view all the way down.
+- **The fork:** the trail splits round a giant ginkgo on a rock. Each side is one lane wide, so on it you only jump and slide. Left is harder and richer (log, propped trunk, creek; 34 pieces of amber and a hidden find), right is easy (one log; 11 pieces). Staying in the middle bumps the rock and shunts you to the easy side, which is also the side the egg takes.
+- **Hidden finds:** three, each off the amber line and needing two planned moves, never a quick double. 1: beside a boulder in Fern hollow, with a tree to step back from. 2: at the top of the jump over the creek on the fork's hard side. 3: behind a tree in the home stretch, with the creek still to jump.
+- **Power-up, proposed:** "Fan out". Grab a golden ginkgo leaf and the runner spreads its fans for 6 s, sweeping in amber from all three lanes. The earlier version's amber magnet is the fallback. Drew to choose.
+- **Checkpoints:** at the top of the first drop, at the fork, at the top of the second drop.
+- **The chase, proposed numbers:** the egg starts 15 m ahead and a clean run closes that to about 5.5 m by the clearing (0.13 m/s), so you gain on it slowly the whole way, as Drew asked. A bump costs 3.2 m. Warning at 21 m, egg lost at 26 m (back to the last checkpoint): four bumps close together at the start, six or more late in a clean run.
+- **New things this layout needs built:** the creek, the hollow log (with boulders closing the lanes beside it), the dozing Psittacosaurus, the fork (side lanes swinging out round an island), the power-up, hidden finds, checkpoints and losing the egg, the opening with a clutch in the nest, the scoop and the hatching.
+- **Hidden-find pages:** themes only so far, from the brief's own facts (a feathered tail and a baby bird in amber from Myanmar; a spider's web in amber from Spain; ash from the volcanoes preserving the Jehol fossils). Write and fact-check them with the journal.
 
 ### Solid obstacles (asked for and built 2026-11-16)
 Aidan pointed out that the runner slowed on a hit but slid through the obstacle, and the egg rolled through everything. Drew's instinct: the runner bumps, takes the time penalty, then gets past in a natural way; the egg avoids obstacles altogether. He approved my plan with no changes ("truly indifferent" on which side the runner steps to; yes to the chick's kick).
@@ -117,7 +130,8 @@ Build numbers here are the ones shown on the phone.
 - The re-angled teeth.
 
 ### Next
-- Drew and Aidan's playtest of bumps and the egg's dodges. Then the course map for sign-off (milestone 4).
+- Drew's sign-off on the course map (order and pacing, the power-up, the fork, the hollow log, the Psittacosaurus, losing the egg), and his and Aidan's playtest of bumps and the egg's dodges.
+- Then build the level from `docs/level-1/course.mjs`, new obstacle kinds first.
 - Known rough spots on the runner: the sitting pose is a first pass; the chick's down is made of flat cards (fine at its size, visible zoomed right in).
 
 ## How the code is laid out
@@ -204,6 +218,7 @@ These are the kinds, not a count. They repeat and combine along the course; expe
 
 ## Open questions
 
+- The course map: does Drew sign it off, and what does he choose for the power-up (Fan out or the magnet), the Psittacosaurus (keep or a boulder) and the losing-the-egg numbers?
 - Do bumps and the egg's dodges feel right to Drew and Aidan (length of the bump, the hop, the barrel roll)?
 - Does sharpness now stay at full through a session?
 - Should a slide be holdable by swiping down again? Drew is on the fence.
