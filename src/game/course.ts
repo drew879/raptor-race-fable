@@ -36,9 +36,24 @@ const at = (s: number) => s + LEAD_IN;
 // Each section tips to its own slope over its first stretch and then holds it, so a drop
 // visibly falls away at its top instead of easing in along its whole length.
 export const SEGMENTS: Segment[] = [];
+/** The nest sits on a level shelf this long from the trail's start, and the trail tips away below it at this slope. */
+export const NEST_SHELF = 3.95;
+const NEST_PITCH = -0.4;
 level.sections.forEach((sec, i) => {
   const turns = Array.isArray(sec.turn) ? sec.turn : [sec.turn];
   const length = sec.length + (i === 0 ? LEAD_IN : 0);
+  if (i === 0) {
+    // An egg that goes over the nest's rim has a slope to roll down. The pitch is short, and
+    // the trail eases back to the section's own slope below it.
+    SEGMENTS.push(
+      { length: NEST_SHELF, slope: -0.02 },
+      { length: 1.8, slope: NEST_PITCH },
+      { length: 2.4, slope: NEST_PITCH },
+      { length: 4.6, slope: sec.slope },
+      { length: length - NEST_SHELF - 8.8, turn: turns[0], slope: sec.slope },
+    );
+    return;
+  }
   const lead = sec.drop ? 0.4 : 0.3;
   turns.forEach((turn, k) => {
     const part = length / turns.length;
@@ -51,7 +66,7 @@ level.sections.forEach((sec, i) => {
   });
 });
 SEGMENTS.push({ length: 50, turn: 0.1, slope: -0.02 }); // ground beyond the clearing
-export const START_SLOPE = -0.06;
+export const START_SLOPE = -0.02;
 
 /** Stretches where tall trees stay off the valley side so the view opens up: the two drops. */
 export const VISTAS: [number, number][] = level.sections.filter((s) => s.drop).map((s) => [at(s.start - 22), at(s.end + 12)]);

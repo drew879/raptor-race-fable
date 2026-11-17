@@ -12,9 +12,10 @@ export interface HudHooks {
   speed: number;
   eggModes: string[];
   eggMode: number;
-  forkModes: string[];
-  forkMode: number;
-  onFork(mode: number): void;
+  eggSizes: string[];
+  eggSize: number;
+  /** Picking another size starts the game again, since the nest is built to it. */
+  onEggSize(pick: number): void;
   /** "Try again" on the sheet that says the egg got away. */
   onRetry(): void;
   /** "Next" on the Field Journal card that closes the level. */
@@ -36,8 +37,8 @@ export interface Hud {
   setAmber(count: number): void;
   /** Which of the hidden finds have been picked up, in order. */
   setFinds(found: boolean[]): void;
-  /** The two labels that say what each side of the fork holds. Solid while the game holds still for them, see-through otherwise. */
-  fork(on: boolean, solid?: boolean): void;
+  /** The two labels that say what each side of the fork holds. */
+  fork(on: boolean): void;
   /** Dim the picture, once the egg is lost. */
   fade(on: boolean): void;
   showLost(): void;
@@ -85,7 +86,7 @@ export function makeHud(root: HTMLElement, hooks: HudHooks): Hud {
         <div class="stepper"><button class="slower" aria-label="Slower">&minus;</button><b class="speed"></b><button class="faster" aria-label="Faster">+</button></div>
       </div>
       <div class="setting"><span>Egg</span><div class="tabs words egg-tabs"></div></div>
-      <div class="setting"><span>Fork labels</span><div class="tabs words fork-tabs"></div></div>
+      <div class="setting"><span>Egg size</span><div class="tabs words size-tabs"></div></div>
       <div class="links"><a class="link" href="?mode=close">Close-up</a><a class="link" href="?mode=bench">Speed test</a></div>
       <small class="about">Rough test run &middot; build ${BUILD}</small>
     </div>
@@ -160,20 +161,18 @@ export function makeHud(root: HTMLElement, hooks: HudHooks): Hud {
   });
   markEgg(hooks.eggMode);
 
-  const forkTabs = q<HTMLElement>('.fork-tabs');
-  const markFork = (mode: number) => [...forkTabs.children].forEach((el, i) => el.classList.toggle('on', i === mode));
-  hooks.forkModes.forEach((name, i) => {
+  const sizeTabs = q<HTMLElement>('.size-tabs');
+  hooks.eggSizes.forEach((name, i) => {
     const b = document.createElement('button');
     b.textContent = name;
+    b.classList.toggle('on', i === hooks.eggSize);
     press(b, () => {
-      markFork(i);
-      hooks.onFork(i);
+      if (i !== hooks.eggSize) hooks.onEggSize(i);
     });
-    forkTabs.appendChild(b);
+    sizeTabs.appendChild(b);
   });
-  markFork(hooks.forkMode);
   const forkEls = [q<HTMLElement>('.fork-label.left'), q<HTMLElement>('.fork-label.right')];
-  let forkShown = '';
+  let forkShown = false;
 
   hooks.styles.forEach((style, i) => {
     const b = document.createElement('button');
@@ -196,15 +195,11 @@ export function makeHud(root: HTMLElement, hooks: HudHooks): Hud {
       el.innerHTML = found.map((f) => `<i class="${f ? 'on' : ''}"></i>`).join('');
       el.hidden = found.length === 0;
     },
-    fork(on, solid = false) {
+    fork(on) {
       // asked for every frame, so only touch the page when something changes
-      const want = on ? (solid ? 'solid' : 'clear') : '';
-      if (want === forkShown) return;
-      forkShown = want;
-      for (const el of forkEls) {
-        el.hidden = !on;
-        el.classList.toggle('solid', solid);
-      }
+      if (on === forkShown) return;
+      forkShown = on;
+      for (const el of forkEls) el.hidden = !on;
     },
     skip(on) {
       if (skipEl.hidden === on) skipEl.hidden = !on;
