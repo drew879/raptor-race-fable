@@ -413,12 +413,11 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     let glow = size;
     let at = amberPos[i];
     if (collected[i] && pop[i] > 0 && pop[i] < 1) {
-      // just taken: it swells, lifts and is gone in a flash of its own light
+      // Just taken: the piece itself is gone at once, and its light flares and fades where it
+      // was. (The first version swelled the piece too, and the runner ran through it: Drew's
+      // screenshot from build 33 shows a big piece of amber in the middle of its body.)
       const k = pop[i];
-      size = (1 + 0.9 * k) * (1 - k * k);
-      glow = (1 + 2.4 * k) * (1 - k);
-      at = flyAt.copy(amberPos[i]);
-      at.y += 0.28 * k;
+      glow = (1 + 1.5 * k) * (1 - k) ** 1.5;
     }
     if (!collected[i] && fly[i] > 0) {
       // swept toward the runner, quick at first, shrinking as it arrives
@@ -1636,7 +1635,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
 
     for (let k = popping.length - 1; k >= 0; k--) {
       const i = popping[k];
-      pop[i] = Math.min(1, pop[i] + dt / 0.22);
+      pop[i] = Math.min(1, pop[i] + dt / 0.18);
       if (pop[i] >= 1) popping.splice(k, 1);
       if (i >= shownFrom && i < shownTo) putAmber(i);
     }

@@ -481,13 +481,18 @@ export class Sound {
     return this.ctx && this.ctx.state === 'running' ? [this.ctx, this.ctx.currentTime + 0.005] : null;
   }
 
-  /** A jump: a quick rising note in the key, and the air going by. */
+  /**
+   * A jump: a whoosh. Air and feathers, no note. (It was a rising note, which Drew heard as "the
+   * sound I'd expect Yoshi to make in a Mario game, not a feathered dinosaur in this game".)
+   */
   jump() {
     const c = this.now();
     if (!c) return;
-    this.note(c[0], { t: c[1], f: hz(62), bend: hz(74), wave: 'triangle', len: 0.13, vol: 0.2, attack: 0.01, release: 0.12, rev: 0.3 });
-    this.note(c[0], { t: c[1], f: hz(69), bend: hz(81), len: 0.13, vol: 0.09, attack: 0.01, release: 0.1 });
-    this.hiss(c[0], { t: c[1], len: 0.26, vol: 0.2, cut: 500, cutTo: 2600, q: 1.1, attack: 0.03 });
+    // the body of it, sweeping up as the runner leaves the ground, and the hiss of air over the top
+    this.hiss(c[0], { t: c[1], len: 0.34, vol: 0.34, cut: 380, cutTo: 1900, q: 0.9, attack: 0.05 });
+    this.hiss(c[0], { t: c[1] + 0.03, len: 0.28, vol: 0.14, cut: 2600, cutTo: 6500, q: 0.7, attack: 0.06, rev: 0.2 });
+    // and one soft beat of the fans
+    this.hiss(c[0], { t: c[1], len: 0.07, vol: 0.2, cut: 240, q: 0.8, attack: 0.008 });
   }
 
   /** A slide: a skid, grinding down. */
