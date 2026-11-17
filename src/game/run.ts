@@ -410,24 +410,15 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   const flyAt = new THREE.Vector3();
   const putAmber = (i: number) => {
     let size = collected[i] ? 0 : 1;
-    let glow = size;
     let at = amberPos[i];
-    if (collected[i] && pop[i] > 0 && pop[i] < 1) {
-      // Just taken: the piece itself is gone at once, and its light flares and fades where it
-      // was. (The first version swelled the piece too, and the runner ran through it: Drew's
-      // screenshot from build 33 shows a big piece of amber in the middle of its body.)
-      const k = pop[i];
-      glow = (1 + 1.5 * k) * (1 - k) ** 1.5;
-    }
     if (!collected[i] && fly[i] > 0) {
       // swept toward the runner, quick at first, shrinking as it arrives
       const k = 1 - (1 - fly[i]) ** 2;
       at = flyAt.copy(amberPos[i]).lerp(chest, k);
       size = 1 - 0.55 * k;
-      glow = size;
     }
     amberMesh.setMatrixAt(i - shownFrom, m4.compose(at, qI, v3.setScalar(0.19 * size)));
-    amberGlow.setMatrixAt(i - shownFrom, m4.compose(at, qI, v3.setScalar(0.8 * glow)));
+    amberGlow.setMatrixAt(i - shownFrom, m4.compose(at, qI, v3.setScalar(0.8 * size)));
     amberMesh.instanceMatrix.needsUpdate = true;
     amberGlow.instanceMatrix.needsUpdate = true;
   };
@@ -651,9 +642,6 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
 
   /** Amber on its way to the runner while the fans are out: 0 = not flying, else how far along (0..1). */
   const fly = new Float32Array(AMBER.length);
-  /** Amber just taken, bursting: how far through its burst each piece is (0..1), and which are at it. */
-  const pop = new Float32Array(AMBER.length);
-  const popping: number[] = [];
   const flying: number[] = [];
   const chest = new THREE.Vector3();
 
@@ -851,8 +839,6 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     shell.cup.visible = shell.cap.visible = false;
     if (chick) chick.group.visible = false;
     fly.fill(0);
-    pop.fill(0);
-    popping.length = 0;
     flying.length = 0;
     st.found = FINDS.map(() => false);
     for (const f of finds) f.gem.visible = f.glow.visible = true;
@@ -1633,13 +1619,6 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       if (i >= shownFrom && i < shownTo) putAmber(i);
     }
 
-    for (let k = popping.length - 1; k >= 0; k--) {
-      const i = popping[k];
-      pop[i] = Math.min(1, pop[i] + dt / 0.18);
-      if (pop[i] >= 1) popping.splice(k, 1);
-      if (i >= shownFrom && i < shownTo) putAmber(i);
-    }
-
     // amber
     for (let i = 0; i < AMBER.length; i++) {
       if (collected[i] || fly[i] > 0) continue;
@@ -1648,8 +1627,6 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       if (a.s > st.s + 1) break;
       if (Math.abs(a.s - st.s) < 0.55 && Math.abs(st.u - laneU(a.lane, a.s)) < 0.42 && Math.abs(st.y + 0.3 - a.lift) < 0.6) {
         collected[i] = true;
-        pop[i] = 1e-4;
-        popping.push(i);
         if (i >= shownFrom && i < shownTo) putAmber(i);
         st.amber++;
         sound.amber(a.s);
