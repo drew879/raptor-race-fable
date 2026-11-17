@@ -10,11 +10,12 @@ import { SunShadow } from '../render/shadow';
 import type { Style } from '../render/styles';
 import { instance, instances, loadKit, loadSkinned, materialFor, SHADOW_LAYER, type Placement } from '../world/assets';
 import { makeContactShadow, makeGlow, makeGlowField, makeLeaf, makeMistField, makeShaftField } from '../world/fx';
-import { rng, smoothstep } from '../world/noise';
+import { makeCreek } from '../world/creek';
+import { fbm, rng, smoothstep } from '../world/noise';
 import { makeRidges, makeSky, makeVolcano } from '../world/sky';
 import { Terrain } from '../world/terrain';
 import { Track } from '../world/track';
-import { AMBER, DEFAULT_SPEED, END_S, HINTS, LANE, OBSTACLES, POWER, SEGMENTS, START_SLOPE, VISTAS, type Obstacle } from './course';
+import { AMBER, bowAt, DEFAULT_SPEED, END_S, FORK, HINTS, LANE, laneMap, laneU, OBSTACLES, POWER, SEGMENTS, START_SLOPE, VISTAS, type Obstacle } from './course';
 import { Flora } from './flora';
 import { makeHud } from './hud';
 import { listenForMoves, type Move } from './input';
@@ -23,6 +24,7 @@ import treesUrl from '../assets/models/flora_trees.glb?url';
 import smallUrl from '../assets/models/flora_small.glb?url';
 import propsUrl from '../assets/models/props.glb?url';
 import heroUrl from '../assets/models/caudipteryx.glb?url';
+import animalsUrl from '../assets/models/animals.glb?url';
 
 export interface RunHooks {
   styles: Style[];
@@ -63,12 +65,13 @@ const EGG_G = 9.5;
 export const EGG_MODES = ['Lively', 'Wild', 'Wilder'];
 
 // how far along the trail each kind of obstacle can catch you
-const DEPTH: Record<Obstacle['kind'], number> = { log: 0.3, arch: 0.45, boulder: 0.42, tree: 0.26, creek: 0.5, hollow: 1.7 };
+const DEPTH: Record<Obstacle['kind'], number> = { log: 0.3, arch: 0.45, boulder: 0.42, tree: 0.26, creek: 0.6, hollow: 1.7, psittaco: 0.66 };
 // Obstacles are solid. A runner that meets one stops where its body touches it (its head and
 // chest reach well ahead of its hips, so that is short of the obstacle's middle by FACE), then
 // gets past by the move it should have made and is set down CLEAR beyond the middle.
-const FACE: Record<Obstacle['kind'], number> = { log: 0.5, arch: 0.74, boulder: 0.74, tree: 0.54, creek: 0.5, hollow: 2.44 };
-const CLEAR: Record<Obstacle['kind'], number> = { log: 0.8, arch: 1.0, boulder: 0.75, tree: 0.6, creek: 0.9, hollow: 2.3 };
+const FACE: Record<Obstacle['kind'], number> = { log: 0.5, arch: 0.74, boulder: 0.74, tree: 0.54, creek: 0.5, hollow: 2.44, psittaco: 0.98 };
+const CLEAR: Record<Obstacle['kind'], number> = { log: 0.8, arch: 1.0, boulder: 0.75, tree: 0.6, creek: 0.9, hollow: 2.3, psittaco: 0.95 };
+const goAround = (kind: Obstacle['kind']) => kind === 'boulder' || kind === 'tree' || kind === 'psittaco';
 const jumps = (kind: Obstacle['kind']) => kind === 'log' || kind === 'creek';
 const slides = (kind: Obstacle['kind']) => kind === 'arch' || kind === 'hollow';
 const IMPACT_TIME = 0.18;
@@ -100,10 +103,11 @@ interface Bump {
 }
 
 export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHooks): Promise<RunView> {
-  const [trees, small, props, heroModel] = await Promise.all([
+  const [trees, small, props, animals, heroModel] = await Promise.all([
     loadKit(treesUrl),
     loadKit(smallUrl),
     loadKit(propsUrl),
+    loadKit(animalsUrl),
     loadSkinned(heroUrl),
   ]);
 
@@ -111,7 +115,9 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(62, 0.46, 0.3, 2500);
   const track = new Track(SEGMENTS, START_SLOPE);
-  const terrain = new Terrain(track);
+  const creekAt = OBSTACLES.filter((o) => o.kind === 'creek').map((o) => o.s);
+  // the ground knows where the lanes swing apart at the fork and where creeks cut through its edges
+  const terrain = new Terrain(track, { laneMap, creeks: creekAt });
   const rnd = rng(77);
 
   // ---------------------------------------------------------------- sky and far scenery
@@ -163,6 +169,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     length: track.length,
     vistas: VISTAS,
     keepClear: OBSTACLES.map((o) => o.s),
+    keepOut: (ps, pu) => Math.abs(pu) - bowAt(ps) < 1.5 || creekAt.some((c) => Math.abs(c - ps) < 1.2),
   });
   scene.add(flora.group);
 
@@ -177,17 +184,36 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   };
 
   // ---------------------------------------------------------------- obstacles
-  const byModel: Record<string, Placement[]> = { log: [], arch: [], boulder: [], lane_tree: [], creek: [], hollow_log: [] };
+  const byModel: Record<string, Placement[]> = { log: [], arch: [], boulder: [], lane_tree: [], hollow_log: [] };
+  /** The dozing Psittacosaurus: its body lies still, its head is on a pivot at the base of the neck. */
+  const sleepers: { s: number; lane: number; group: THREE.Group; neck: THREE.Group; up: number; startled: number }[] = [];
   for (const o of OBSTACLES) {
-    if (o.kind === 'log' || o.kind === 'arch' || o.kind === 'creek') {
-      byModel[o.kind].push({ position: terrain.place(o.s, 0, 0), yaw: 0, scale: 1, tilt: basisAt(o.s) });
+    // in the fork an obstacle sits in its own side's lane; elsewhere logs and arches span the trail
+    const mid = o.branch ? laneU(o.branch, o.s) : 0;
+    if (o.kind === 'log' || o.kind === 'arch') {
+      byModel[o.kind].push({ position: terrain.place(o.s, mid, 0), yaw: 0, scale: 1, tilt: basisAt(o.s) });
+    } else if (o.kind === 'creek') {
+      // it comes down the hill on the left and runs away into the valley on the right; in the
+      // fork it meets the island and goes under it
+      scene.add(makeCreek(terrain, small, o.s, o.branch === 1 ? 0.2 : -15, o.branch === -1 ? -0.2 : 15));
     } else if (o.kind === 'hollow') {
-      byModel.hollow_log.push({ position: terrain.place(o.s, o.lanes[0] * LANE, 0), yaw: 0, scale: 1, tilt: basisAt(o.s) });
+      byModel.hollow_log.push({ position: terrain.place(o.s, laneU(o.lanes[0], o.s), 0), yaw: 0, scale: 1, tilt: basisAt(o.s) });
+    } else if (o.kind === 'psittaco') {
+      const group = new THREE.Group();
+      group.position.copy(terrain.place(o.s, laneU(o.lanes[0], o.s), 0));
+      group.quaternion.copy(basisAt(o.s));
+      group.add(instance(animals, 'psittaco_body'));
+      const neck = new THREE.Group();
+      neck.position.set(0, 0.15, -0.4); // the base of its neck, as built in art/psittaco.py
+      neck.add(instance(animals, 'psittaco_head'));
+      group.add(neck);
+      scene.add(group);
+      sleepers.push({ s: o.s, lane: o.lanes[0], group, neck, up: 0, startled: 0 });
     } else {
       for (const lane of o.lanes) {
         const upright = basisAt(o.s, 0); // boulders and trees stand straight on a slope
         byModel[o.kind === 'tree' ? 'lane_tree' : 'boulder'].push({
-          position: terrain.place(o.s, lane * LANE, -0.04),
+          position: terrain.place(o.s, laneU(lane, o.s), -0.04),
           yaw: 0,
           scale: o.kind === 'tree' ? 1 : 0.92 + rnd() * 0.12,
           tilt: upright.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rnd() * 6.28)),
@@ -195,13 +221,79 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       }
     }
   }
+
+  // The fork: a long rib of mossy rock stands where the middle lane was, with a giant ginkgo on
+  // it. The side lanes swing out round it and come back together beyond.
+  if (FORK) {
+    const pos: number[] = [];
+    const paint: number[] = [];
+    const index: number[] = [];
+    const across = [-1, -0.88, -0.5, 0, 0.5, 0.88, 1];
+    const high = [0, 0.66, 0.96, 1, 0.96, 0.66, 0];
+    const rockA = new THREE.Color('#5e5b54');
+    const rockB = new THREE.Color('#8f897b');
+    const moss = new THREE.Color('#5f8233');
+    const c = new THREE.Color();
+    const v = new THREE.Vector3();
+    let r = 0;
+    for (let ps = FORK.from - 0.4; ps <= FORK.to + 0.4; ps += 0.8, r++) {
+      const t = (ps - FORK.from) / (FORK.to - FORK.from);
+      const ends = smoothstep(-0.01, 0.09, t) * (1 - smoothstep(0.91, 1.01, t));
+      const half = Math.max(0, LANE / 2 + bowAt(ps) - 0.44) * ends; // it stops short of the side lanes
+      const tall = (0.55 + 0.35 * fbm(ps * 0.21, 3.3)) * ends; // low enough to see the other side over it
+      for (let k = 0; k < across.length; k++) {
+        const pu = across[k] * half * (1 + 0.12 * (fbm(ps * 0.6, k * 2.1) - 0.5));
+        terrain.place(ps, pu, high[k] * tall + (k > 0 && k < 6 ? (fbm(ps * 1.3, k * 5.7) - 0.5) * 0.3 * ends : 0), v);
+        pos.push(v.x, v.y, v.z);
+        c.copy(rockA).lerp(rockB, fbm(ps * 0.9, k * 3.3)).lerp(moss, smoothstep(0.7, 1.0, high[k]) * (0.5 + 0.5 * fbm(ps * 0.5, k + 9)));
+        paint.push(c.r, c.g, c.b, 0.55 + 0.45 * high[k]);
+      }
+      if (r > 0) {
+        for (let k = 0; k < across.length - 1; k++) {
+          const a = (r - 1) * across.length + k;
+          const b = a + across.length;
+          index.push(a, a + 1, b, a + 1, b + 1, b);
+        }
+      }
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('aPaint', new THREE.Float32BufferAttribute(paint, 4));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array((pos.length / 3) * 2), 2));
+    geo.setIndex(index);
+    geo.computeVertexNormals();
+    const island = new THREE.Mesh(geo, materialFor('rock'));
+    island.frustumCulled = false;
+    island.layers.enable(SHADOW_LAYER);
+    scene.add(island);
+    // the giant ginkgo, with ferns and boulders along the rock
+    const mid = (FORK.from + FORK.to) / 2;
+    const ginkgo = instance(trees, 'ginkgo_a');
+    ginkgo.position.copy(terrain.place(mid, 0, 0.45));
+    ginkgo.scale.setScalar(1.45);
+    scene.add(ginkgo);
+    const dress = (name: string, ps: number, pu: number, lift: number, size: number, kit = small) => {
+      const g = instance(kit, name);
+      g.position.copy(terrain.place(ps, pu, lift));
+      g.rotation.y = ps * 1.7;
+      g.scale.setScalar(size);
+      scene.add(g);
+    };
+    dress('rock_b', FORK.from + 2.2, 0, 0.1, 0.8);
+    dress('fern_a', FORK.from + 9, 0.1, 0.6, 1.0);
+    dress('fern_b', mid - 9, -0.2, 0.65, 0.9);
+    dress('rock_a', mid + 7, 0.1, 0.5, 0.9);
+    dress('fern_c', mid + 13, 0.2, 0.6, 1.1);
+    dress('treefern_a', FORK.to - 9, 0, 0.45, 0.8, trees);
+    dress('rock_b', FORK.to - 2.4, 0, 0.1, 0.7);
+  }
   for (const [name, list] of Object.entries(byModel)) scene.add(instances(props, name, list, true));
 
   // ---------------------------------------------------------------- amber
   // One draw call for the amber and one for its glow. Only the pieces near the runner are in
   // the list at any moment; it is refilled as the runner moves from one batch of trail to the next.
   const AMBER_BATCH = 40; // meters of trail per batch
-  const amberPos = AMBER.map((a) => terrain.place(a.s, a.lane * LANE, a.lift));
+  const amberPos = AMBER.map((a) => terrain.place(a.s, laneU(a.lane, a.s), a.lift));
   const batchStart: number[] = []; // the first piece of each batch, then one past the last piece
   for (let first = 0; first < AMBER.length; ) {
     batchStart.push(first);
@@ -307,9 +399,11 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   // ---------------------------------------------------------------- state
   const obstacles = OBSTACLES.map((o) => ({ ...o, hit: false }));
   // where the camera has to duck: under each arch, and all the way through the hollow log
-  const archAt = OBSTACLES.filter((o) => slides(o.kind)).map((o) => ({ s: o.s, half: o.kind === 'hollow' ? 1.9 : 0 }));
+  const archAt = OBSTACLES.filter((o) => slides(o.kind)).map((o) => ({ s: o.s, half: o.kind === 'hollow' ? 1.9 : 0, branch: o.branch ?? 0 }));
   // Obstacles that share a spot on the trail are one decision: a row.
   interface Row {
+    /** In the fork, the side this row is on (-1 left, 1 right); 0 everywhere else. */
+    branch: number;
     s: number;
     kind: Obstacle['kind'];
     around: boolean;
@@ -321,15 +415,23 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   }
   const rows: Row[] = [];
   for (const o of obstacles) {
-    let row = rows.find((r) => r.s === o.s);
+    let row = rows.find((r) => r.s === o.s && r.branch === (o.branch ?? 0));
     if (!row) {
-      row = { s: o.s, kind: o.kind, around: o.kind === 'boulder' || o.kind === 'tree', blocked: [], eggLane: 0, members: [], hit: false };
+      row = { branch: o.branch ?? 0, s: o.s, kind: o.kind, around: goAround(o.kind) && !o.branch, blocked: [], eggLane: 0, members: [], hit: false };
       rows.push(row);
     }
     row.members.push(o);
     for (const lane of o.lanes) if (!row.blocked.includes(lane)) row.blocked.push(lane);
     if (o.kind === 'hollow') row.eggLane = o.lanes[0]; // the egg rolls through it too
   }
+  // The island's prow is a row like any other: go round it. Meet it head-on in the middle lane
+  // and the runner bumps and steps to the egg's side, the easy one.
+  const prow: Row | null = FORK
+    ? { branch: 0, s: FORK.from + 1.7, kind: 'boulder', around: true, blocked: [0], eggLane: 1, members: [{ s: FORK.from + 1.7, kind: 'boulder', lanes: [0], hit: false }], hit: false }
+    : null;
+  if (prow) rows.push(prow);
+  rows.sort((a, b) => a.s - b.s);
+  const inFork = (s: number) => FORK !== null && s > FORK.from - 0.5 && s < FORK.to;
   const weave = (s: number) => Math.sin(s * 0.13) * 0.36;
   const openLanes = (row: Row) => [-1, 0, 1].filter((lane) => !row.blocked.includes(lane));
   for (const row of rows) {
@@ -341,6 +443,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     const from = weave(row.s);
     row.eggLane = pick.reduce((best, lane) => (Math.abs(lane * LANE - from) < Math.abs(best * LANE - from) ? lane : best), pick[0] ?? 0);
   }
+  if (prow) prow.eggLane = 1;
   /** Where the egg is across the trail: weaving between the lanes, so it never sits on a line of
    *  amber, and swinging into an open lane in good time to pass a tree or a boulder. The wild
    *  egg adds quick side-steps, and leaves its swing late and takes it wide. */
@@ -362,6 +465,11 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
         : smoothstep(row.s - 7.5, row.s - 2.5, s) * (1 - smoothstep(row.s + 1.5, row.s + 5.5, s));
       u += (row.eggLane * LANE * (wild === 2 ? 1.22 : wild === 1 ? 1.12 : 1) - u) * k;
     }
+    if (FORK) {
+      // at the fork it takes the easy side, down the middle of that lane
+      const k = smoothstep(FORK.from - 15, FORK.from - 5, s) * (1 - smoothstep(FORK.to + 2, FORK.to + 10, s));
+      u += (laneU(1, s) - u) * k;
+    }
     return u;
   };
   /** How far either side of a log, creek, arch or hollow log the egg is hopping or staying down. */
@@ -371,14 +479,14 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   const eggRow = (s: number, speed: number): Row | null => {
     const settle = Math.max(SETTLE, speed * 0.8);
     for (const row of rows) {
-      if (row.around) continue;
+      if (row.around || row.branch === -1) continue; // (the fork's left side is not the egg's way)
       const half = lowHalf(row);
       if (s > row.s - half - settle && s < row.s + half) return row;
     }
     return null;
   };
   /** True where the trail ahead of the egg is clear for long enough to show off. */
-  const eggFree = (s: number): boolean => !rows.some((row) => row.s > s - 3 && row.s < s + 17);
+  const eggFree = (s: number): boolean => !inFork(s) && !rows.some((row) => row.s > s - 3 && row.s < s + 17);
   // The power-up: a golden ginkgo leaf in the air. Taking it is "Fan out".
   const leafAt = terrain.place(POWER.s, POWER.lane * LANE, 0.66);
   const leaf = makeLeaf(0.95);
@@ -563,6 +671,11 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     }
     if (move === 'left' || move === 'right') {
       const to = THREE.MathUtils.clamp(st.lane + (move === 'left' ? -1 : 1), -1, 1);
+      if (to === 0 && inFork(st.s)) {
+        // the rock is in the way: a shoulder against it, and on
+        st.sideT = Math.max(st.sideT, 0.25);
+        return;
+      }
       if (to !== st.lane) {
         st.prevLane = st.lane;
         st.lane = to;
@@ -680,7 +793,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     if (wild && rolling && st.eggY <= 0.02) {
       // a little hop into each swerve round a tree or a boulder
       for (const r of rows) {
-        if (!r.around || st.eggJink === r.s || st.eggS < r.s - 5 || st.eggS > r.s - 3.4) continue;
+        if (!r.around || r === prow || st.eggJink === r.s || st.eggS < r.s - 5 || st.eggS > r.s - 3.4) continue;
         st.eggJink = r.s;
         st.eggY = 0.001;
         st.eggVy = Math.sqrt(2 * EGG_G * 0.3);
@@ -814,7 +927,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     } else {
       // steps round
       st.lane = b.toLane;
-      st.u = b.u0 + (b.toLane * LANE - b.u0) * smoothstep(0, 0.62, f);
+      st.u = b.u0 + (laneU(b.toLane, st.s) - b.u0) * smoothstep(0, 0.62, f);
     }
     st.speed = dt > 0 ? Math.max(0, (st.s - before) / dt) : 0;
     if (f >= 1) {
@@ -847,7 +960,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       st.speed += (target - st.speed) * Math.min(1, dt * (st.speed < target ? pickup : 6));
       st.s += st.speed * dt;
       // side to side
-      st.u += (st.lane * LANE - st.u) * (1 - Math.exp(-dt / 0.055));
+      st.u += (laneU(st.lane, st.s) - st.u) * (1 - Math.exp(-dt / 0.055));
     }
     st.phase += (st.speed * dt) / strideLength(st.speed);
     st.safeT = Math.max(0, st.safeT - dt);
@@ -861,7 +974,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     // The body turns toward the lane it is making for. The move itself is over in a blink, so
     // the turn snaps in and then straightens slowly: that is what makes it something you see.
     st.du = dt > 0 ? (st.u - uBefore) / dt : 0;
-    const toGo = (st.lane * LANE - st.u) / LANE;
+    const toGo = (laneU(st.lane, st.s) - st.u) / LANE;
     const headingTo = THREE.MathUtils.clamp(toGo * 0.8 + Math.atan2(st.du, Math.max(st.speed, 4)) * 0.4, -0.55, 0.55);
     const quick = Math.abs(headingTo) > Math.abs(st.heading);
     st.heading += (headingTo - st.heading) * (1 - Math.exp(-dt / (quick ? 0.035 : 0.22)));
@@ -894,10 +1007,11 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       if (Math.abs(st.u - row.eggLane * LANE) < 0.4 && (st.slide >= 0.5 || st.safeT > 0 || st.bump)) st.slideT = Math.max(st.slideT, 0.12);
     }
     if (!st.bump && st.safeT <= 0) {
-      const inLane = (lane: number) => Math.abs(st.u - lane * LANE) < 0.4;
+      const inLane = (lane: number) => Math.abs(st.u - laneU(lane, st.s)) < 0.4;
       for (const row of rows) {
         const reach = Math.max(1, FACE[row.kind] + 0.2);
         if (row.hit || st.s > row.s + DEPTH[row.kind] + 0.2 || st.s < row.s - reach) continue;
+        if (row.branch && Math.sign(st.u) !== row.branch) continue; // the other side of the fork
         // the obstacle of this row that stands in the runner's way, if any
         const member = row.around || row.kind === 'hollow' ? row.members.find((o) => o.lanes.some(inLane)) : row.members[0];
         if (!member) continue;
@@ -931,9 +1045,10 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
         // swiped into it from an open lane while alongside: a sideways knock, not a head-on bump
         const fromSide =
           row.around && inside && row.blocked.includes(st.lane) && !row.blocked.includes(st.prevLane) &&
-          Math.abs(st.u - st.prevLane * LANE) < Math.abs(st.u - st.lane * LANE) + 0.2;
+          Math.abs(st.u - laneU(st.prevLane, st.s)) < Math.abs(st.u - laneU(st.lane, st.s)) + 0.2;
         if (fromSide) sideBump(row, member);
         else startBump(row, member);
+        for (const z of sleepers) if (z.s === row.s) z.startled = 1.6;
         break;
       }
     }
@@ -978,7 +1093,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       const a = AMBER[i];
       if (a.s < st.s - 1) continue;
       if (a.s > st.s + 1) break;
-      if (Math.abs(a.s - st.s) < 0.55 && Math.abs(st.u - a.lane * LANE) < 0.42 && Math.abs(st.y + 0.3 - a.lift) < 0.6) {
+      if (Math.abs(a.s - st.s) < 0.55 && Math.abs(st.u - laneU(a.lane, a.s)) < 0.42 && Math.abs(st.y + 0.3 - a.lift) < 0.6) {
         collected[i] = true;
         if (i >= shownFrom && i < shownTo) putAmber(i);
         st.amber++;
@@ -1045,7 +1160,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     fanGlow.position.copy(chest);
     (fanGlow.material as THREE.ShaderMaterial).uniforms.uStrength.value = 0.18 * st.fan;
     fanGlow.visible = st.fan > 0.01;
-    heroState.lean = THREE.MathUtils.clamp((st.lane * LANE - st.u) / LANE, -1, 1) + wobble;
+    heroState.lean = THREE.MathUtils.clamp((laneU(st.lane, st.s) - st.u) / LANE, -1, 1) + wobble;
     rig.pose(heroState);
     heroShadow.position.copy(terrain.place(st.s + 0.08, st.u, 0.02));
     heroShadow.quaternion.copy(basisAt(st.s));
@@ -1073,12 +1188,31 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     eggShadow.quaternion.copy(basisAt(st.eggS));
     (eggShadow.material as THREE.ShaderMaterial).uniforms.uStrength.value = 0.55 * (1 - Math.min(0.75, st.eggY * 1.6));
 
+    // the dozing Psittacosaurus breathes, and lifts its head to watch the runner go by
+    for (const z of sleepers) {
+      const ahead = z.s - st.s;
+      const noticed = ahead > -7 && ahead < 9 ? 1 - smoothstep(3.5, 9, ahead) : 0;
+      z.startled = Math.max(0, z.startled - 1 / 60);
+      const want = Math.max(noticed * 0.8, z.startled > 0 ? 1 : 0);
+      z.up += (want - z.up) * (want > z.up ? 0.12 : 0.03);
+      const side = Math.sign(st.u - laneU(z.lane, z.s)) || 1;
+      z.neck.rotation.set(z.up * 0.8, -side * z.up * (ahead < 0 ? 1.25 : 0.55), 0);
+      z.group.scale.set(1, 1 + 0.02 * Math.sin(st.clock * 1.5), 1);
+      materialFor('eye').uniforms.uBlink.value = 1 - smoothstep(0.25, 0.6, z.up);
+    }
+
     // camera: behind and above, easing sideways with the hero, looking well down the trail
-    st.camU += (st.u * 0.7 - st.camU) * 0.12;
+    // In the fork the camera goes round with the runner's side of the trail, so the rock stays
+    // beside the view and never in front of it.
+    const swing = Math.sign(st.u) * Math.min(Math.abs(st.u), bowAt(st.s));
+    st.camU += ((st.u - swing) * 0.7 + swing - st.camU) * 0.12;
     const camS = st.s - 2.6 + st.camLead;
     // the camera ducks under an arch a moment after the hero does
     let duck = 0;
-    for (const a of archAt) duck = Math.max(duck, 1 - smoothstep(1.0, 3.6, Math.max(0, Math.abs(a.s - camS) - a.half)));
+    for (const a of archAt) {
+      if (a.branch && Math.sign(st.u) !== a.branch) continue;
+      duck = Math.max(duck, 1 - smoothstep(1.0, 3.6, Math.max(0, Math.abs(a.s - camS) - a.half)));
+    }
     st.camDuck += (duck - st.camDuck) * 0.3;
     camera.position.copy(terrain.place(camS, st.camU, 1.45 + st.y * 0.22 - 1.05 * st.camDuck));
     if (st.shakeT > 0) {
@@ -1093,7 +1227,8 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       puff.scale.setScalar(0.5 + age * 1.3);
       (puff.material as THREE.ShaderMaterial).uniforms.uStrength.value = 0.5 * (1 - age) ** 1.5;
     }
-    terrain.place(st.s + 13, st.u * 0.3, 0.5 - 0.2 * st.camDuck, look);
+    const swingAhead = Math.sign(st.u) * Math.min(Math.abs(st.u), bowAt(st.s + 13));
+    terrain.place(st.s + 13, (st.u - swing) * 0.3 + swingAhead, 0.5 - 0.2 * st.camDuck, look);
     camera.lookAt(look);
     camera.updateMatrixWorld();
 
@@ -1139,7 +1274,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
 
   reset();
   // for testing from the console: read the state, make moves, pause, start over
-  Object.assign(window, { rrGame: { st, act, setPaused, reset, obstacles, rows, collected, DEPTH, flora } });
+  Object.assign(window, { rrGame: { st, act, setPaused, reset, obstacles, rows, collected, DEPTH, flora, laneU, FORK } });
   if (testing) {
     st.started = true;
     (ui.querySelector('.start-sheet') as HTMLElement).hidden = true;

@@ -103,11 +103,17 @@ kit('props', [
     ('lane_tree', lambda: plants.lane_tree(), dict(ao_dist=0.8, ao_samples=16, ground_ao=0.5)),
     ('amber', lambda: plants.amber_drop(), dict(ao=False)),
     ('egg', lambda: plants.egg(), dict(ao=False)),
-    ('creek', lambda: plants.creek(), dict(ao_dist=0.3, ground_ao=0.1)),
     ('hollow_log', lambda: plants.hollow_log(), dict(ao_dist=0.5, ground_ao=0.2)),
     ('egg_true', lambda: plants.egg_true(), dict(ao=False)),
     ('eggshell_cup', lambda: plants.eggshell(3), dict(ao=False)),
     ('eggshell_cap', lambda: plants.eggshell(5, upper=True), dict(ao=False)),
+], preview=dict(lens=60))
+
+import psittaco  # noqa: E402
+
+kit('animals', [
+    ('psittaco_body', lambda: psittaco.body(), dict(ao_dist=0.25, ao_strength=0.9, ground_ao=0.25)),
+    ('psittaco_head', lambda: psittaco.head(), dict(ao_dist=0.15, ao_strength=0.8)),
 ], preview=dict(lens=60))
 
 import hero  # noqa: E402

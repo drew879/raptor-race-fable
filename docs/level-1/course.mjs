@@ -119,7 +119,7 @@ export const SECTIONS = [
     teaches: 'The power-up, on a steep clear pitch with amber in all three lanes.',
     checkpoint: 0,
     hints: [{ at: 2, text: 'Fan out! Catch it all' }],
-    power: { at: 4, lane: 0, lasts: 6 },
+    power: { at: 4, lane: 0, lasts: 7.5 }, // long enough to reach the last row of amber on the drop
     rows: [],
     amber: [A(10, 52, -1), A(10, 52, 0), A(10, 52, 1)],
   },
@@ -279,11 +279,4 @@ export function eggLane(level, row) {
   const pick = quiet.length ? quiet : open;
   const from = Math.sin(row.s * 0.13) * 0.36;
   return pick.reduce((best, l) => (Math.abs(l * LANE - from) < Math.abs(best * LANE - from) ? l : best), pick[0] ?? 0);
-}
-
-if (import.meta.url === `file://${process.argv[1]}`) {
-  const level = build();
-  console.log(stats(level));
-  for (const c of check(level)) console.log(c.ok ? 'ok  ' : 'FAIL', c.rule, '->', c.value);
-  console.log(level.rows.map((r) => `${r.s} ${r.kind}${r.branch ? ' (' + r.branch + ')' : ''}${r.onlyFor ? ' [find route]' : ''}`).join('\n'));
 }

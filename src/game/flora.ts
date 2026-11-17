@@ -108,6 +108,8 @@ export interface FloraOptions {
   vistas: [number, number][];
   /** Trail distances of obstacles, so scenery never crowds them. */
   keepClear: number[];
+  /** True where nothing may be planted: in a creek's bed, or where the trail has widened round the fork. */
+  keepOut?: (s: number, u: number) => boolean;
   seed?: number;
 }
 
@@ -134,6 +136,7 @@ export class Flora {
     for (let s0 = -52; s0 < opts.length + 60; s0 += CHUNK) {
       const plants: Plant[] = [];
       const add = (kind: Plant['kind'], variant: number, s: number, u: number, scale: number, spread: number, sink: number) => {
+        if (opts.keepOut?.(s, u)) return;
         plants.push({
           kind,
           variant,
@@ -215,7 +218,9 @@ export class Flora {
 
     // the most copies of each model ever on show at once, found by walking the whole course
     const most = new Map<string, number>();
-    for (let s = -60; s < opts.length + 60; s += 1) {
+    // (in half-meter steps: between two whole meters a chunk can be coming into view ahead
+    // while another has not yet left behind, a state no whole meter shows)
+    for (let s = -60; s < opts.length + 60; s += 0.5) {
       const now = new Map<string, number>();
       for (const c of this.chunks) {
         const level = this.levelOf(c, s);

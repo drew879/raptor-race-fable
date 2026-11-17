@@ -703,54 +703,9 @@ def eggshell(seed=3, upper=False):
     return geo
 
 
-WATER = srgb('#5cc3d6')
-WATER_PALE = srgb('#a5e4e6')
-WET_EARTH = srgb('#3a2f25')
-WET_EARTH_PALE = srgb('#5b4a3a')
 WOOD_END = srgb('#b08f66')
 WOOD_END_DARK = srgb('#7a5a3c')
 HOLLOW_DARK = srgb('#120d0a')
-
-
-def creek(seed=91, reach=3.3, half_width=0.55):
-    """A narrow creek crossing the trail (it lies along X): bright water in a dark wet bed, small
-    stones along its banks and bigger ones where it comes out of the forest and runs back in.
-    It has to say 'jump' at a glance: a clean bright band, no wider than a jump is long."""
-    rnd = random.Random(seed)
-    geo = Geo()
-    n = 16
-
-    def band(hw, z, mat, color_fn):
-        rows = []
-        for i in range(n + 1):
-            x = lerp(-reach, reach, i / n)
-            wander = 0.1 * math.sin(x * 1.3 + seed)
-            w = hw * (1.0 + 0.12 * math.sin(x * 2.1 + 1.0))
-            rows.append([Vector((x, wander - w, z)), Vector((x, wander, z + 0.012)), Vector((x, wander + w, z))])
-        geo.add_grid(rows, color_fn, mat, flip=True)
-
-    band(half_width + 0.2, 0.012, 'rock', lambda i, j, p: WET_EARTH if j == 1 else WET_EARTH_PALE)
-    band(half_width, 0.03, 'water', lambda i, j, p: WATER if j == 1 else WATER_PALE)
-
-    def stone(x, y, size, sd):
-        r = rock(sd, size, moss=0.35)
-        r.transform(Matrix.Translation(Vector((x, y, -size * 0.12))))
-        geo.merge(r)
-
-    k = 0
-    for side in (-1, 1):
-        x = -reach + 0.2
-        while x < reach - 0.1:
-            k += 1
-            on_trail = abs(x) < 1.35
-            # on the trail only pebbles line the banks, so nothing there looks like a thing to dodge
-            size = rnd.uniform(0.1, 0.16) if on_trail else rnd.uniform(0.22, 0.4)
-            stone(x, side * (half_width + 0.2 + size * 0.35) + 0.1 * math.sin(x * 1.3 + seed), size, seed * 10 + k)
-            x += size * rnd.uniform(1.8, 2.8)
-    for side in (-1, 1):
-        stone(side * (reach + 0.1), 0.25, 0.75, seed * 100 + side)
-        stone(side * (reach - 0.25), -0.5, 0.5, seed * 100 + side + 5)
-    return geo
 
 
 def hollow_log(seed=93, length=3.4, outer=0.5, inner=0.36):

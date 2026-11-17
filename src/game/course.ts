@@ -1,20 +1,24 @@
-// The rough test course. This is for feeling out controls, speed, camera and the downhill.
-// It is not the Level 1 layout: that gets a course map and a sign-off first.
+// Level 1, Jehol Forest: the course the game runs. It is read from the layout Drew signed off
+// (docs/level-1/course.mjs, which also draws the course map), so the two can't drift apart.
 //
 // Distances are meters along the trail. Lanes are -1 (left), 0, 1 (right).
 
+import { build, EGG } from '../../docs/level-1/course.mjs';
+import { smoothstep } from '../world/noise';
 import type { Segment } from '../world/track';
 
 export const LANE = 0.68;
 export const DEFAULT_SPEED = 8; // meters per second
 
-export type ObstacleKind = 'log' | 'arch' | 'boulder' | 'tree' | 'creek' | 'hollow';
+export type ObstacleKind = 'log' | 'arch' | 'boulder' | 'tree' | 'creek' | 'hollow' | 'psittaco';
 
 export interface Obstacle {
   s: number;
   kind: ObstacleKind;
   /** Lanes it blocks. Logs, creeks and arches span the trail. A hollow log lies in its one lane, with boulders (their own obstacles) closing the others. */
   lanes: number[];
+  /** In the fork, the side it is on (-1 left, 1 right): each side is a single lane. */
+  branch?: number;
 }
 
 export interface Amber {
@@ -23,142 +27,94 @@ export interface Amber {
   lift: number; // height above the trail
 }
 
-const ALL = [-1, 0, 1];
-const O = (s: number, kind: ObstacleKind, ...lanes: number[]): Obstacle => ({
-  s,
-  kind,
-  lanes: kind === 'log' || kind === 'arch' || kind === 'creek' ? ALL : lanes,
-});
+const level = build();
+/** The layout counts from where the chase begins; the trail itself starts a little before that. */
+const LEAD_IN = 3;
+const at = (s: number) => s + LEAD_IN;
 
-export const SEGMENTS: Segment[] = [
-  { length: 40, slope: -0.08 }, // warm-up
-  { length: 50, turn: 0.5, slope: -0.12 }, // lanes
-  { length: 50, turn: -0.6, slope: -0.1 }, // jumps, then slides
-  { length: 32, turn: 0.05, slope: -0.3 }, // the trail tips over: first view of the valley
-  { length: 30, turn: 0.1, slope: -0.3 }, // steep and clear, amber only
-  { length: 40, turn: 0.4, slope: -0.08 },
-  { length: 60, turn: -0.7, slope: -0.14 }, // mixed
-  { length: 50, turn: 0.5, slope: -0.1 },
-  { length: 32, turn: -0.05, slope: -0.28 }, // second drop
-  { length: 30, turn: -0.1, slope: -0.28 },
-  { length: 60, turn: -0.4, slope: -0.05 },
-  { length: 56, turn: 0.2, slope: -0.02 }, // out into the clearing
-];
+// ---------------------------------------------------------------- the trail
+// Each section tips to its own slope over its first stretch and then holds it, so a drop
+// visibly falls away at its top instead of easing in along its whole length.
+export const SEGMENTS: Segment[] = [];
+level.sections.forEach((sec, i) => {
+  const turns = Array.isArray(sec.turn) ? sec.turn : [sec.turn];
+  const length = sec.length + (i === 0 ? LEAD_IN : 0);
+  const lead = sec.drop ? 0.4 : 0.3;
+  turns.forEach((turn, k) => {
+    const part = length / turns.length;
+    if (k === 0) {
+      SEGMENTS.push({ length: part * lead, turn: turn * lead, slope: sec.slope });
+      SEGMENTS.push({ length: part * (1 - lead), turn: turn * (1 - lead), slope: sec.slope });
+    } else {
+      SEGMENTS.push({ length: part, turn, slope: sec.slope });
+    }
+  });
+});
+SEGMENTS.push({ length: 50, turn: 0.1, slope: -0.02 }); // ground beyond the clearing
 export const START_SLOPE = -0.06;
 
-/** Stretches where tall trees stay off the valley side so the view opens up. */
-export const VISTAS: [number, number][] = [
-  [128, 215],
-  [338, 425],
-];
+/** Stretches where tall trees stay off the valley side so the view opens up: the two drops. */
+export const VISTAS: [number, number][] = level.sections.filter((s) => s.drop).map((s) => [at(s.start - 22), at(s.end + 12)]);
 
-export const OBSTACLES: Obstacle[] = [
-  // one thing at a time: lanes
-  O(34, 'boulder', 0),
-  O(46, 'tree', -1),
-  O(58, 'boulder', 1),
-  O(70, 'tree', 0),
-  O(70, 'boulder', -1),
-  // jumps
-  O(86, 'log'),
-  O(100, 'log'),
-  O(113, 'creek'),
-  // slides
-  O(128, 'arch'),
-  O(141, 'arch'),
-  // (first drop: nothing in the way)
-  // mixed
-  O(214, 'boulder', 0),
-  O(226, 'log'),
-  O(238, 'arch'),
-  O(251, 'tree', -1),
-  O(251, 'tree', 1),
-  O(263, 'log'),
-  O(276, 'boulder', 1),
-  O(276, 'boulder', 0),
-  O(288, 'arch'),
-  O(300, 'log'),
-  O(313, 'tree', 0),
-  O(325, 'log'),
-  // the hollow log: boulders close the lanes beside its mouth, so the only way is through it
-  O(334.8, 'boulder', -1),
-  O(334.8, 'boulder', 1),
-  O(337, 'hollow', 0),
-  // (second drop)
-  O(422, 'log'),
-  O(434, 'boulder', -1),
-  O(446, 'arch'),
-  O(458, 'tree', 1),
-  O(458, 'boulder', 0),
-  O(470, 'log'),
-];
+// ---------------------------------------------------------------- the fork
+const BOW = 1.05; // meters each side lane swings out round the island
+/** The stretch of trail the island stands in, or null if the course has no fork. */
+export const FORK = level.island ? { from: at(level.island[0]), to: at(level.island[1]) } : null;
+/** How far the side lanes have swung apart at s. */
+export const bowAt = (s: number): number =>
+  FORK ? smoothstep(FORK.from - 12, FORK.from + 3, s) * (1 - smoothstep(FORK.to - 3, FORK.to + 12, s)) * BOW : 0;
+/** Where a lane's middle is across the trail at s. */
+export const laneU = (lane: number, s: number): number => lane * LANE + Math.sign(lane) * bowAt(s);
+/** The reverse, for the ground: a point's place across the trail as if the lanes ran straight. */
+export const laneMap = (u: number, s: number): number => {
+  const b = bowAt(s);
+  if (b <= 0) return u;
+  const a = Math.abs(u);
+  const half = LANE / 2;
+  return Math.sign(u) * (a <= half + b ? (a * half) / (half + b) : a - b);
+};
 
-/** The one power-up, "Fan out": the runner spreads its fans and sweeps in amber from every lane. */
-export const POWER = { s: 348, lane: 0, lasts: 6 };
-
-/** Where the egg comes to rest. */
-export const END_S = 512;
-
-const SPACING = 2; // a quarter second apart at the default speed
-const FLOAT = 0.34;
-
-function line(out: Amber[], s0: number, s1: number, lane: number, lift = FLOAT) {
-  for (let s = s0; s <= s1 + 0.01; s += SPACING) out.push({ s, lane, lift });
-}
-function arc(out: Amber[], center: number, lane: number) {
-  for (let i = -2; i <= 2; i++) {
-    // a jump covers about 4.5 m at the default speed, so the arc is spread to match
-    out.push({ s: center + i * 1.12, lane, lift: FLOAT + Math.cos((i / 2) * (Math.PI / 2)) * 0.6 });
+// ---------------------------------------------------------------- obstacles
+const ALL = [-1, 0, 1];
+export const OBSTACLES: Obstacle[] = [];
+for (const row of level.rows) {
+  const s = at(row.s);
+  if (row.branch) {
+    const side = row.branch === 'left' ? -1 : 1;
+    OBSTACLES.push({ s, kind: row.kind as ObstacleKind, lanes: [side], branch: side });
+    continue;
+  }
+  for (const part of row.parts) {
+    const kind = part.kind as ObstacleKind;
+    if (kind === 'hollow') {
+      // boulders close the lanes beside the hollow log's mouth, so the only way is through it
+      for (const lane of ALL) if (!part.lanes.includes(lane)) OBSTACLES.push({ s: s - 2.2, kind: 'boulder', lanes: [lane] });
+      OBSTACLES.push({ s, kind, lanes: part.lanes });
+    } else {
+      OBSTACLES.push({ s, kind, lanes: kind === 'log' || kind === 'arch' || kind === 'creek' ? ALL : part.lanes });
+    }
   }
 }
-
-function buildAmber(): Amber[] {
-  const a: Amber[] = [];
-  line(a, 8, 24, 0);
-  line(a, 28, 38, -1); // around the first boulder
-  line(a, 42, 51, 0);
-  line(a, 54, 62, -1);
-  line(a, 65, 76, 1);
-  arc(a, 86, 0);
-  line(a, 91, 95, 0);
-  arc(a, 100, -1);
-  arc(a, 113, 1);
-  line(a, 123, 133, 0, 0.26); // low, under the arch
-  line(a, 137, 145, 1, 0.26);
-  // first drop: a slalom of amber down the steep pitch
-  line(a, 152, 162, 0);
-  line(a, 165, 175, 1);
-  line(a, 178, 188, 0);
-  line(a, 191, 203, -1);
-  line(a, 208, 218, 1);
-  arc(a, 226, 0);
-  line(a, 233, 243, -1, 0.26);
-  line(a, 246, 256, 0);
-  arc(a, 263, 1);
-  line(a, 270, 281, -1);
-  line(a, 284, 292, 0, 0.26);
-  arc(a, 300, -1);
-  line(a, 307, 318, 1);
-  arc(a, 325, 0);
-  line(a, 330, 340, 0, 0.26);
-  // second drop: the power-up, then amber in all three lanes for as long as it lasts
-  line(a, 340, 344, 0);
-  for (const lane of [-1, 0, 1]) line(a, 354, 400, lane);
-  line(a, 406, 414, 0);
-  arc(a, 422, 0);
-  line(a, 428, 439, 1);
-  line(a, 442, 450, 0, 0.26);
-  line(a, 453, 462, -1);
-  arc(a, 470, 0);
-  line(a, 478, 502, 0);
-  return a;
-}
+OBSTACLES.sort((a, b) => a.s - b.s);
 
 // in trail order: the run draws and collects amber in batches along the trail
-export const AMBER: Amber[] = buildAmber().sort((x, y) => x.s - y.s);
+export const AMBER: Amber[] = level.amber.map((a) => ({ s: at(a.s), lane: a.lane, lift: a.lift }));
 
-export const HINTS: { s: number; text: string }[] = [
-  { s: 18, text: 'Swipe left or right' },
-  { s: 72, text: 'Swipe up to jump' },
-  { s: 114, text: 'Swipe down to slide' },
-];
+/** The one power-up, "Fan out": the runner spreads its fans and sweeps in amber from every lane. */
+export const POWER = level.power ? { s: at(level.power.s), lane: level.power.lane, lasts: level.power.lasts } : { s: -100, lane: 0, lasts: 0 };
+
+/** Hidden finds: off the amber line, one each in the lanes section, the fork's hard side and the home stretch. */
+export const FINDS = level.finds.map((f) => ({ s: at(f.s), lane: f.lane, lift: f.high ? 0.95 : 0.4, n: f.n }));
+/** Where a run restarts if the egg gets away. */
+export const CHECKPOINTS = level.checkpoints.map(at);
+
+/** Where the egg comes to rest. */
+export const END_S = at(level.end);
+
+/** First-time hints. (Fan out's shows when the leaf is taken; the scoop's comes with the ending.) */
+export const HINTS: { s: number; text: string }[] = level.hints
+  .filter((h) => !h.text.startsWith('Fan out') && !h.text.includes('scoop'))
+  .map((h) => ({ s: at(h.s), text: h.text }));
+
+/** The chase's numbers, as agreed with the layout. */
+export const CHASE = EGG;

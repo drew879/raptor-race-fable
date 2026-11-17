@@ -11,6 +11,15 @@ export interface TerrainOptions {
   halfWidth: number; // half the width of the runnable trail
   upSlope: number; // rise per meter on the uphill side
   downSlope: number; // fall per meter on the valley side
+  /**
+   * Where the trail forks, its side lanes swing apart. Given a point's distance across (u) at
+   * s, this says where that is in the trail's own lanes, as if they ran straight. The ground's
+   * shape, its paint and the lane hints are all worked out in that straightened space, so the
+   * trail widens and its worn tracks follow the lanes.
+   */
+  laneMap?: (u: number, s: number) => number;
+  /** Trail distances where a creek crosses: the lips along the trail's edges open there to let it through. */
+  creeks?: number[];
 }
 
 const hex = (h: string) => new THREE.Color(h);
@@ -35,16 +44,25 @@ export class Terrain {
   }
 
   /** Height of the ground relative to the trail's centerline at (s, u). */
-  profile(s: number, u: number): number {
+  /** How much of a creek's bed is at s: 1 in its middle, 0 a little way either side. */
+  creekAt(s: number): number {
+    let k = 0;
+    for (const c of this.opts.creeks ?? []) k = Math.max(k, 1 - smoothstep(0.55, 1.5, Math.abs(s - c)));
+    return k;
+  }
+
+  profile(s: number, u0: number): number {
     const W = this.opts.halfWidth;
+    const u = this.opts.laneMap ? this.opts.laneMap(u0, s) : u0;
     const a = Math.abs(u);
-    let y = (vnoise(s * 0.9, u * 1.3) - 0.5) * 0.025;
+    const creek = this.creekAt(s);
+    let y = (vnoise(s * 0.9, u * 1.3) - 0.5) * 0.025 - 0.05 * creek;
     if (a <= W) {
       y -= 0.035 * (1 - (a / W) ** 2);
       return y;
     }
     const d = a - W;
-    y += 0.13 * smoothstep(0, 0.55, d); // a soft mossy lip along both edges
+    y += 0.13 * smoothstep(0, 0.55, d) * (1 - creek); // a soft mossy lip along both edges, open where a creek runs through
     const vary = 0.75 + 0.5 * fbm(s * 0.03, u < 0 ? 3.1 : 9.7);
     if (u < 0) {
       y += Math.pow(Math.max(d - 0.25, 0), 1.06) * this.opts.upSlope * vary;
@@ -97,7 +115,8 @@ export class Terrain {
         this.place(s, u, 0, p);
         const i = r * cols + k;
         pos.set([p.x, p.y, p.z], i * 3);
-        const a = Math.abs(u);
+        const lu = this.opts.laneMap ? this.opts.laneMap(u, s) : u;
+        const a = Math.abs(lu);
         const n1 = fbm(s * 0.25, u * 0.5 + 40);
         const n2 = vnoise(s * 1.7, u * 1.7);
         let onTrail = 1 - smoothstep(W - 0.15, W + 0.35, a + (n2 - 0.5) * 0.3);
@@ -112,9 +131,11 @@ export class Terrain {
         floor.lerp(SOIL, smoothstep(6, 30, a) * 0.35);
         if (onTrail > 0.02) c.lerp(floor, 1 - onTrail);
         else c.copy(floor);
+        // dark, wet ground along a creek's banks
+        c.lerp(SOIL, this.creekAt(s) * 0.55);
         paint.set([c.r, c.g, c.b, onTrail], i * 4);
         // the ground shader reads trail coordinates from here: meters across, meters along
-        uv.set([u, s], i * 2);
+        uv.set([lu, s], i * 2);
       }
     }
     const index: number[] = [];

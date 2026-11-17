@@ -4,15 +4,21 @@ Decisions and progress. Read `raptor-race-brief.md` first; it's the source of tr
 
 ## Where things stand
 
-- **Milestone 1 (style): done. The look is B, the Painted Diorama.** Drew, 2026-11-16, after trying B+ (B with ink on the animals): "Let's just go with B... it just looks the best." Aidan had picked B too. AB and B+ are out of the code (they are in the history); the pickers are gone.
-- **Milestone 2 (rough playable run): done.**
-- **Milestone 3 (runner, egg and chick up close): approved.** Drew: "Looks excellent overall." Runner from behind in the run: good. Egg: good. Sit pose: reads. Chick: **Slate** (the other two are deleted). Teeth: keep, but they "strangely" pointed straight ahead; they now hang down under the front of the upper jaw with a slight forward lean. The opening nest will hold a **clutch**, not one egg. The turntable stays at `?mode=close`.
-- **The course map is agreed** (2026-11-16, last answers: Fan out "keep, love it"; catch-up "faster when behind"; Wild egg "great", with Lively, Wild and Wilder all offered for now; body turn "perfect"). The fork was explained and drew no objection. **Level building has started** with the first two new obstacles, a creek and a hollow log, both in the rough run to try (build 24). Still to build: the Psittacosaurus, the fork, hidden finds, checkpoints and losing the egg, then the layout itself from `docs/level-1/course.mjs`, then the opening and ending.
-- **Milestone 4 began with a plan: the Level 1 course map.** Drew's answers (2026-11-16): order and pacing "looks good"; hollow log "love it"; Psittacosaurus "let's try it out"; Fan out "interested to see how it looks" (now in the rough run); the fork needed explaining (done, see below); losing the egg he "kind of likes", with one point to settle (catch-up). See "Level 1 course map". Nothing of the level itself is built.
-- **Solid obstacles: approved.** Bump "honestly perfect", over/under/around "perfect". The egg's dodges were "a surprise hit": Aidan "laughed uncontrollably" at it bobbing, weaving and hopping logs, and Drew asked to lean into it and make it "even more agile and livelier". Build 22 adds a Wild egg to compare (see below). The body turn went unnoticed and has been made much stronger.
-- **Frame rate: holding 60 on the phone** (build 18, Home Screen, late in a long session: 60 fps, 2% late, full sharpness). See "Frame rate".
-- Live build: https://drew879.github.io/raptor-race-fable/ now opens the rough run. Close-up: `?mode=close`. Speed test: `?mode=bench`. The old concept frame: `?mode=concept`.
-- Hero colors are approved. All seven obstacle kinds are approved (they are kinds, to be repeated and combined).
+- **The game now runs the Level 1 layout** (build 25, 2026-11-16). `src/game/course.ts` reads `docs/level-1/course.mjs`, the layout Drew agreed, so the map and the game can't drift apart. The old rough test course is gone (it is in the history). Open the game and you are on the level.
+- **In and working:** all nine sections; all seven obstacle kinds (tree, boulder, log, creek, propped trunk, hollow log, dozing Psittacosaurus); the fork round the island; the Fan out power-up (7.5 s); the five first-time hints; the egg's dodges through all of it; the agreed chase numbers.
+- **Not built yet:** the three hidden finds (placed in the data as `FINDS`, not drawn or collected); checkpoints and losing the egg (the lead is just held at 26 m; `CHECKPOINTS` is in the data); the opening (nest, clutch, the egg tipping out) and the ending (scoop, hatching, Field Journal moment); sounds and music; title, results and journal screens.
+- **First-pass art to come back to:** the Psittacosaurus (reads well in play, rough up close); the island's rock (plain); the creek's stones.
+- **Decided:** look B; chick Slate; egg Lively/Wild/Wilder all offered for now ("eventually we can just pick one"; Wild is the default, Wilder is "Fun!"); body turn "perfect"; bumps "honestly perfect"; hollow log "reads well and enjoyed the view"; 2x edge smoothing looks clean.
+- **Drew's playtest of the first creek:** "Doesn't read very well, in large part because it doesn't appear to continue on the left and right side of the trail (the bumps obscure it)." He wanted water clearly flowing left to right and continuous either side. Rebuilt: see "Creek" under the level notes.
+- Live build: https://drew879.github.io/raptor-race-fable/ . Close-up: `?mode=close`. Speed test: `?mode=bench`.
+- Hero colors are approved.
+
+### How Level 1 is put together (build 25)
+- **Layout:** `docs/level-1/course.mjs` (data and rule checks; `node docs/level-1/check.mjs` prints them), read by `src/game/course.ts`, which turns sections into trail segments (each tips to its slope over its first 30 to 40% and then holds it, so drops fall away at the top), rows into obstacles, and exports `FORK`, `laneU`, `laneMap`, `bowAt`, `POWER`, `FINDS`, `CHECKPOINTS`, `HINTS`, `END_S`. The layout counts from where the chase begins; the trail starts 3 m before that.
+- **The fork:** between `FORK.from` and `FORK.to` the side lanes swing out 1.05 m each (`bowAt`), and everything that places something in a lane asks `laneU(lane, s)`. The ground is shaped and painted in "straightened" lane space (`laneMap`, passed to `Terrain`), so the trail widens and the worn lane tracks follow. The island is a rib of rock built in trail space in `run.ts`, low enough to see over, with a giant ginkgo on it. Its prow is an ordinary go-around row: meet it in the middle lane and the runner bumps and steps to the egg's side (right, the easy one). Inside the fork a swipe toward the rock is a shoulder against it and nothing more. Each side's obstacles are rows with `branch` set; the runner only meets its own side's. The camera swings out with the runner's side so the rock never fills the view. The egg takes the right side.
+- **Creek** (`src/world/creek.ts`): a ribbon of water laid over the terrain from 15 m up the hill on the left, across the trail, to 15 m down the valley side on the right, with stones along both banks. The ground's raised lips along the trail's edges open where a creek crosses (`creeks` in `Terrain`), which is what hid the first version. The water shader moves its glints downstream using how-far-along coordinates the ribbon carries. In the fork the creek meets the island and goes under it.
+- **Psittacosaurus** (`art/psittaco.py`, kit `animals`): body and head are separate pieces, the head built round the base of the neck so the game can lift and turn it. It dozes with its eyes shut, breathes, lifts its head and opens its eyes as the runner nears, and turns to watch it go. Bumping it wakes it at once. What is from the fossils: the parrot-like beak, the cheek horns, the scaly skin dark above and pale below, and the row of long bristles along the tail.
+- **A bug found on the way:** the forest sized its lists of plants by checking every whole meter of the course. Between two whole meters a chunk can be coming into view ahead while another has not yet left behind, so a list could overflow. It now checks every half meter.
 
 ### Level 1 course map (draft sent 2026-11-16, not signed off)
 - **Where it lives:** `docs/level-1/course.mjs` is the layout as data, with its own rule checks (`node docs/level-1/course.mjs`). `docs/level-1/make-map.mjs` draws the map page from it into `docs/level-1/course-map.html`. That page is published for Drew, privately, at https://claude.ai/artifact/ASwXiNq9ozW86Wx6d43zQL (republish the same file from a session that has the Artifact tool, passing that link, to update it in place). When the layout is approved, port `course.mjs` into the game's level file so what was agreed is what gets built.
@@ -119,6 +125,9 @@ Build numbers here are the ones shown on the phone.
 - **Build 20 on the phone: the blur was not it.** Pause sheet at speed 11, phone at 21% battery after an evening of testing: 51 fps, sharpness 80% (saved from the session before), 9% late frames, and a check at 367 s that found 19% late at 80%, 2% at half, 6% back at 80%. So even at 80% it was missing frames. (The "80 draws" on that sheet is a frame in which the shadow map was redrawn: about 30 extra draws, every 2.5 m.)
 - **What I now think:** the speed test measures short bursts on a cool chip. Minutes into a session the phone is warm and gives less, and what it gives less of shows up as a cost per pixel. So "full sharpness" has to be cheaper than the speed test says it needs to be.
 - **Build 22: edge smoothing is 2 samples, down from 4** (`SAMPLES` in `post.ts`; the speed test put 4x at 1.6 ms of 8.6 and has a line to compare the two). `?msaa=4` brings the old setting back.
+- **Build 24 on a charging phone at 40% (10:06 pm):** speed test: as played 7.4 ms, no smoothing 5.8, 4x smoothing 6.2, three quarters sharp 9.6, half sharp 9.9, no forest 6.1, half sharp and no forest 4.4, start of the run 9.0. Several of those contradict each other (half sharp slower than full, 4x smoothing faster than 2x), so the speed test is only good to about 2 ms. In play: 56 fps, 3% late, sharpness 80%; it had tried 90% and stepped back. The pause sheet's burst read 13.7 ms a frame at 80%.
+- **What that says:** flat out, the phone draws a frame in about 7 ms. In play it takes about twice that. The speed test keeps the chip busy all the time; play asks for one frame every 16.7 ms, and the phone seems to run its chip slower when the work comes in bursts like that, leaving little to spare. (The pause sheet's burst is too short to count as flat out, which is why it reads slow. Don't compare it with the speed test.) So the game settles at 70 to 80% sharpness on this phone. Drew says it looks clean, and it holds 56 to 60 fps there, so it is left alone for now.
+- **If more room is wanted later:** the forest's triangles and the shadow map's refreshes are the levers left. Do that with the level's real forest, with a triangle budget.
 - **Build 22 on the phone, at 6% battery (9:42 pm, after hours of testing):** 35% of frames late at full sharpness, 16% late even at half, 40% late back at full; it settled at 60% with 5% late and a longest frame of 80 ms. Half sharpness not being enough means the phone was slow at everything, which points at the phone's state (nearly flat, used all evening) more than at pixels. Across the evening the readings got worse as the battery fell (30%: fine at full; 25%: needed 60%; 21%: 9% late at 80%; 6%: this), whatever each build changed. **So no conclusion can be drawn about 2x smoothing from that screenshot.**
 - **To get a clean reading (build 23):** the pause sheet now times a burst of frames a moment after it opens and prints "one frame costs X ms right now at N% sharpness". A fresh phone should say about 8 at full. Ask Drew for a pause sheet and a speed test on a charged, cool phone, and compare with one late in a long session.
 - **Shadow map (build 23):** each refresh was drawing every shadow-casting plant in the whole view; now only those within 58 m of the runner. That turned out to save only 15 to 20%, because most of the cost is the detailed plants close by: a refresh still draws 120 to 210 thousand triangles, three or four times a second. If spikes ("longest 80 ms") matter on a healthy phone, the next step is cheaper stand-ins for shadows or leaving ferns out of the map.
@@ -148,14 +157,11 @@ Build numbers here are the ones shown on the phone.
 **For the story scenes later** (from the same fact check): oviraptorosaur nests held many eggs in pairs, in rings, blunt ends up; adults have been found sitting on them with arms spread round the edge; which parent sat is unknown (possibly the father). The game says "parent", which is right. Drew chose a clutch for the opening nest (2026-11-16), with ours the one that rolls away.
 
 ### Not yet verified on the real phone
-- Builds 23 and 24: the Wilder egg, the creek, the hollow log (including the view through it), the new chase numbers.
-- Speed on a charged, cool phone: the pause sheet's new "one frame costs" line and the speed test.
+- Build 25: the whole Level 1 layout, the fork (both sides), the rebuilt creek, the Psittacosaurus, the longer fan.
 
 ### Next
-- Drew and Aidan try the creek and the hollow log; a clean speed reading.
-- Keep building the level: the dozing Psittacosaurus (a new animal model, so check its anatomy first), the fork (side lanes swinging out round an island with a giant ginkgo), hidden finds, checkpoints and losing the egg. Then port `docs/level-1/course.mjs` into the game as the level.
-- Known rough spots on the runner: the sitting pose is a first pass; the chick's down is made of flat cards (fine at its size, visible zoomed right in).
-- The creek model is heavy for what it is (8,000 triangles, nearly all stones). Lighten the stones.
+- Drew and Aidan play the level layout. Questions out: the fork's feel on each side, the creek now, the Psittacosaurus, the pacing of the whole thing.
+- Then: hidden finds, checkpoints and losing the egg; then the opening and ending scenes; then sound and music, and the screens around the run.
 
 ## How the code is laid out
 
@@ -242,7 +248,7 @@ These are the kinds, not a count. They repeat and combine along the course; expe
 
 ## Open questions
 
-- Do the creek and the hollow log read at a glance and feel fair? Is the splash-and-wade right for a missed creek?
+- Does the level's order and pacing feel right in play, and the fork on each side?
+- Does the creek read now? Does the Psittacosaurus read as something to go around?
 - Which egg in the end: Lively, Wild or Wilder?
-- How does the game run on a charged, cool phone (pause sheet line and speed test)?
 - Should a slide be holdable by swiping down again? Drew is on the fence.

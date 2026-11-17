@@ -481,9 +481,9 @@ svg text { font-family: var(--body); fill: var(--ink); }
     <h2>Where it stands</h2>
     <ol class="asks">
       <li><b>Order and pacing: agreed.</b></li>
-      <li><b>Power-up: Fan out, agreed.</b> Take the golden ginkgo leaf and the runner spreads its fans for 6 seconds, sweeping in the amber from all three lanes. It is in the rough run to try.</li>
+      <li><b>Power-up: Fan out, agreed.</b> Take the golden ginkgo leaf and the runner spreads its fans for 7.5 seconds, long enough to sweep in every piece of amber on the drop.</li>
       <li><b>The fork: how it works.</b> The path widens. The two side lanes swing out round the rock by themselves and come back together after it, so the runner follows its lane with no swipe. The one choice is which side lane you are in when you get there. Stay in the middle and you bump the rock and get shunted to the easy side.</li>
-      <li><b>Hollow log: agreed,</b> and built: there is one in the rough run to try, along with a creek.</li>
+      <li><b>Hollow log: agreed</b> and built.</li>
       <li><b>Dozing Psittacosaurus: in, on trial.</b></li>
       <li><b>Losing the egg: agreed.</b> You gain faster the further behind you are.</li>
     </ol>
