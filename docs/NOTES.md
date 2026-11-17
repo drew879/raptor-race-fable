@@ -35,6 +35,13 @@ What changed:
 - **App icon:** his image (a cartoon feathered dinosaur's head, teal with an orange crest), "for now". Source kept at `art/icon/source.png`; sizes made with `sips` into `public/icons/` (48, 180, 192, 512, and a 512 with a margin for Android's round masks). An icon already on a Home Screen keeps the old picture until the app is removed and added again.
 - **Game UX:** he asked for concept options first, build after agreeing: loading, home screen and its music, menu sounds, what happens after beating a level. Sent as a page of options (see "Game UX concepts" below once it exists).
 
+### Game UX concepts (sent 2026-11-17, waiting on Drew)
+He asked for concept options before any build: loading, the home screen and its music, menu sounds, and what happens after a level. The page is `docs/ux/concepts.html` (mock screens drawn in HTML over real frames from build 34, kept in `docs/ux/shots/`), published privately at https://claude.ai/artifact/RJ3wi59MfYoQJcH6AsFhrn (republish the same file to update it).
+- **Three directions for the whole shell:** A, "The living nest" (no menu world: the game opens on the nest with a title and Run!, results over the hatching); B, "The Field Journal" (the shell is a naturalist's notebook, levels are pages, finishing fills in a page); C, "The song" (the level shown as its tune, results show the notes caught and missed and play your run back).
+- **My recommendation:** a blend. A as the frame, B's paper only inside the Field Journal, C as the heart of the results once the level is laid out to the song (medals until then).
+- **Smaller choices, with my picks:** loading as a drop of amber filling (over a sketch drawing itself, or footprints); menu taps as amber notes in the level's key (over forest sounds, or quiet clicks); home music as forest first with the theme's strings coming in (over the theme alone, or the forest alone); three ways to letter the name.
+- **Asked of him:** whether the cartoon style of the icon he sent is where the menus should go or a stand-in (the runner in the game is drawn from the fossils and looks nothing like it); which direction; the smaller choices; and what matters most to Aidan after a level (medals, the journal page, or hearing his run).
+
 ### Round 7 (build 33, 2026-11-17), from Drew's playtest of build 32
 What he said, and what was done:
 - **Sound died after leaving the app** and would not come back without a restart. An iPhone interrupts the audio when the app is left, and what is left behind does not always start again. Now any time away marks the audio stale, and the next tap closes it and makes it afresh (`stale` and `unlock` in `sound.ts`). Sound with the ring switch off works, "which is what I want".
