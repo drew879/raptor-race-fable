@@ -568,8 +568,9 @@ def arch_log(seed=81):
 
 
 def boulder(seed=84):
-    """Fills a lane and stands taller than the hero can jump: go around."""
-    return rock(seed, 1.0, moss=0.5, shape=(0.86, 0.95, 1.12), role='prop', faceted=True, lumpy=1.7)
+    """Stands in a lane, taller than the hero can jump: go around. It is narrower than its
+    lane (0.68 m), so from behind it never looks as if it reaches into the lane beside it."""
+    return rock(seed, 1.0, moss=0.5, shape=(0.6, 0.7, 1.16), role='prop', faceted=True, lumpy=1.7)
 
 
 def lane_tree(seed=85, height=7.0):

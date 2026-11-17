@@ -15,99 +15,107 @@ export const SECTIONS = [
   {
     id: 'nest',
     name: 'Off the nest',
-    length: 34,
+    length: 26,
     slope: -0.08,
     turn: 0,
     teaches: 'Nothing in the way. The egg pulls ahead and the amber invites a first swipe.',
-    hints: [{ at: 14, text: 'Swipe left or right' }],
+    hints: [{ at: 8, text: 'Swipe left or right' }],
     rows: [],
-    amber: [A(6, 14, 0), A(18, 26, 1), A(30, 34, 0)],
+    amber: [A(4, 10, 0), A(14, 20, 1), A(23, 26, 0)],
   },
   {
     id: 'hollow',
     name: 'Fern hollow',
-    length: 110,
+    length: 100,
     slope: -0.11,
     turn: [0.5, -0.6],
-    teaches: 'Lanes. One thing to go around at a time, then two.',
+    teaches: 'Lanes. Something to go around every second and a half or so, singly and in pairs.',
     rows: [
-      { at: 10, kind: 'boulder', lanes: [0] },
-      { at: 24, kind: 'tree', lanes: [-1] },
-      { at: 38, kind: 'boulder', lanes: [0] },
-      { at: 52, kind: 'tree', lanes: [1], also: [{ kind: 'boulder', lanes: [-1] }] },
-      { at: 66, kind: 'boulder', lanes: [0] },
-      { at: 84, kind: 'tree', lanes: [-1], onlyFor: 'find' },
-      { at: 98, kind: 'tree', lanes: [-1], also: [{ kind: 'tree', lanes: [1] }] },
+      { at: 8, kind: 'boulder', lanes: [0] },
+      { at: 21, kind: 'tree', lanes: [-1] },
+      { at: 34, kind: 'boulder', lanes: [0] },
+      { at: 47, kind: 'tree', lanes: [1], also: [{ kind: 'boulder', lanes: [-1] }] },
+      { at: 60, kind: 'boulder', lanes: [0] },
+      { at: 74, kind: 'boulder', lanes: [1] },
+      { at: 77, kind: 'tree', lanes: [-1], onlyFor: 'find' },
+      { at: 90, kind: 'boulder', lanes: [0], also: [{ kind: 'tree', lanes: [-1] }] },
     ],
-    amber: [A(0, 2, 0), A(5, 15, -1), A(19, 29, 0), A(33, 43, 1), A(47, 57, 0), A(61, 90, 1), A(94, 106, 0)],
-    finds: [{ at: 73, lane: -1, n: 1, risk: 'Off the amber line. Pass the boulder on the left, grab it, then step back before the tree.' }],
+    amber: [A(3, 13, -1), A(17, 26, 0), A(30, 39, 1), A(43, 52, 0), A(56, 70, 1), A(73, 82, 0), A(86, 96, 1)],
+    finds: [{ at: 66, lane: -1, n: 1, risk: 'Off the amber line. Pass the boulder on the left, grab it, then step back before the tree.' }],
   },
   {
     id: 'drop1',
     name: 'First drop',
-    length: 65,
+    length: 58,
     slope: -0.3,
     turn: 0.08,
     drop: true,
-    teaches: 'The trail tips over and the valley opens up. Steep and clear: amber only.',
+    teaches: 'The trail tips over and the valley opens up. Steep and clear, with a quick slalom of amber.',
     checkpoint: 0,
     rows: [],
-    amber: [A(4, 14, 0), A(18, 28, 1), A(32, 42, 0), A(46, 58, -1)],
+    amber: [A(4, 11, 0), A(14, 21, 1), A(24, 31, 0), A(34, 41, -1), A(44, 51, 0), A(54, 57, 1)],
   },
   {
     id: 'windfall',
     name: 'Windfall',
-    length: 85,
+    length: 86,
     slope: -0.09,
     turn: 0.45,
-    teaches: 'Jumps. Two logs, the first creek, then a boulder and a log in a row.',
-    hints: [{ at: 3, text: 'Swipe up to jump' }],
+    teaches: 'Jumps. Logs and creeks, with a boulder between to keep the lanes in play.',
+    hints: [{ at: 1, text: 'Swipe up to jump' }],
     rows: [
-      { at: 17, kind: 'log' },
-      { at: 31, kind: 'log' },
-      { at: 47, kind: 'creek' },
-      { at: 63, kind: 'boulder', lanes: [0] },
-      { at: 75, kind: 'log' },
+      { at: 14, kind: 'log' },
+      { at: 27, kind: 'log' },
+      { at: 40, kind: 'creek' },
+      { at: 53, kind: 'boulder', lanes: [0] },
+      { at: 65, kind: 'log' },
+      { at: 77, kind: 'creek' },
     ],
-    amber: [A(5, 11, 0), arc(17, 0), arc(31, -1), A(38, 41, 0), arc(47, 0), A(57, 68, 1), arc(75, 1), A(80, 84, 1)],
+    amber: [A(4, 9, 0), arc(14, 0), arc(27, -1), arc(40, 0), A(48, 58, 1), arc(65, 1), arc(77, 0), A(82, 85, 0)],
   },
   {
     id: 'giants',
     name: 'Under the giants',
-    length: 75,
+    length: 78,
     slope: -0.12,
     turn: -0.6,
-    teaches: 'Slides. Two propped trunks, then the hollow log: the only way is through it.',
-    hints: [{ at: 4, text: 'Swipe down to slide' }],
+    teaches: 'Slides. Two propped trunks and the hollow log, then a jump and a slide back to back.',
+    hints: [{ at: 2, text: 'Swipe down to slide' }],
     rows: [
-      { at: 18, kind: 'arch' },
-      { at: 32, kind: 'arch' },
-      { at: 48, kind: 'hollow', lanes: [0] },
+      { at: 15, kind: 'arch' },
+      { at: 28, kind: 'arch' },
+      { at: 42, kind: 'hollow', lanes: [0] },
+      { at: 56, kind: 'log' },
+      { at: 68, kind: 'arch' },
     ],
-    amber: [A(13, 23, 0, true), A(27, 37, -1, true), A(44, 52, 0, true), A(56, 70, 0)],
+    amber: [A(10, 20, 0, true), A(23, 33, -1, true), A(37, 46, 0, true), arc(56, 0), A(63, 73, 1, true)],
   },
   {
     id: 'fork',
     name: 'The old ginkgo',
-    length: 80,
+    length: 108,
     slope: -0.08,
     turn: 0.3,
-    teaches: 'The fork. The trail splits around a giant ginkgo on a rock. Left is harder and richer; right is easy.',
+    teaches: 'The fork. Left is riskier and richer: five moves in a row. Right is safer: two easy jumps.',
     checkpoint: 0,
-    hints: [{ at: 0, text: 'The trail splits! Pick a side' }],
-    island: [17, 65],
+    hints: [{ at: 0, text: 'The trail splits!' }],
+    labels: 0, // the two side labels show from here until the rock
+    island: [30, 92],
     rows: [
-      { at: 27, kind: 'log', branch: 'left' },
-      { at: 39, kind: 'arch', branch: 'left' },
-      { at: 51, kind: 'creek', branch: 'left' },
-      { at: 39, kind: 'log', branch: 'right' },
+      { at: 39, kind: 'log', branch: 'left' },
+      { at: 50.5, kind: 'arch', branch: 'left' },
+      { at: 62, kind: 'creek', branch: 'left' },
+      { at: 73.5, kind: 'arch', branch: 'left' },
+      { at: 85, kind: 'log', branch: 'left' },
+      { at: 50, kind: 'log', branch: 'right' },
+      { at: 73, kind: 'log', branch: 'right' },
     ],
     amber: [
-      A(4, 16, -1), A(19, 23, -1), arc(27, -1), A(31, 33, -1), A(35, 43, -1, true), A(45, 47, -1), arc(51, -1), A(55, 63, -1),
-      A(8, 8, 1), A(12, 12, 1), A(21, 21, 1), A(29, 29, 1), arc(39, 1), A(49, 49, 1), A(57, 57, 1),
-      A(68, 78, 0),
+      A(4, 28, -1), arc(39, -1), A(46, 54, -1, true), arc(62, -1), A(69, 77, -1, true), arc(85, -1), A(89, 91, -1),
+      A(8, 8, 1), A(16, 16, 1), A(24, 24, 1), arc(50, 1), A(60, 60, 1), A(66, 66, 1), arc(73, 1), A(82, 82, 1),
+      A(96, 106, 0),
     ],
-    finds: [{ at: 51, lane: -1, n: 2, high: true, risk: 'On the hard side, at the top of the jump over the creek.' }],
+    finds: [{ at: 62, lane: -1, n: 2, high: true, risk: 'On the risky side, at the top of the jump over the creek.' }],
   },
   {
     id: 'drop2',
@@ -119,26 +127,28 @@ export const SECTIONS = [
     teaches: 'The power-up, on a steep clear pitch with amber in all three lanes.',
     checkpoint: 0,
     hints: [{ at: 2, text: 'Fan out! Catch it all' }],
-    power: { at: 4, lane: 0, lasts: 7.5 }, // long enough to reach the last row of amber on the drop
+    power: { at: 4, lane: 0, reach: 50 }, // the fans stay out for this many meters: to just past the last amber
     rows: [],
     amber: [A(10, 52, -1), A(10, 52, 0), A(10, 52, 1)],
   },
   {
     id: 'home',
     name: 'Home stretch',
-    length: 80,
+    length: 94,
     slope: -0.06,
     turn: -0.45,
-    teaches: 'Everything, mixed, at the same unhurried spacing.',
+    teaches: 'Everything, mixed. It opens with a file of young Psittacosaurus crossing the trail.',
     rows: [
-      { at: 12, kind: 'psittaco', lanes: [0] },
-      { at: 26, kind: 'log' },
-      { at: 40, kind: 'arch' },
-      { at: 52, kind: 'tree', lanes: [1] },
-      { at: 72, kind: 'creek' },
+      { at: 10, kind: 'crossing' },
+      { at: 22, kind: 'arch' },
+      { at: 34, kind: 'boulder', lanes: [0], also: [{ kind: 'tree', lanes: [1] }] },
+      { at: 46, kind: 'log' },
+      { at: 58, kind: 'tree', lanes: [-1] },
+      { at: 78, kind: 'creek' },
+      { at: 90, kind: 'arch' },
     ],
-    amber: [A(6, 18, -1), arc(26, -1), A(35, 45, 0, true), A(47, 58, -1), arc(72, 0), A(77, 80, 0)],
-    finds: [{ at: 60, lane: 1, n: 3, risk: 'Dart in behind the tree, grab it, and still jump the creek.' }],
+    amber: [arc(10, 0), A(17, 27, 0, true), A(30, 39, -1), arc(46, -1), A(52, 55, -1), A(60, 72, 0), arc(78, 0), A(85, 93, 0, true)],
+    finds: [{ at: 66, lane: -1, n: 3, risk: 'Dart back in behind the tree, grab it, and still jump the creek.' }],
   },
   {
     id: 'clearing',
@@ -154,13 +164,13 @@ export const SECTIONS = [
   },
 ];
 
-export const MOVE = { boulder: 'around', tree: 'around', psittaco: 'around', log: 'jump', creek: 'jump', arch: 'slide', hollow: 'slide' };
+export const MOVE = { boulder: 'around', tree: 'around', log: 'jump', creek: 'jump', crossing: 'jump', arch: 'slide', hollow: 'slide' };
 export const KIND_NAME = {
   boulder: 'boulder',
   tree: 'tree',
-  psittaco: 'dozing Psittacosaurus',
   log: 'fallen log',
   creek: 'creek',
+  crossing: 'young Psittacosaurus crossing',
   arch: 'propped trunk',
   hollow: 'hollow log',
 };
@@ -186,6 +196,7 @@ export function build() {
   const checkpoints = [];
   let power = null;
   let island = null;
+  let labelsFrom = null;
   let end = 0;
   for (const sec of SECTIONS) {
     const s0 = start;
@@ -207,13 +218,14 @@ export function build() {
     if (sec.checkpoint !== undefined) checkpoints.push(s0 + sec.checkpoint);
     if (sec.power) power = { ...sec.power, s: s0 + sec.power.at };
     if (sec.island) island = [s0 + sec.island[0], s0 + sec.island[1]];
+    if (sec.labels !== undefined) labelsFrom = s0 + sec.labels;
     if (sec.rest !== undefined) end = s0 + sec.rest;
     start += sec.length;
   }
   rows.sort((a, b) => a.s - b.s);
   amber.sort((a, b) => a.s - b.s);
   const chaseEnd = sections[sections.length - 1].start; // where the clearing begins
-  return { sections, rows, amber, finds, hints, checkpoints, power, island, end, chaseEnd, total: start };
+  return { sections, rows, amber, finds, hints, checkpoints, power, island, labelsFrom, end, chaseEnd, total: start };
 }
 
 const blocked = (row) => [...new Set(row.parts.flatMap((p) => p.lanes))];

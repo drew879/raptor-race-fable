@@ -114,6 +114,10 @@ import psittaco  # noqa: E402
 kit('animals', [
     ('psittaco_body', lambda: psittaco.body(), dict(ao_dist=0.25, ao_strength=0.9, ground_ao=0.25)),
     ('psittaco_head', lambda: psittaco.head(), dict(ao_dist=0.15, ao_strength=0.8)),
+    ('young_body', lambda: psittaco.young_body(), dict(ao_dist=0.12, ao_strength=0.8)),
+    ('young_head', lambda: psittaco.young_head(), dict(ao_dist=0.08, ao_strength=0.7)),
+    ('young_leg_f', lambda: psittaco.young_leg(True), dict(ao=False)),
+    ('young_leg_h', lambda: psittaco.young_leg(False), dict(ao=False)),
 ], preview=dict(lens=60))
 
 import hero  # noqa: E402

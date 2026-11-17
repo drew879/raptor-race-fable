@@ -271,6 +271,8 @@ uniform vec3 uGlow;
 uniform float uBlink;
 uniform vec3 uLid;
 uniform float uEggNear;
+uniform vec3 uGemHeart;
+uniform vec3 uGemEdge;
 
 #ifdef USE_DETAIL
 varying vec4 vDetail;
@@ -612,9 +614,7 @@ void main() {
   {
     // resin glows from inside: bright honey at the heart, deep orange at the edge
     float facing = max(dot(Ng, -E), 0.0);
-    vec3 heart = vec3(1.0, 0.80, 0.30);
-    vec3 edge = vec3(0.85, 0.33, 0.03);
-    col = mix(edge, heart, pow(facing, 1.4)) * (0.85 + 0.25 * sun);
+    col = mix(uGemEdge, uGemHeart, pow(facing, 1.4)) * (0.85 + 0.25 * sun);
     col += vec3(1.0, 0.95, 0.8) * pow(max(dot(reflect(E, Ng), uSunDir), 0.0), 24.0) * 0.9;
     col += uGlow * 0.3;
   }
@@ -684,6 +684,9 @@ export function paintMaterial(role: Role): THREE.ShaderMaterial {
       uLid: { value: new THREE.Color(0.02, 0.022, 0.03) },
       // the egg: 0 as it is drawn for the chase, 1 for close-ups (matte, finely speckled)
       uEggNear: { value: 0 },
+      // amber's glow: honey at the heart, deep orange at the edge (hidden finds use pale blues)
+      uGemHeart: { value: new THREE.Color(1.0, 0.8, 0.3) },
+      uGemEdge: { value: new THREE.Color(0.85, 0.33, 0.03) },
       // x: lane width, y: how strongly the lanes show, z: half the width of the seam between lanes (ground only)
       uLanes: { value: new THREE.Vector4(0.68, 0, 0.08, 0) },
     },

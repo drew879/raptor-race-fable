@@ -172,3 +172,110 @@ def head():
 
         geo.add_grid(rings, lambda i, j, p: srgb('#7a4a1c'), 'eye', close_u=True, flip=(side > 0), detail_fn=edet)
     return geo
+
+
+# ---------------------------------------------------------------- the young ones
+# Young Psittacosaurus are found together in groups in these same rocks, and they walked on all
+# fours (the adults mostly on two legs). In the game a file of three crosses the trail: jump them.
+# Lighter than the adult so they stand out on the trail, with the same dark-above, pale-below
+# pattern. Each is built in pieces the game moves: body, head (round the neck's base), and legs
+# (each hanging from its own top).
+
+Y_BACK = srgb('#8d6a42')
+Y_FLANK = srgb('#b99363')
+Y_BELLY = srgb('#eadbb4')
+Y_NECK = Vector((0.0, 0.22, 0.25))
+
+
+def young_skin(s, p, face=0.0):
+    n = fbm((p.x * 16.0, p.y * 16.0, p.z * 16.0), 1.0, 3)
+    c = mix(Y_BACK, Y_FLANK, smoothstep(0.75, 0.05, s + n * 0.5))
+    c = mix(c, Y_BELLY, smoothstep(0.0, -0.55, s + n * 0.35))
+    spots = smoothstep(0.26, 0.34, fbm((p.x * 40.0, p.y * 40.0, p.z * 40.0), 1.0, 2)) * smoothstep(0.6, 0.1, abs(s))
+    c = mix(c, Y_BELLY, spots * 0.45)
+    return mix(c, MASK, face)
+
+
+def young_body(seed=5):
+    rnd = random.Random(seed)
+    geo = Geo()
+    keys = [
+        (0.0, -0.44, 0.215, 0.008, 0.008),
+        (0.0, -0.32, 0.225, 0.028, 0.03),
+        (0.0, -0.20, 0.235, 0.06, 0.065),
+        (0.0, -0.08, 0.245, 0.086, 0.09),
+        (0.0, 0.06, 0.245, 0.088, 0.09),
+        (0.0, 0.16, 0.245, 0.07, 0.075),
+        (0.0, 0.22, 0.25, 0.05, 0.055),
+    ]
+    n = 30
+    pts = [Vector((k[0], k[1], k[2])) for k in keys]
+    path = [catmull(pts, i / (n - 1)) for i in range(n)]
+    rw = [k[3] for k in keys]
+    rh = [k[4] for k in keys]
+    geo.tube(path, lambda t, ang: (max(catmull(rw, t), 0.006), max(catmull(rh, t), 0.006)),
+             lambda t, ang, p: young_skin(math.sin(ang), p), 'skin', around=14, up_hint=Z, cap_end=False,
+             detail_fn=lambda t, ang, p: detail(1, 0.6 + 0.4 * (ang / (2 * math.pi)), t * 30.0))
+    for i in range(16):
+        t = lerp(0.1, 0.5, i / 15)
+        p = catmull(pts, t)
+        length = lerp(0.045, 0.085, math.sin(math.pi * i / 15)) * rnd.uniform(0.85, 1.1)
+        lean = (Z + Vector((rnd.uniform(-0.1, 0.1), -rnd.uniform(0.3, 0.5), 0))).normalized()
+        geo.blade(p + Z * (catmull(rh, t) * 0.9), lean, Vector((0, -1, 0)), length, lambda u: 0.006 * (1 - u * 0.75) + 0.001,
+                  lambda u, sd: mix(BRISTLE, BRISTLE_TIP, u), 'feather', segs=2, droop=-0.2, sway=(0.0, 0.5),
+                  phase=rnd.random())
+    return geo
+
+
+def young_head():
+    geo = Geo()
+    keys = [
+        (0.00, 0.000, 0.050, 0.055),
+        (0.045, 0.012, 0.050, 0.052),
+        (0.09, 0.016, 0.056, 0.05),
+        (0.13, 0.008, 0.040, 0.042),
+        (0.16, -0.006, 0.022, 0.03),
+        (0.18, -0.02, 0.007, 0.014),
+    ]
+    n = 18
+    pts = [Vector((0.0, k[0], k[1])) for k in keys]
+    path = [catmull(pts, i / (n - 1)) for i in range(n)]
+
+    def col(t, ang, p):
+        s = math.sin(ang)
+        c = young_skin(s, p + Y_NECK, face=smoothstep(0.3, 0.55, t) * smoothstep(-0.5, 0.1, s) * 0.8)
+        return mix(c, mix(BEAK_PALE, BEAK, clamp01(0.4 + 0.6 * s)), smoothstep(0.7, 0.8, t))
+
+    geo.tube(path, lambda t, ang: (max(catmull([k[2] for k in keys], t), 0.003), max(catmull([k[3] for k in keys], t), 0.003)),
+             col, 'skin', around=12, up_hint=Z, cap_start=False,
+             detail_fn=lambda t, ang, p: detail(2 if t > 0.74 else 1, 0.6 + 0.4 * (ang / (2 * math.pi)), t * 20.0))
+    for side in (-1, 1):
+        base = Vector((side * 0.05, 0.095, -0.012))
+        tip = base + Vector((side * 0.03, -0.006, -0.012))
+        geo.tube([base, tip], lambda t, ang: (0.011 * (1 - t) + 0.002,) * 2, lambda t, ang, p: mix(Y_FLANK, BEAK_PALE, t),
+                 'skin', around=5, up_hint=Z)
+        # a bright dark eye: a small glossy bead is enough at this size
+        eye = Vector((side * 0.046, 0.088, 0.024))
+        geo.tube([eye - Vector((side * 0.006, 0, 0)), eye + Vector((side * 0.008, 0, 0))], lambda t, ang: (0.011 * (1 - 0.5 * t),) * 2,
+                 lambda t, ang, p: srgb('#0d0b0a'), 'skin', around=7, up_hint=Z, detail_fn=lambda t, ang, p: detail(2, 0.0, t))
+    return geo
+
+
+def young_leg(front=True):
+    """One leg hanging from its top (the origin): a bend at the knee or elbow, and a small foot."""
+    geo = Geo()
+    length = 0.185 if front else 0.2
+    bend = 0.03 if front else -0.035
+    top = Vector((0, 0, 0))
+    mid = Vector((0, bend, -length * 0.5))
+    foot = Vector((0, 0.0, -length + 0.012))
+    r = 0.026 if front else 0.036
+
+    def col(t, ang, p):
+        return young_skin(math.sin(ang) * 0.4 - 0.1, p)
+
+    geo.tube([top, top.lerp(mid, 0.5), mid, mid.lerp(foot, 0.5), foot], lambda t, ang: (lerp(r, 0.016, t),) * 2, col, 'skin',
+             around=7, up_hint=Vector((0, 1, 0)))
+    geo.tube([foot, foot + Vector((0, 0.035, -0.006))], lambda t, ang: (0.016 * (1 - 0.4 * t), 0.011), lambda t, ang, p: MASK,
+             'skin', around=6, up_hint=Z)
+    return geo

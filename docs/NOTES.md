@@ -4,24 +4,38 @@ Decisions and progress. Read `raptor-race-brief.md` first; it's the source of tr
 
 ## Where things stand
 
-- **The game now runs the Level 1 layout** (build 25, 2026-11-16). `src/game/course.ts` reads `docs/level-1/course.mjs`, the layout Drew agreed, so the map and the game can't drift apart. The old rough test course is gone (it is in the history). Open the game and you are on the level.
-- **In and working:** all nine sections; all seven obstacle kinds (tree, boulder, log, creek, propped trunk, hollow log, dozing Psittacosaurus); the fork round the island; the Fan out power-up (7.5 s); the five first-time hints; the egg's dodges through all of it; the agreed chase numbers.
-- **Not built yet:** the three hidden finds (placed in the data as `FINDS`, not drawn or collected); checkpoints and losing the egg (the lead is just held at 26 m; `CHECKPOINTS` is in the data); the opening (nest, clutch, the egg tipping out) and the ending (scoop, hatching, Field Journal moment); sounds and music; title, results and journal screens.
-- **First-pass art to come back to:** the Psittacosaurus (reads well in play, rough up close); the island's rock (plain); the creek's stones.
+- **The game runs the Level 1 layout and the chase can be lost** (build 26, 2026-11-16). `src/game/course.ts` reads `docs/level-1/course.mjs`, so the map and the game can't drift apart. Open the game and you are on the level.
+- **In and working:** all nine sections; seven obstacle kinds (tree, boulder, log, creek, propped trunk, hollow log, young Psittacosaurus crossing); the fork round the island, with a label on each side of the screen; the Fan out power-up (50 m of trail); the three hidden finds; three checkpoints; losing the egg and starting again from the last checkpoint; the first-time hints; the egg's dodges through all of it.
+- **Not built yet:** the opening (nest, clutch, the egg tipping out) and the ending (scoop, hatching, Field Journal moment); sounds and music; title, results and journal screens. The hidden finds are collected and counted, but the journal pages they unlock don't exist yet.
+- **First-pass art to come back to:** the Psittacosaurus, young and adult (fine in play, rough up close); the island's rock (plain); the creek's stones; the hidden finds (a pale blue piece of amber with nothing inside it yet, and the brief describes inclusions).
 - **Decided:** look B; chick Slate; egg Lively/Wild/Wilder all offered for now ("eventually we can just pick one"; Wild is the default, Wilder is "Fun!"); body turn "perfect"; bumps "honestly perfect"; hollow log "reads well and enjoyed the view"; 2x edge smoothing looks clean.
 - **Drew's playtest of the first creek:** "Doesn't read very well, in large part because it doesn't appear to continue on the left and right side of the trail (the bumps obscure it)." He wanted water clearly flowing left to right and continuous either side. Rebuilt: see "Creek" under the level notes.
 - Live build: https://drew879.github.io/raptor-race-fable/ . Close-up: `?mode=close`. Speed test: `?mode=bench`.
 - Hero colors are approved.
 
-### How Level 1 is put together (build 25)
+### Round 3 (build 26, 2026-11-16), from Drew's playtest of build 25
+What he said: the order is fine "but it started to feel slightly boring at times"; the fork "wasn't as exciting as I had hoped. The left side could be a bit more challenging to live up to the promise"; the fork's text should show sooner, as a left arrow with "Riskier, more amber" on the left of the screen and "Safer, less amber" with a right arrow on the right; the dozing Psittacosaurus "Doesn't really read--didn't even notice it the first time", he expected to be able to jump it, and suggested it walk across the trail as a jump obstacle; Aidan "will like it as-is, but it could be slightly more challenging"; the fan "lasts a bit *too* long now" (it only needed about a second more than the first 6 s, maybe less); and some large rocks look as if they will hit you in a clear lane. He also said to go ahead with hidden finds, checkpoints and losing the egg.
+
+What changed:
+- **Layout, busier:** 605 m of chase, 75.6 s clean at speed 8, 28 moves on the safe side of the fork and 31 on the risky side (was 584 m, 21 and 23). Sections: Off the nest 26, Fern hollow 100, First drop 58, Windfall 86, Under the giants 78, The old ginkgo 108, Second drop 55, Home stretch 94, The clearing 30. Moves are 12 to 14 m apart (1.5 s or a little more); on the fork's left they are 11.5 m (1.44 s). The brief's floor is 1.4 s.
+- **Fork:** the island is 62 m long. Left: log, propped trunk, creek, propped trunk, log, with 33 pieces of amber and hidden find 2 at the top of the creek jump. Right: two logs 23 m apart and 14 pieces. The two labels are HUD elements (`hud.fork`, `.fork-label` in the CSS), on from the start of the fork section, 30 m (3.75 s) before the rock, until the rock.
+- **Young Psittacosaurus crossing** (kind `crossing`, all three lanes, a jump): three young ones walk across the trail in a file, placed by how far away the runner is so they are spread across the lanes as it arrives. Bump them and they scatter. Parts `young_body`, `young_head`, `young_leg_f`, `young_leg_h` in the `animals` kit. The dozing adult is kept beside the trail as scenery. Fact check (2026-11-16): groups of young Psittacosaurus without adults are known from Lujiatun in Liaoning (Zhao and others 2014, one group is five two-year-olds and a three-year-old), and the young walked on all fours while adults walked mostly on two legs (Zhao and others 2013). Both are good journal material.
+- **Fan out by distance:** `POWER.reach` is 50 m, about 6.25 s at speed 8. It ends just past the last amber on the drop at any speed setting, which a time never did.
+- **Boulders:** 0.6 m wide now (lanes are 0.68 m apart), so one never looks as if it reaches into the lane beside it.
+- **Hidden finds:** the amber model at twice the size with a pale blue heart and edge (`uGemHeart`, `uGemEdge` on the amber material) and a blue glow. Three pips in a chip beside the amber count, a "A hidden find!" hint, and a line on the finish sheet. No journal pages yet.
+- **Losing the egg:** at a 26 m lead the hint says "The egg got away!", the runner stops, the picture dims, and `tryAgain()` puts the runner at the last checkpoint it passed (or the nest) with the egg 15 m ahead. Amber and finds are kept, and the leaf comes back if it is ahead again. Then "Try again from here!". `?nolose=1` turns it off for test runs.
+- **Two bugs fixed on the way:** the egg clipped a boulder where two go-around rows sit 3 m apart (its lane now has to be open for every go-around row within 6.5 m), and the crossing was being judged as something to go around.
+- **Test runs** (bots, in the browser): perfect play on either side of the fork finishes with no bumps (right side 79.4 s). A bot that misses 20 to 35% of the obstacles finishes with 7 to 9 bumps and never loses the egg (worst lead about 25 m). One that misses half loses it. With no input at all the egg is lost at the fourth boulder in Fern hollow, before the first checkpoint, so that restart is from the nest.
+
+### How Level 1 is put together
 - **Layout:** `docs/level-1/course.mjs` (data and rule checks; `node docs/level-1/check.mjs` prints them), read by `src/game/course.ts`, which turns sections into trail segments (each tips to its slope over its first 30 to 40% and then holds it, so drops fall away at the top), rows into obstacles, and exports `FORK`, `laneU`, `laneMap`, `bowAt`, `POWER`, `FINDS`, `CHECKPOINTS`, `HINTS`, `END_S`. The layout counts from where the chase begins; the trail starts 3 m before that.
 - **The fork:** between `FORK.from` and `FORK.to` the side lanes swing out 1.05 m each (`bowAt`), and everything that places something in a lane asks `laneU(lane, s)`. The ground is shaped and painted in "straightened" lane space (`laneMap`, passed to `Terrain`), so the trail widens and the worn lane tracks follow. The island is a rib of rock built in trail space in `run.ts`, low enough to see over, with a giant ginkgo on it. Its prow is an ordinary go-around row: meet it in the middle lane and the runner bumps and steps to the egg's side (right, the easy one). Inside the fork a swipe toward the rock is a shoulder against it and nothing more. Each side's obstacles are rows with `branch` set; the runner only meets its own side's. The camera swings out with the runner's side so the rock never fills the view. The egg takes the right side.
 - **Creek** (`src/world/creek.ts`): a ribbon of water laid over the terrain from 15 m up the hill on the left, across the trail, to 15 m down the valley side on the right, with stones along both banks. The ground's raised lips along the trail's edges open where a creek crosses (`creeks` in `Terrain`), which is what hid the first version. The water shader moves its glints downstream using how-far-along coordinates the ribbon carries. In the fork the creek meets the island and goes under it.
-- **Psittacosaurus** (`art/psittaco.py`, kit `animals`): body and head are separate pieces, the head built round the base of the neck so the game can lift and turn it. It dozes with its eyes shut, breathes, lifts its head and opens its eyes as the runner nears, and turns to watch it go. Bumping it wakes it at once. What is from the fossils: the parrot-like beak, the cheek horns, the scaly skin dark above and pale below, and the row of long bristles along the tail.
+- **Psittacosaurus** (`art/psittaco.py`, kit `animals`): body and head are separate pieces, the head built round the base of the neck so the game can lift and turn it. It dozes with its eyes shut, breathes, lifts its head and opens its eyes as the runner nears, and turns to watch it go. Bumping it wakes it at once. What is from the fossils: the parrot-like beak, the cheek horns, the scaly skin dark above and pale below, and the row of long bristles along the tail. Since build 26 the adult is scenery beside the trail and the obstacle is the young ones crossing (see Round 3).
 - **A bug found on the way:** the forest sized its lists of plants by checking every whole meter of the course. Between two whole meters a chunk can be coming into view ahead while another has not yet left behind, so a list could overflow. It now checks every half meter.
 
-### Level 1 course map (draft sent 2026-11-16, not signed off)
-- **Where it lives:** `docs/level-1/course.mjs` is the layout as data, with its own rule checks (`node docs/level-1/course.mjs`). `docs/level-1/make-map.mjs` draws the map page from it into `docs/level-1/course-map.html`. That page is published for Drew, privately, at https://claude.ai/artifact/ASwXiNq9ozW86Wx6d43zQL (republish the same file from a session that has the Artifact tool, passing that link, to update it in place). When the layout is approved, port `course.mjs` into the game's level file so what was agreed is what gets built.
+### Level 1 course map (first drawn 2026-11-16; the numbers below are the first draft)
+- **Where it lives:** `docs/level-1/course.mjs` is the layout as data, with its own rule checks (`node docs/level-1/check.mjs`). `docs/level-1/make-map.mjs` draws the map page from it into `docs/level-1/course-map.html`. That page is published for Drew, privately, at https://claude.ai/artifact/ASwXiNq9ozW86Wx6d43zQL (republish the same file from a session that has the Artifact tool, passing that link, to update it in place). The game reads `course.mjs` directly, so after any layout change run `node docs/level-1/make-map.mjs` and republish the page. The current numbers are under Round 3; the bullets below record what was first proposed and agreed.
 - **The shape:** 584 m of chase, 73 s at speed 8 with no bumps, 78 m of descent. Sections, each teaching one thing: Off the nest (34 m, nothing in the way), Fern hollow (110 m, lanes), First drop (65 m, steep and clear), Windfall (85 m, jumps: two logs, the first creek, a boulder then a log), Under the giants (75 m, slides: two propped trunks, then the hollow log), The old ginkgo (80 m, the fork), Second drop (55 m, the power-up over amber in all three lanes), Home stretch (80 m, everything mixed), The clearing (30 m, the scoop).
 - **Moves:** 21 on the easy side of the fork, 23 on the hard side, never closer than 12 m (1.5 s). Nothing but amber on either drop; the first obstacle after each is 12 m or more past its foot and in view all the way down.
 - **The fork:** the trail splits round a giant ginkgo on a rock. Each side is one lane wide, so on it you only jump and slide. Left is harder and richer (log, propped trunk, creek; 34 pieces of amber and a hidden find), right is easy (one log; 11 pieces). Staying in the middle bumps the rock and shunts you to the easy side, which is also the side the egg takes.
@@ -157,11 +171,11 @@ Build numbers here are the ones shown on the phone.
 **For the story scenes later** (from the same fact check): oviraptorosaur nests held many eggs in pairs, in rings, blunt ends up; adults have been found sitting on them with arms spread round the edge; which parent sat is unknown (possibly the father). The game says "parent", which is right. Drew chose a clutch for the opening nest (2026-11-16), with ours the one that rolls away.
 
 ### Not yet verified on the real phone
-- Build 25: the whole Level 1 layout, the fork (both sides), the rebuilt creek, the Psittacosaurus, the longer fan.
+- Build 26: the busier layout, the fork's harder left side and its labels, the young Psittacosaurus crossing, the narrower boulders, the shorter fan, hidden finds, and losing the egg with the restart at a checkpoint.
 
 ### Next
-- Drew and Aidan play the level layout. Questions out: the fork's feel on each side, the creek now, the Psittacosaurus, the pacing of the whole thing.
-- Then: hidden finds, checkpoints and losing the egg; then the opening and ending scenes; then sound and music, and the screens around the run.
+- Drew and Aidan play build 26. Questions out: is it busy enough now, the fork's left side, the labels, the crossing, the fan's length, the boulders, the finds, and how losing the egg feels.
+- Then: the opening and ending scenes; then sound and music, and the screens around the run.
 
 ## How the code is laid out
 
@@ -228,7 +242,7 @@ These are the kinds, not a count. They repeat and combine along the course; expe
 4. Jump: a narrow creek with bright water.
 5. Slide: a hollow log seen end-on as a big round opening.
 6. Slide: a giant fallen trunk propped on boulders, with a clean, roomy arch.
-7. Go around (optional): a dozing Psittacosaurus, played calm.
+7. Jump: a file of young Psittacosaurus crossing the trail. (This replaced the dozing adult, a go-around, after the build 25 playtest; the adult is scenery now.)
 
 ## About the player and the hardware
 
@@ -248,7 +262,7 @@ These are the kinds, not a count. They repeat and combine along the course; expe
 
 ## Open questions
 
-- Does the level's order and pacing feel right in play, and the fork on each side?
-- Does the creek read now? Does the Psittacosaurus read as something to go around?
+- Is the level busy enough now, and is the fork's left side worth the risk?
+- Do the young Psittacosaurus read as a jump? Is losing the egg fair, and is the restart clear?
 - Which egg in the end: Lively, Wild or Wilder?
 - Should a slide be holdable by swiping down again? Drew is on the fence.

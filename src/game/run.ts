@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { setReloadGuard } from '../app/build';
 import { HeroRig, strideLength, type HeroState } from '../hero/rig';
 import type { Lookdev } from '../lookdev/scene';
-import { world } from '../render/paint';
+import { paintMaterial, world } from '../render/paint';
 import { SunShadow } from '../render/shadow';
 import type { Style } from '../render/styles';
 import { instance, instances, loadKit, loadSkinned, materialFor, SHADOW_LAYER, type Placement } from '../world/assets';
@@ -15,7 +15,7 @@ import { fbm, rng, smoothstep } from '../world/noise';
 import { makeRidges, makeSky, makeVolcano } from '../world/sky';
 import { Terrain } from '../world/terrain';
 import { Track } from '../world/track';
-import { AMBER, bowAt, DEFAULT_SPEED, END_S, FORK, HINTS, LANE, laneMap, laneU, OBSTACLES, POWER, SEGMENTS, START_SLOPE, VISTAS, type Obstacle } from './course';
+import { AMBER, bowAt, CHECKPOINTS, DEFAULT_SPEED, END_S, FINDS, FORK, FORK_LABELS_FROM, HINTS, LANE, laneMap, laneU, OBSTACLES, POWER, SEGMENTS, START_SLOPE, VISTAS, type Obstacle } from './course';
 import { Flora } from './flora';
 import { makeHud } from './hud';
 import { listenForMoves, type Move } from './input';
@@ -65,14 +65,14 @@ const EGG_G = 9.5;
 export const EGG_MODES = ['Lively', 'Wild', 'Wilder'];
 
 // how far along the trail each kind of obstacle can catch you
-const DEPTH: Record<Obstacle['kind'], number> = { log: 0.3, arch: 0.45, boulder: 0.42, tree: 0.26, creek: 0.6, hollow: 1.7, psittaco: 0.66 };
+const DEPTH: Record<Obstacle['kind'], number> = { log: 0.3, arch: 0.45, boulder: 0.42, tree: 0.26, creek: 0.6, hollow: 1.7, crossing: 0.32 };
 // Obstacles are solid. A runner that meets one stops where its body touches it (its head and
 // chest reach well ahead of its hips, so that is short of the obstacle's middle by FACE), then
 // gets past by the move it should have made and is set down CLEAR beyond the middle.
-const FACE: Record<Obstacle['kind'], number> = { log: 0.5, arch: 0.74, boulder: 0.74, tree: 0.54, creek: 0.5, hollow: 2.44, psittaco: 0.98 };
-const CLEAR: Record<Obstacle['kind'], number> = { log: 0.8, arch: 1.0, boulder: 0.75, tree: 0.6, creek: 0.9, hollow: 2.3, psittaco: 0.95 };
-const goAround = (kind: Obstacle['kind']) => kind === 'boulder' || kind === 'tree' || kind === 'psittaco';
-const jumps = (kind: Obstacle['kind']) => kind === 'log' || kind === 'creek';
+const FACE: Record<Obstacle['kind'], number> = { log: 0.5, arch: 0.74, boulder: 0.74, tree: 0.54, creek: 0.5, hollow: 2.44, crossing: 0.5 };
+const CLEAR: Record<Obstacle['kind'], number> = { log: 0.8, arch: 1.0, boulder: 0.75, tree: 0.6, creek: 0.9, hollow: 2.3, crossing: 0.8 };
+const goAround = (kind: Obstacle['kind']) => kind === 'boulder' || kind === 'tree';
+const jumps = (kind: Obstacle['kind']) => kind === 'log' || kind === 'creek' || kind === 'crossing';
 const slides = (kind: Obstacle['kind']) => kind === 'arch' || kind === 'hollow';
 const IMPACT_TIME = 0.18;
 const RECOVER_TIME = 0.5;
@@ -88,7 +88,7 @@ const HOP_HEIGHT_WILDER = 1.6;
 const START_LEAD = 15;
 const MIN_LEAD = 4.8;
 const WARN_LEAD = 21;
-const MAX_LEAD = 26; // in the level, this is where the egg is lost; here it is just the limit
+const MAX_LEAD = 26; // let it get this far ahead and the egg is lost: back to the last checkpoint
 const LOW_HALF = 1.4; // meters either side of an arch where it stays on the ground
 const SETTLE = 7.5; // meters before either where it stops bouncing, so it arrives on the ground
 
@@ -112,6 +112,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   ]);
 
   const testing = new URLSearchParams(location.search).has('nopause'); // test runs only
+  const noLose = new URLSearchParams(location.search).has('nolose'); // test runs only: the egg can't be lost
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(62, 0.46, 0.3, 2500);
   const track = new Track(SEGMENTS, START_SLOPE);
@@ -186,7 +187,15 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   // ---------------------------------------------------------------- obstacles
   const byModel: Record<string, Placement[]> = { log: [], arch: [], boulder: [], lane_tree: [], hollow_log: [] };
   /** The dozing Psittacosaurus: its body lies still, its head is on a pivot at the base of the neck. */
-  const sleepers: { s: number; lane: number; group: THREE.Group; neck: THREE.Group; up: number; startled: number }[] = [];
+  const sleepers: { s: number; u: number; group: THREE.Group; neck: THREE.Group; up: number; startled: number }[] = [];
+  /** A young Psittacosaurus in pieces the game moves: body, head on its neck, four legs (front pair first). */
+  interface Young {
+    group: THREE.Group;
+    neck: THREE.Group;
+    legs: THREE.Group[];
+  }
+  /** Each file of young ones crossing the trail. fled: seconds since the runner blundered into them. */
+  const crossings: { s: number; young: Young[]; fled: number }[] = [];
   for (const o of OBSTACLES) {
     // in the fork an obstacle sits in its own side's lane; elsewhere logs and arches span the trail
     const mid = o.branch ? laneU(o.branch, o.s) : 0;
@@ -198,17 +207,42 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       scene.add(makeCreek(terrain, small, o.s, o.branch === 1 ? 0.2 : -15, o.branch === -1 ? -0.2 : 15));
     } else if (o.kind === 'hollow') {
       byModel.hollow_log.push({ position: terrain.place(o.s, laneU(o.lanes[0], o.s), 0), yaw: 0, scale: 1, tilt: basisAt(o.s) });
-    } else if (o.kind === 'psittaco') {
+    } else if (o.kind === 'crossing') {
+      // a file of three young Psittacosaurus walking across the trail, and an adult dozing in
+      // the ferns on the side they come from
+      const young: Young[] = [];
+      for (let i = 0; i < 3; i++) {
+        const group = new THREE.Group();
+        group.add(instance(animals, 'young_body'));
+        const neck = new THREE.Group();
+        neck.position.set(0, 0.25, -0.22); // as built in art/psittaco.py
+        neck.add(instance(animals, 'young_head'));
+        group.add(neck);
+        const legs = ([[-0.055, 0.19, -0.14, 'young_leg_f'], [0.055, 0.19, -0.14, 'young_leg_f'], [-0.065, 0.2, 0.1, 'young_leg_h'], [0.065, 0.2, 0.1, 'young_leg_h']] as const).map(
+          ([x, y, z, name]) => {
+            const leg = new THREE.Group();
+            leg.position.set(x, y, z);
+            leg.add(instance(animals, name));
+            group.add(leg);
+            return leg;
+          },
+        );
+        group.scale.setScalar(1.15);
+        scene.add(group);
+        young.push({ group, neck, legs });
+      }
+      crossings.push({ s: o.s, young, fled: 0 });
       const group = new THREE.Group();
-      group.position.copy(terrain.place(o.s, laneU(o.lanes[0], o.s), 0));
-      group.quaternion.copy(basisAt(o.s));
+      const zu = -3.3;
+      group.position.copy(terrain.place(o.s - 2.5, zu, 0));
+      group.quaternion.copy(basisAt(o.s - 2.5, 0)).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -0.8));
       group.add(instance(animals, 'psittaco_body'));
       const neck = new THREE.Group();
       neck.position.set(0, 0.15, -0.4); // the base of its neck, as built in art/psittaco.py
       neck.add(instance(animals, 'psittaco_head'));
       group.add(neck);
       scene.add(group);
-      sleepers.push({ s: o.s, lane: o.lanes[0], group, neck, up: 0, startled: 0 });
+      sleepers.push({ s: o.s - 2.5, u: zu, group, neck, up: 0, startled: 0 });
     } else {
       for (const lane of o.lanes) {
         const upright = basisAt(o.s, 0); // boulders and trees stand straight on a slope
@@ -436,7 +470,10 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   const openLanes = (row: Row) => [-1, 0, 1].filter((lane) => !row.blocked.includes(lane));
   for (const row of rows) {
     if (!row.around) continue;
-    const open = openLanes(row);
+    // (where rows stand close together, it needs a lane that is open past all of them)
+    const close = rows.filter((r) => r.around && Math.abs(r.s - row.s) < 6.5);
+    const clear = [-1, 0, 1].filter((lane) => close.every((r) => !r.blocked.includes(lane)));
+    const open = clear.length ? clear : openLanes(row);
     // of two open lanes the egg takes the one without amber, so it never hides the line worth following
     const quiet = open.filter((lane) => !AMBER.some((a) => a.lane === lane && Math.abs(a.s - row.s) < 4));
     const pick = quiet.length ? quiet : open;
@@ -497,6 +534,22 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   const fanGlow = makeGlow('#ffcf6a', 2.2, 0);
   fanGlow.renderOrder = 4;
   scene.add(leaf, leafGlow, fanGlow);
+  // Hidden finds: larger pieces with a pale blue glow, off the amber line.
+  const findGeo = (props.get('amber') ?? [])[0]?.geometry;
+  const finds = FINDS.map((f) => {
+    const mat = paintMaterial('amber');
+    mat.uniforms.uGemHeart.value.set(0.72, 0.93, 1.0);
+    mat.uniforms.uGemEdge.value.set(0.16, 0.5, 0.86);
+    const gem = new THREE.Mesh(findGeo, mat);
+    gem.scale.setScalar(0.36);
+    const at = terrain.place(f.s, laneU(f.lane, f.s), f.lift);
+    gem.position.copy(at);
+    const glow = makeGlow('#8fd8ff', 1.7, 0.6);
+    glow.position.copy(at);
+    scene.add(gem, glow);
+    return { ...f, gem, glow, at };
+  });
+
   /** Amber on its way to the runner while the fans are out: 0 = not flying, else how far along (0..1). */
   const fly = new Float32Array(AMBER.length);
   const flying: number[] = [];
@@ -574,7 +627,10 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     /** The wilder egg: time left spinning on its end like a top. */
     eggTop: 0,
     /** Fan out: time left, how far the fans are spread, and whether the leaf has been taken. */
-    fanT: 0,
+    fanOn: false,
+    /** Hidden finds picked up, and the countdown after the egg is lost. */
+    found: FINDS.map(() => false),
+    lostT: 0,
     fan: 0,
     leafTaken: false,
     amber: 0,
@@ -639,10 +695,16 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       finished: false, queued: null, queuedT: 0, hint: 0, hintT: 0,
       prevLane: 0, du: 0, heading: 0, bump: null, sideT: 0, wadeT: 0, flinch: 0, shakeT: 0, puffT: 0, camLead: 0, pending: null,
       pendingT: 0, boostT: 0, eggU: 0, eggV: 0, heroV: 0, eggHop: false, eggPop: 0, eggTip: 0,
-      eggWind: 0, eggSkips: 0, eggBounces: 0, eggJink: -1, eggWasLow: false, eggTop: 0, fanT: 0, fan: 0, leafTaken: false,
+      eggWind: 0, eggSkips: 0, eggBounces: 0, eggJink: -1, eggWasLow: false, eggTop: 0, fanOn: false, fan: 0, leafTaken: false, lostT: 0,
     });
     fly.fill(0);
     flying.length = 0;
+    st.found = FINDS.map(() => false);
+    for (const f of finds) f.gem.visible = f.glow.visible = true;
+    for (const c of crossings) c.fled = 0;
+    hud.setFinds(st.found);
+    hud.fork(false);
+    hud.fade(false);
     leaf.visible = leafGlow.visible = true;
     eggQ.setFromAxisAngle(v3.set(1, 0, 0), -0.5); // tipped a little forward, about to roll
     for (const o of obstacles) o.hit = false;
@@ -661,8 +723,37 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     hud.hideFinish();
   }
 
+  /** Back to the last checkpoint passed, with the egg a fair way ahead again. What was collected is kept. */
+  function tryAgain() {
+    const from = CHECKPOINTS.filter((c) => c <= st.s).pop() ?? START_S;
+    Object.assign(st, {
+      s: from, lane: 0, u: 0, y: 0, vy: 0, slideT: 0, safeT: 1, speed: 0, air: 0, slide: 0, camU: 0, camDuck: 0,
+      gap: START_LEAD, eggS: from + START_LEAD, eggY: 0, eggVy: 0, eggV: 0, heroV: 0, queued: null, queuedT: 0,
+      prevLane: 0, du: 0, heading: 0, bump: null, sideT: 0, wadeT: 0, flinch: 0, shakeT: 0, puffT: 0, camLead: 0,
+      pending: null, pendingT: 0, boostT: 0, eggHop: false, eggTop: 0, eggSkips: 0, eggWasLow: false, lostT: 0,
+    });
+    for (const o of obstacles) o.hit = false;
+    for (const row of rows) row.hit = false;
+    for (const c of crossings) c.fled = 0;
+    st.fanOn = false;
+    st.fan = 0;
+    if (from <= POWER.s) {
+      // the leaf is ahead again, so it can be taken again
+      st.leafTaken = false;
+      leaf.visible = leafGlow.visible = true;
+    }
+    shadowAt = -1e9;
+    for (let i = 0; i < mists.length; i++) mists[i].s = from + 25 + i * MIST_GAP;
+    for (let i = 0; i < shafts.length; i++) shafts[i].s = from + 7 + i * SHAFT_GAP;
+    placeAir();
+    hud.warn(false);
+    hud.fade(false);
+    hud.hint('Try again from here!');
+    st.hintT = 2.2;
+  }
+
   function act(move: Move) {
-    if (st.paused || st.finished || !st.started) return;
+    if (st.paused || st.finished || !st.started || st.lostT > 0) return;
     if (st.bump) {
       // mid-bump the runner can't answer, but the swipe is kept for the moment it can
       st.pending = move;
@@ -856,7 +947,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     }
     (puff.material as THREE.ShaderMaterial).uniforms.uColor.value.set('#e6d2a8');
     st.bump = {
-      kind: row.kind === 'log' ? 'log' : row.kind === 'arch' ? 'arch' : row.kind === 'hollow' ? 'hollow' : 'around',
+      kind: jumps(row.kind) ? 'log' : row.kind === 'arch' ? 'arch' : row.kind === 'hollow' ? 'hollow' : 'around',
       t: 0,
       faceS: Math.min(st.s, member.s - FACE[member.kind]),
       exitS: member.s + CLEAR[member.kind],
@@ -949,7 +1040,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   function step(dt: number) {
     st.clock += dt;
     const ending = st.s > END_S - 9;
-    const cruise = st.finished ? 0 : baseSpeed * (ending ? THREE.MathUtils.clamp((END_S - 1.0 - st.s) / 8, 0.12, 1) : 1);
+    const cruise = st.finished || st.lostT > 0 ? 0 : baseSpeed * (ending ? THREE.MathUtils.clamp((END_S - 1.0 - st.s) / 8, 0.12, 1) : 1);
     const uBefore = st.u;
     if (st.bump) {
       stepBump(dt);
@@ -1032,12 +1123,12 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
           continue;
         }
         // inside it without having done what it asks
-        let hit = inside && (row.kind === 'log' ? st.y < 0.3 : slides(row.kind) ? st.slide < 0.5 : true);
+        let hit = inside && (jumps(row.kind) ? st.y < 0.3 : slides(row.kind) ? st.slide < 0.5 : true);
         // or about to walk into its face having made no move at all: bump there, where the body
         // meets it. (A move made in time still gets its chance; this never bumps anyone who
         // would have made it.)
         if (!hit && ahead > depth && ahead <= FACE[member.kind]) {
-          if (row.kind === 'log') hit = st.y <= 0.001 && st.vy <= 0;
+          if (jumps(row.kind)) hit = st.y <= 0.001 && st.vy <= 0;
           else if (slides(row.kind)) hit = st.slideT <= 0 && st.slide < 0.5 && st.queued !== 'down';
           else hit = row.blocked.includes(st.lane);
         }
@@ -1048,7 +1139,8 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
           Math.abs(st.u - laneU(st.prevLane, st.s)) < Math.abs(st.u - laneU(st.lane, st.s)) + 0.2;
         if (fromSide) sideBump(row, member);
         else startBump(row, member);
-        for (const z of sleepers) if (z.s === row.s) z.startled = 1.6;
+        for (const c of crossings) if (c.s === row.s) c.fled = 0.001;
+        for (const z of sleepers) if (Math.abs(z.s - row.s) < 4) z.startled = 1.6;
         break;
       }
     }
@@ -1057,15 +1149,16 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     // is swept in as the runner comes up to it.
     if (!st.leafTaken && Math.abs(POWER.s - st.s) < 0.7 && Math.abs(st.u - POWER.lane * LANE) < 0.45) {
       st.leafTaken = true;
-      st.fanT = POWER.lasts;
+      st.fanOn = true;
       leaf.visible = leafGlow.visible = false;
       hud.hint('Fan out! Catch it all');
       st.hintT = 2.2;
     }
-    st.fanT = Math.max(0, st.fanT - dt);
-    st.fan += ((st.fanT > 0 && !st.bump ? 1 : 0) - st.fan) * (1 - Math.exp(-dt / 0.12));
+    // the fans stay out for a stretch of trail, so they cover the same amber at any speed
+    if (st.fanOn && st.s > POWER.s + POWER.reach) st.fanOn = false;
+    st.fan += ((st.fanOn && !st.bump ? 1 : 0) - st.fan) * (1 - Math.exp(-dt / 0.12));
     terrain.place(st.s + 0.25, st.u, st.y + 0.5, chest);
-    if (st.fanT > 0) {
+    if (st.fanOn) {
       for (let i = 0; i < AMBER.length; i++) {
         const a = AMBER[i];
         if (a.s < st.s - 0.6) continue;
@@ -1115,7 +1208,31 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     st.eggV += (eggSpeed - st.eggV) * Math.min(1, dt * 6);
     st.eggS = Math.min(END_S, st.eggS + st.eggV * dt);
     rollEgg(dt, st.eggS < END_S - 0.05);
-    hud.warn(st.gap > WARN_LEAD && !st.finished);
+    hud.warn(st.gap > WARN_LEAD && !st.finished && st.lostT <= 0);
+    if (st.lostT > 0) {
+      // the egg is out of sight: stop, dim the picture, and go back to the last checkpoint
+      const before = st.lostT;
+      st.lostT -= dt;
+      if (before > 0.8 && st.lostT <= 0.8) hud.fade(true);
+      if (st.lostT <= 0) tryAgain();
+    } else if (!noLose && !st.finished && st.gap >= MAX_LEAD - 0.01) {
+      st.lostT = 1.5;
+      hud.hint('The egg got away!');
+      st.hintT = 9;
+    }
+
+    // hidden finds
+    finds.forEach((f, i) => {
+      if (st.found[i]) return;
+      if (Math.abs(f.s - st.s) < 0.6 && Math.abs(st.u - laneU(f.lane, f.s)) < 0.45 && Math.abs(st.y + 0.3 - f.lift) < 0.7) {
+        st.found[i] = true;
+        f.gem.visible = f.glow.visible = false;
+        hud.setFinds(st.found);
+        hud.hint('A hidden find!');
+        st.hintT = 1.6;
+      }
+    });
+    hud.fork(FORK !== null && FORK_LABELS_FROM >= 0 && st.s >= FORK_LABELS_FROM && st.s < FORK.from + 1 && st.lostT <= 0);
 
     // first-time hints: one at a time, shown early enough to act on
     if (st.hint < HINTS.length && st.s >= HINTS[st.hint].s) {
@@ -1132,7 +1249,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       st.finished = true;
       hud.hint(null);
       hud.warn(false);
-      hud.showFinish(st.amber, AMBER.length);
+      hud.showFinish(st.amber, AMBER.length, st.found.filter(Boolean).length, FINDS.length);
     }
   }
 
@@ -1189,16 +1306,43 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     (eggShadow.material as THREE.ShaderMaterial).uniforms.uStrength.value = 0.55 * (1 - Math.min(0.75, st.eggY * 1.6));
 
     // the dozing Psittacosaurus breathes, and lifts its head to watch the runner go by
+    for (const f of finds) {
+      f.gem.rotation.y = st.clock * 1.4 + f.s;
+      f.gem.position.y = f.at.y + Math.sin(st.clock * 2 + f.s) * 0.06;
+    }
     for (const z of sleepers) {
       const ahead = z.s - st.s;
       const noticed = ahead > -7 && ahead < 9 ? 1 - smoothstep(3.5, 9, ahead) : 0;
       z.startled = Math.max(0, z.startled - 1 / 60);
       const want = Math.max(noticed * 0.8, z.startled > 0 ? 1 : 0);
       z.up += (want - z.up) * (want > z.up ? 0.12 : 0.03);
-      const side = Math.sign(st.u - laneU(z.lane, z.s)) || 1;
+      const side = Math.sign(st.u - z.u) || 1;
       z.neck.rotation.set(z.up * 0.8, -side * z.up * (ahead < 0 ? 1.25 : 0.55), 0);
       z.group.scale.set(1, 1 + 0.02 * Math.sin(st.clock * 1.5), 1);
       materialFor('eye').uniforms.uBlink.value = 1 - smoothstep(0.25, 0.6, z.up);
+    }
+    // The young ones walk across as the runner comes: off in the ferns on the left when it is
+    // far away, spread across all three lanes as it arrives, and away to the right behind it.
+    // Their steps keep time with the ground they cover.
+    for (const c of crossings) {
+      const ahead = c.s - st.s;
+      const show = ahead < 48 && ahead > -16;
+      if (c.fled > 0) c.fled += 1 / 60;
+      const shift = (ahead > 0 ? -0.11 * ahead : 0.2 * -ahead) + c.fled * 1.9;
+      c.young.forEach((y, i) => {
+        y.group.visible = show;
+        if (!show) return;
+        const yu = (i - 1) * 0.8 + shift;
+        const step = (yu / 0.27) * Math.PI * 2;
+        y.group.position.copy(terrain.place(c.s + (i - 1) * 0.07, yu, Math.abs(Math.sin(step)) * 0.012));
+        y.group.quaternion.copy(basisAt(c.s, 0)).multiply(heroYaw.setFromAxisAngle(upAxis, -Math.PI / 2));
+        const swing = Math.sin(step) * 0.55;
+        y.legs[0].rotation.x = swing;
+        y.legs[3].rotation.x = swing;
+        y.legs[1].rotation.x = -swing;
+        y.legs[2].rotation.x = -swing;
+        y.neck.rotation.x = 0.12 + 0.08 * Math.sin(step * 2 + i);
+      });
     }
 
     // camera: behind and above, easing sideways with the hero, looking well down the trail
@@ -1274,7 +1418,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
 
   reset();
   // for testing from the console: read the state, make moves, pause, start over
-  Object.assign(window, { rrGame: { st, act, setPaused, reset, obstacles, rows, collected, DEPTH, flora, laneU, FORK } });
+  Object.assign(window, { rrGame: { st, act, setPaused, reset, obstacles, rows, collected, DEPTH, flora, laneU, FORK, finds: FINDS, CHECKPOINTS, tryAgain } });
   if (testing) {
     st.started = true;
     (ui.querySelector('.start-sheet') as HTMLElement).hidden = true;

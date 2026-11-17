@@ -27,10 +27,16 @@ export interface HudHooks {
 
 export interface Hud {
   setAmber(count: number): void;
+  /** Which of the hidden finds have been picked up, in order. */
+  setFinds(found: boolean[]): void;
+  /** The two labels that say what each side of the fork holds. */
+  fork(on: boolean): void;
+  /** Dim the picture, for the moment between losing the egg and trying again. */
+  fade(on: boolean): void;
   hint(text: string | null): void;
   warn(on: boolean): void;
   setPaused(paused: boolean): void;
-  showFinish(amber: number, total: number): void;
+  showFinish(amber: number, total: number, finds: number, totalFinds: number): void;
   hideFinish(): void;
   setStyle(index: number): void;
 }
@@ -40,9 +46,13 @@ export function makeHud(root: HTMLElement, hooks: HudHooks): Hud {
   root.innerHTML = `
     <div class="hud">
       <div class="chip amber-count"><span class="drop"></span><span class="n">0</span></div>
+      <div class="chip finds" aria-label="Hidden finds"></div>
       <button class="chip pause" aria-label="Pause" style="margin-left:auto"><span></span><span></span></button>
     </div>
     <div class="hint" hidden></div>
+    <div class="fork-label left" hidden><b>&larr;</b><span>Riskier,<br>more amber</span></div>
+    <div class="fork-label right" hidden><span>Safer,<br>less amber</span><b>&rarr;</b></div>
+    <div class="fade"></div>
     <div class="warn" hidden>The egg is getting away!</div>
     <div class="sheet pause-sheet" hidden>
       <h2>Paused</h2>
@@ -135,6 +145,18 @@ export function makeHud(root: HTMLElement, hooks: HudHooks): Hud {
       hintEl.hidden = !text;
       if (text) hintEl.textContent = text;
     },
+    setFinds(found) {
+      const el = q<HTMLElement>('.finds');
+      el.innerHTML = found.map((f) => `<i class="${f ? 'on' : ''}"></i>`).join('');
+      el.hidden = found.length === 0;
+    },
+    fork(on) {
+      q<HTMLElement>('.fork-label.left').hidden = !on;
+      q<HTMLElement>('.fork-label.right').hidden = !on;
+    },
+    fade(on) {
+      q<HTMLElement>('.fade').classList.toggle('on', on);
+    },
     warn(on) {
       warnEl.hidden = !on;
     },
@@ -153,8 +175,8 @@ export function makeHud(root: HTMLElement, hooks: HudHooks): Hud {
         });
       }
     },
-    showFinish(count, total) {
-      q<HTMLElement>('.tally').textContent = `Amber: ${count} of ${total}`;
+    showFinish(count, total, finds, totalFinds) {
+      q<HTMLElement>('.tally').textContent = `Amber: ${count} of ${total}` + (totalFinds ? `\nHidden finds: ${finds} of ${totalFinds}` : '');
       finishSheet.hidden = false;
     },
     hideFinish() {

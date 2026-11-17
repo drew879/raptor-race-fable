@@ -55,8 +55,11 @@ function eggLaneAt(s) {
 const sym = {
   boulder: (x, y) => `<g class="rock"><ellipse cx="${x}" cy="${y}" rx="15" ry="12"/><path class="lite" d="M${x - 8},${y - 4} q7,-7 15,-2"/></g>`,
   tree: (x, y) => `<g class="tree"><circle class="crown" cx="${x}" cy="${y}" r="15"/><circle class="trunk" cx="${x}" cy="${y}" r="6.5"/></g>`,
-  psittaco: (x, y) =>
-    `<g class="psit"><ellipse cx="${x}" cy="${y}" rx="15" ry="8.5" transform="rotate(-20 ${x} ${y})"/><circle cx="${x + 13}" cy="${y - 8}" r="5.5"/><path class="tail" d="M${x - 13},${y + 5} q-9,5 -12,13"/></g>`,
+  crossing: (x1, x2, y) => {
+    const one = (x) => `<ellipse cx="${f1(x)}" cy="${y}" rx="7.5" ry="4.2"/><circle cx="${f1(x + 8.5)}" cy="${y - 1}" r="3"/><path class="tail" d="M${f1(x - 7)},${y + 0.5} q-5,1 -7,4"/>`;
+    const step = (x2 - x1) / 3;
+    return `<g class="psit">${[0, 1, 2].map((i) => one(x1 + step * (i + 0.45))).join('')}</g>`;
+  },
   log: (x1, x2, y) => `<g class="logc"><rect x="${f1(x1)}" y="${y - 5}" width="${f1(x2 - x1)}" height="10" rx="5"/><circle class="ring" cx="${f1(x1 + 5)}" cy="${y}" r="2.6"/></g>`,
   creek: (x1, x2, y) => {
     let top = `M${f1(x1)},${y - 5}`;
@@ -130,8 +133,8 @@ function strip(sec) {
     o.push(`<path class="island" d="M${left.join(' L')} L${right.reverse().join(' L')} Z"/>`);
     o.push(`<circle class="ginkgo" cx="${X0}" cy="${y(mid)}" r="24"/><circle class="ginkgo-in" cx="${X0}" cy="${y(mid)}" r="7"/>`);
     o.push(`<text class="on-map" x="${X0}" y="${y(mid) + 42}" text-anchor="middle">giant ginkgo</text>`);
-    o.push(`<text class="side-name" x="${GUT_L - 10}" y="${y(i0 + 3)}" text-anchor="end">harder, richer</text>`);
-    o.push(`<text class="side-name" x="${GUT_R + 10}" y="${y(i0 + 3)}">easy</text>`);
+    o.push(`<text class="side-name" x="${GUT_L - 10}" y="${y(i0 + 3)}" text-anchor="end">riskier, more amber</text>`);
+    o.push(`<text class="side-name" x="${GUT_R + 10}" y="${y(i0 + 3)}">safer, less amber</text>`);
   }
 
   // time ticks every five seconds
@@ -176,6 +179,7 @@ function strip(sec) {
     if (row.kind === 'log') o.push(sym.log(x1 + 5, x2 - 5, yy));
     else if (row.kind === 'creek') o.push(sym.creek(x1 - 17, x2 + 17, yy));
     else if (row.kind === 'arch') o.push(sym.arch(x1 + 4, x2 - 4, yy));
+    else if (row.kind === 'crossing') o.push(sym.crossing(x1, x2, yy));
     else if (row.kind === 'hollow') {
       o.push(sym.boulder(laneX(-1, row.s), yy), sym.boulder(laneX(1, row.s), yy), sym.hollow(laneX(0, row.s), yy));
     } else {
@@ -202,8 +206,9 @@ function strip(sec) {
     const p = level.power;
     o.push(sym.power(laneX(p.lane, p.s), y(p.s)));
     o.push(`<text class="power-name" x="${GUT_R + 4}" y="${y(p.s) + 12}">Power-up</text>`);
-    o.push(`<path class="power-span" d="M${GUT_R + 1},${y(p.s) + 18} V${y(p.s + p.lasts * SPEED)}"/>`);
-    o.push(`<text class="kind" x="${GUT_R + 8}" y="${y(p.s + (p.lasts * SPEED) / 2)}">lasts ${p.lasts} s</text>`);
+    o.push(`<path class="power-span" d="M${GUT_R + 1},${y(p.s) + 18} V${y(Math.min(p.s + p.reach, to))}"/>`);
+    o.push(`<text class="kind" x="${GUT_R + 8}" y="${y(p.s + p.reach / 2)}">fans out for ${p.reach} m,</text>`);
+    o.push(`<text class="kind" x="${GUT_R + 8}" y="${y(p.s + p.reach / 2) + 10.5}">about ${f1(p.reach / SPEED)} s</text>`);
   }
 
   // hints, in the left margin beside where they appear
@@ -272,9 +277,9 @@ function planView() {
 const legend = [
   [`<svg viewBox="0 0 36 30">${sym.boulder(18, 15)}</svg>`, 'Boulder', 'go around'],
   [`<svg viewBox="0 0 36 30">${sym.tree(18, 15)}</svg>`, 'Tree', 'go around'],
-  [`<svg viewBox="0 0 36 30">${sym.psittaco(16, 17)}</svg>`, 'Dozing Psittacosaurus', 'go around'],
   [`<svg viewBox="0 0 36 30">${sym.log(4, 32, 15)}</svg>`, 'Fallen log', 'jump'],
   [`<svg viewBox="0 0 36 30">${sym.creek(2, 34, 15)}</svg>`, 'Creek', 'jump'],
+  [`<svg viewBox="0 0 36 30">${sym.crossing(1, 35, 15)}</svg>`, 'Young Psittacosaurus crossing', 'jump'],
   [`<svg viewBox="0 0 36 30">${sym.arch(6, 30, 15)}</svg>`, 'Propped trunk', 'slide'],
   [`<svg viewBox="0 0 36 30">${sym.hollow(18, 15)}</svg>`, 'Hollow log', 'slide'],
   [`<svg viewBox="0 0 36 30">${sym.amber(8, 15)}${sym.amber(18, 15)}${sym.amber(28, 15)}</svg>`, 'Amber', 'the good line'],
@@ -428,9 +433,9 @@ svg text { font-family: var(--body); fill: var(--ink); }
 
 <main class="page">
   <div class="top">
-    <span class="eyebrow">Raptor Race · Level 1 · proposed layout</span>
+    <span class="eyebrow">Raptor Race · Level 1 · the layout in the game</span>
     <h1>Jehol Forest course map</h1>
-    <p class="lede">The whole chase, top to bottom, drawn to scale: one second of running is ${f1(SPEED * K)} pixels of trail. Nothing here is built yet. It gets built once you sign off.</p>
+    <p class="lede">The whole chase, top to bottom, drawn to scale: one second of running is ${f1(SPEED * K)} pixels of trail. The game reads its level from the same file as this map, so what you see here is what plays.</p>
   </div>
 
   <div class="facts">
@@ -460,6 +465,7 @@ svg text { font-family: var(--body); fill: var(--ink); }
     <table>${checks.map((c) => `<tr><td>${esc(c.rule)}</td><td><span class="ok">${c.ok ? 'yes' : 'NO'}</span> · ${esc(c.value)}</td></tr>`).join('')}
       <tr><td>One thing taught at a time</td><td><span class="ok">yes</span> · lanes, jumps, slides, fork, power-up, mix</td></tr>
       <tr><td>Hidden finds visible early enough to decide</td><td><span class="ok">yes</span> · each glows pale blue from 30 m, about 4 s</td></tr>
+      <tr><td>The fork is explained before you have to choose</td><td><span class="ok">yes</span> · both side labels show for ${f1((level.island[0] - level.labelsFrom) / SPEED)} s before the rock</td></tr>
     </table>
   </div>
 
@@ -474,18 +480,18 @@ svg text { font-family: var(--body); fill: var(--ink); }
       <tr><td>Egg lost, back to the last checkpoint</td><td>${EGG.lostAt} m</td></tr>
       <tr><td>Fork: amber on the hard side against the easy side</td><td>${st.amberLeft} to ${st.amberRight}</td></tr>
     </table>
-    <p class="note">A bump never ends the run by itself. You only lose the egg by letting it get ${EGG.lostAt} m ahead: from the start that takes four bumps close together, late in a clean run six or more. The level always ends at the clearing. The further behind you are, the faster you gain, so a bad patch can be won back.</p>
+    <p class="note">A bump never ends the run by itself. You only lose the egg by letting it get ${EGG.lostAt} m ahead: from the start that takes four bumps close together, late in a clean run six or more. In test runs a player who misses about a third of the obstacles still finishes, and one who misses half loses the egg. Then the picture dims and you start again from the last checkpoint with your amber and finds kept. The level always ends at the clearing. The further behind you are, the faster you gain, so a bad patch can be won back.</p>
   </div>
 
   <div class="block">
     <h2>Where it stands</h2>
     <ol class="asks">
-      <li><b>Order and pacing: agreed.</b></li>
-      <li><b>Power-up: Fan out, agreed.</b> Take the golden ginkgo leaf and the runner spreads its fans for 7.5 seconds, long enough to sweep in every piece of amber on the drop.</li>
-      <li><b>The fork: how it works.</b> The path widens. The two side lanes swing out round the rock by themselves and come back together after it, so the runner follows its lane with no swipe. The one choice is which side lane you are in when you get there. Stay in the middle and you bump the rock and get shunted to the easy side.</li>
-      <li><b>Hollow log: agreed</b> and built.</li>
-      <li><b>Dozing Psittacosaurus: in, on trial.</b></li>
-      <li><b>Losing the egg: agreed.</b> You gain faster the further behind you are.</li>
+      <li><b>Busier after the build 25 playtest.</b> ${st.movesEasy} moves on the safe side of the fork and ${st.movesHard} on the risky side, up from 21 and 23. Most of the long empty stretches are gone, and moves now come about a second and a half apart.</li>
+      <li><b>The fork lives up to its promise.</b> Left is five moves in a row (jump, slide, jump, slide, jump) for ${st.amberLeft} pieces of amber and a hidden find. Right is two logs and ${st.amberRight} pieces. Both labels come up ${level.island[0] - level.labelsFrom} m before the rock, about ${f1((level.island[0] - level.labelsFrom) / SPEED)} s ahead.</li>
+      <li><b>Young Psittacosaurus cross the trail.</b> Three of them, walking in a file across all three lanes: a jump. The dozing adult stays as scenery beside the trail.</li>
+      <li><b>Fan out is measured in meters now.</b> The fans stay out for ${level.power.reach} m, about ${f1(level.power.reach / SPEED)} s at speed ${SPEED}, which ends just past the last amber on the drop at any speed setting.</li>
+      <li><b>Built this round:</b> hidden finds, checkpoints and losing the egg.</li>
+      <li><b>Still to come:</b> the opening at the nest, the scoop and hatching, sound and music, and the title, results and Field Journal screens.</li>
     </ol>
   </div>
 </main>

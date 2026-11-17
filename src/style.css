@@ -463,3 +463,69 @@ body {
   opacity: 1;
   padding: 6px 4px;
 }
+
+/* ---------- hidden finds, the fork's labels, and the dim between tries ---------- */
+.chip.finds {
+  gap: 6px;
+  padding: 0 12px;
+}
+.chip.finds[hidden] {
+  display: none;
+}
+.chip.finds i {
+  width: 11px;
+  height: 11px;
+  transform: rotate(45deg);
+  border-radius: 2px;
+  border: 1.5px solid #8fd8ff;
+  opacity: 0.55;
+}
+.chip.finds i.on {
+  background: #8fd8ff;
+  opacity: 1;
+  box-shadow: 0 0 8px #8fd8ff;
+}
+.fork-label {
+  position: absolute;
+  top: 34%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 18px;
+  font-weight: 700;
+  font-size: 17px;
+  line-height: 1.2;
+  color: var(--ui-text);
+  background: color-mix(in srgb, var(--ui-panel) 88%, transparent);
+  border: 1.5px solid color-mix(in srgb, var(--ui-accent) 70%, transparent);
+  pointer-events: none !important;
+}
+.fork-label[hidden] {
+  display: none;
+}
+.fork-label b {
+  font-size: 26px;
+  color: var(--ui-accent);
+}
+.fork-label.left {
+  left: calc(var(--sal) + 10px);
+}
+.fork-label.right {
+  right: calc(var(--sar) + 10px);
+  text-align: right;
+}
+.sheet .tally {
+  white-space: pre-line;
+}
+.fade {
+  position: absolute;
+  inset: 0;
+  background: #0c1412;
+  opacity: 0;
+  transition: opacity 0.45s;
+  pointer-events: none !important;
+}
+.fade.on {
+  opacity: 0.92;
+}

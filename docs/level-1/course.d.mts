@@ -27,8 +27,9 @@ export interface Level {
   finds: { s: number; lane: number; n: number; high?: boolean }[];
   hints: { s: number; text: string }[];
   checkpoints: number[];
-  power: { s: number; lane: number; lasts: number } | null;
+  power: { s: number; lane: number; reach: number } | null;
   island: [number, number] | null;
+  labelsFrom: number | null;
   end: number;
   chaseEnd: number;
   total: number;
