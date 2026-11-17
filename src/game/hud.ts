@@ -17,6 +17,8 @@ export interface HudHooks {
   onFork(mode: number): void;
   /** "Try again" on the sheet that says the egg got away. */
   onRetry(): void;
+  /** "Next" on the Field Journal card that closes the level. */
+  onJournalNext(): void;
   /** A short note on how sharp the picture is being drawn, for the pause sheet's small print. */
   quality?(): string;
   /** What one frame costs right now, measured after the sheet is up. */
@@ -40,6 +42,12 @@ export interface Hud {
   fade(on: boolean): void;
   showLost(): void;
   hideLost(): void;
+  /** The small "Tap to skip" under the opening. */
+  skip(on: boolean): void;
+  /** Hide the counters and the pause button while a scene plays. */
+  clean(on: boolean): void;
+  showJournal(): void;
+  hideJournal(): void;
   hint(text: string | null): void;
   warn(on: boolean): void;
   setPaused(paused: boolean): void;
@@ -60,6 +68,13 @@ export function makeHud(root: HTMLElement, hooks: HudHooks): Hud {
     <div class="fork-label left" hidden><b>&larr;</b><span>Riskier,<br>more amber</span></div>
     <div class="fork-label right" hidden><span>Safer,<br>less amber</span><b>&rarr;</b></div>
     <div class="fade"></div>
+    <div class="skip" hidden>Tap to skip</div>
+    <div class="journal" hidden>
+      <small>Field Journal</small>
+      <p>Caudipteryx was in Oviraptor's family.</p>
+      <p>Fossils show dinosaurs from this family sitting on their nests with their arms over the eggs, just like birds.</p>
+      <button class="big next">Next</button>
+    </div>
     <div class="warn" hidden>The egg is getting away!</div>
     <div class="sheet pause-sheet" hidden>
       <h2>Paused</h2>
@@ -74,9 +89,9 @@ export function makeHud(root: HTMLElement, hooks: HudHooks): Hud {
       <div class="links"><a class="link" href="?mode=close">Close-up</a><a class="link" href="?mode=bench">Speed test</a></div>
       <small class="about">Rough test run &middot; build ${BUILD}</small>
     </div>
-    <div class="sheet start-sheet">
-      <h2>Rough test run</h2>
-      <p>Swipe left or right to change lanes.<br>Swipe up to jump.<br>Swipe down to slide.</p>
+    <div class="sheet start-sheet low">
+      <h2>Raptor Race</h2>
+      <p>Jehol Forest</p>
       <button class="big go">Run!</button>
     </div>
     <div class="sheet lost-sheet" hidden>
@@ -84,7 +99,7 @@ export function makeHud(root: HTMLElement, hooks: HudHooks): Hud {
       <p>Every bump lets it roll further ahead.</p>
       <button class="big retry">Try again</button>
     </div>
-    <div class="sheet finish-sheet" hidden>
+    <div class="sheet finish-sheet low" hidden>
       <h2>You caught the egg!</h2>
       <p class="tally"></p>
       <button class="big again">Run again</button>
@@ -117,6 +132,8 @@ export function makeHud(root: HTMLElement, hooks: HudHooks): Hud {
   press(q('.restart'), hooks.onRestart);
   press(q('.again'), hooks.onRestart);
   press(q('.retry'), hooks.onRetry);
+  press(q('.next'), hooks.onJournalNext);
+  const skipEl = q<HTMLElement>('.skip');
   const showSpeed = () => (speedEl.textContent = speed.toFixed(1));
   press(q('.slower'), () => {
     speed = Math.max(4, speed - 0.5);
@@ -188,6 +205,18 @@ export function makeHud(root: HTMLElement, hooks: HudHooks): Hud {
         el.hidden = !on;
         el.classList.toggle('solid', solid);
       }
+    },
+    skip(on) {
+      if (skipEl.hidden === on) skipEl.hidden = !on;
+    },
+    clean(on) {
+      root.classList.toggle('clean', on);
+    },
+    showJournal() {
+      q<HTMLElement>('.journal').hidden = false;
+    },
+    hideJournal() {
+      q<HTMLElement>('.journal').hidden = true;
     },
     showLost() {
       q<HTMLElement>('.lost-sheet').hidden = false;

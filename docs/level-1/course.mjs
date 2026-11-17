@@ -156,7 +156,7 @@ export const SECTIONS = [
     slope: -0.02,
     turn: 0.2,
     teaches: 'The egg slows on the moss. Swipe up to scoop it. Then the hatching.',
-    hints: [{ at: 2, text: 'Swipe up to scoop the egg!' }],
+    hints: [{ at: 7, text: 'Swipe up to scoop the egg!' }], // where the runner starts to slow, 9 m short of the egg
     rows: [],
     amber: [A(1, 9, 0)],
     rest: 16, // where the egg comes to rest

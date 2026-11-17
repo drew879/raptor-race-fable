@@ -4,10 +4,10 @@ Decisions and progress. Read `raptor-race-brief.md` first; it's the source of tr
 
 ## Where things stand
 
-- **The game runs the Level 1 layout and the chase can be lost** (build 27, 2026-11-16). `src/game/course.ts` reads `docs/level-1/course.mjs`, so the map and the game can't drift apart. Open the game and you are on the level.
-- **In and working:** all nine sections; seven obstacle kinds (tree, boulder, log, creek, propped trunk, hollow log, young Psittacosaurus crossing); the fork round the island, with a label on each side of the screen; the Fan out power-up (50 m of trail); the three hidden finds; losing the egg, which ends the level; the first-time hints; the egg's dodges through all of it.
-- **Not built yet:** the opening (nest, clutch, the egg tipping out) and the ending (scoop, hatching, Field Journal moment); sounds and music; title, results and journal screens. The hidden finds are collected and counted, but the journal pages they unlock don't exist yet.
-- **First-pass art to come back to:** the Psittacosaurus, young and adult (fine in play, rough up close); the island's rock (plain); the creek's stones; the hidden finds (a pale blue piece of amber with nothing inside it yet, and the brief describes inclusions).
+- **Level 1 plays from the nest to the hatching** (build 28, 2026-11-16). `src/game/course.ts` reads `docs/level-1/course.mjs`, so the map and the game can't drift apart.
+- **In and working:** the opening on the nest; all nine sections; seven obstacle kinds (tree, boulder, log, creek, propped trunk, hollow log, young Psittacosaurus crossing); the fork round the island, with a label on each side of the screen; the Fan out power-up (50 m of trail); the three hidden finds; losing the egg, which ends the level; the first-time hints; the egg's dodges through all of it; the scoop, the hatching and a Field Journal card.
+- **Not built yet:** sounds and music; the title, results and journal screens proper (the start sheet, the results sheet and the one journal card are stand-ins). The hidden finds are collected and counted, but the journal pages they unlock don't exist yet.
+- **First-pass art to come back to:** the Psittacosaurus, young and adult (fine in play, rough up close); the island's rock (plain); the creek's stones; the hidden finds (a pale blue piece of amber with nothing inside it yet, and the brief describes inclusions); the nest (a smooth ring of earth: no twigs or leaf litter); the clearing (it looks like the rest of the trail: no moss, no opening in the trees); the sitting pose up close (the feet lie out in front).
 - **Decided:** look B; chick Slate; egg Lively/Wild/Wilder all offered for now ("eventually we can just pick one"; Wild is the default, Wilder is "Fun!"); body turn "perfect"; bumps "honestly perfect"; hollow log "reads well and enjoyed the view"; 2x edge smoothing looks clean.
 - **Drew's playtest of the first creek:** "Doesn't read very well, in large part because it doesn't appear to continue on the left and right side of the trail (the bumps obscure it)." He wanted water clearly flowing left to right and continuous either side. Rebuilt: see "Creek" under the level notes.
 - Live build: https://drew879.github.io/raptor-race-fable/ . Close-up: `?mode=close`. Speed test: `?mode=bench`.
@@ -26,6 +26,18 @@ What changed:
 - **Losing the egg (as first built; changed in Round 4):** at a 26 m lead the hint says "The egg got away!", the runner stops, the picture dims, and `tryAgain()` puts the runner at the last checkpoint it passed (or the nest) with the egg 15 m ahead. Amber and finds are kept, and the leaf comes back if it is ahead again. `?nolose=1` turns losing off for test runs.
 - **Two bugs fixed on the way:** the egg clipped a boulder where two go-around rows sit 3 m apart (its lane now has to be open for every go-around row within 6.5 m), and the crossing was being judged as something to go around.
 - **Test runs** (bots, in the browser): perfect play on either side of the fork finishes with no bumps (right side 79.4 s). A bot that misses 20 to 35% of the obstacles finishes with 7 to 9 bumps and never loses the egg (worst lead about 25 m). One that misses half loses it. With no input at all the egg is lost at the fourth boulder in Fern hollow, before the first checkpoint, so that restart is from the nest.
+
+### The opening and the ending (build 28, 2026-11-16)
+Plan approved by Drew ("Both sound good"). Code: `src/game/story.ts` builds the nest, the true-shaped egg with its two halves, and loads the chick; the timelines live in `src/game/run.ts` (`INTRO`, `HATCH`, `stepEnding`, `drawNestEgg`, `drawCradle`).
+- **The nest** is at the runner's start, on the trail: a ring of earth built in code over the ground, with nine eggs in pairs (long axes pointing in, tilted up at the inner end, part buried, as in the fossils of its relatives) and a tenth place for ours on the uphill side. The parent sits in the middle (`sit` on the rig). The forest keeps 2.7 m clear of it.
+- **Start screen:** the game loads to the nest with the parent looking about, a sheet low on the screen ("Raptor Race", "Jehol Forest", "Run!"), and the counters hidden.
+- **Opening, 5.2 s, tap to skip:** three taps from inside rock our egg and spread its cracks (0.55, 1.15, 1.7 s) while the parent looks down at it; the last throws it out over the rim (2.2 to 2.68 s); it lands on the trail and from there it is the ordinary chase egg, held to a gentle start; the parent gets up (2.35 s) and runs (3.35 s); the view swings from beside the nest to behind the runner (2.1 to 4.2 s); swipes count from 4.2 s. Every restart plays it again.
+- **The egg's size:** in the nest and in the parent's care it is 9 cm long (`SCENE_EGG`; the best guess for the real thing is about 8 cm). In the chase it is drawn 56 cm long so it reads from 15 m back. It grows over its first 8.5 m of rolling, while it is going away from the camera, and shrinks again during the scoop while the camera comes in. Neither change shows as a change.
+- **Ending:** from 9 m short of the egg the runner slows and the hint says "Swipe up to scoop the egg!" (in the clearing a swipe up is the scoop, not a jump). It pulls up 1.3 m short and waits; after 8 s it scoops by itself. The scoop is one hop over the egg, turning to face back up the trail, and down on folded legs with the egg in front, leaning in over it. The camera comes down from behind to a low place up the trail, so the parent faces it with the egg between. Then three taps, the top of the shell comes off and lands beside it, and the chick comes up out of the cup, looks about, and looks up at its parent. Five seconds after the parent settles, the Field Journal card comes up; "Next" gives the results sheet.
+- **The journal card says:** "Caudipteryx was in Oviraptor's family. Fossils show dinosaurs from this family sitting on their nests with their arms over the eggs, just like birds." (Both checked earlier: Caudipteryx is an early oviraptorosaur; several oviraptorids have been found on their nests in that pose.)
+- **The chick** (1.9 MB) is fetched 1.2 s after the first picture is up, and it and the shell pieces are compiled then, so nothing loads or compiles during play or at the hatching.
+- **For testing:** with `?nopause=1` the opening is skipped and the scoop happens by itself, as the bots need; add `&intro=1` and `&ending=1` to get the scenes. `rrGame.introCam`, `endCam` and `endPose` hold the views and poses and can be changed live from the console.
+- **Checked:** stepped through both scenes in the browser at phone size; skip, Next, Run again (the opening replays). Bots after the change: perfect play on both sides still no bumps and no overlaps. Not seen on the phone.
 
 ### Round 4 (build 27, 2026-11-16), from Drew's playtest of build 26
 What he said: busy enough "for a first level"; the fork's left side is "worth it and not too hard"; the crossing reads "much better"; the fan is "about right"; boulders fixed ("Nope, nice job"); finds are easy enough to spot. Three changes asked for:
@@ -177,11 +189,12 @@ Build numbers here are the ones shown on the phone.
 **For the story scenes later** (from the same fact check): oviraptorosaur nests held many eggs in pairs, in rings, blunt ends up; adults have been found sitting on them with arms spread round the edge; which parent sat is unknown (possibly the father). The game says "parent", which is right. Drew chose a clutch for the opening nest (2026-11-16), with ours the one that rolls away.
 
 ### Not yet verified on the real phone
-- Build 27: the fork labels lower down, in both modes; the lost-egg sheet and the restart from the nest.
+- Builds 27 and 28: the fork labels lower down, in both modes; the lost-egg sheet and the restart from the nest; the opening and the ending, start to finish, and whether they hold the frame rate.
 
 ### Next
-- The opening and ending scenes (approved), then sound and music, and the screens around the run.
-- Open with Drew: which fork-label mode to keep, and if Pause, whether it should happen every run or only the first few.
+- Drew and Aidan play build 28. Questions out: the opening, the scoop and hatching, the journal card, which fork-label mode to keep, and how losing the egg feels now.
+- Then: sound and music, and the screens around the run (title, results, Field Journal).
+- Open with Drew: if Pause stays for the fork labels, whether it should happen every run or only the first few.
 
 ## How the code is laid out
 
@@ -192,7 +205,7 @@ Build numbers here are the ones shown on the phone.
 - `src/render/noisetex.ts` one small tiling noise texture, read by the paint shader, the finishing pass, mist and shafts.
 - `src/render/shadow.ts` sun shadow map. Trunks, tree ferns and everything low cast real shadows; the high canopy's shade is painted as dappled light so it can be art-directed.
 - `src/world/` track (the trail's centerline from segments of length, turn and slope), terrain (a hillside ribbon in trail space: s along, u across), assets (model kits, instancing), sky (ridges, volcano), fx (mist, shafts, glows, contact shadows).
-- `src/game/` the run: `course.ts` (the test course), `run.ts` (state, rules, camera), `flora.ts` (forest streaming), `input.ts` (swipes), `hud.ts` (controls and sheets).
+- `src/game/` the run: `course.ts` (the level, read from `docs/level-1/course.mjs`), `run.ts` (state, rules, camera, and the opening and ending), `story.ts` (the nest, the shell and the chick), `flora.ts` (forest streaming), `input.ts` (swipes), `hud.ts` (controls and sheets).
 - `src/hero/rig.ts` poses the hero's skeleton in code. `src/herolab/` is its test view. `src/closeup/` is the turntable for the runner, egg and chick.
 - `src/lookdev/` the concept viewer scene and its controls. This goes away or moves behind a debug flag once the game proper starts.
 - `src/app/` build number and self-update, full-screen sizing, the sharpness governor (`quality.ts`) and the on-device speed test (`bench.ts`).

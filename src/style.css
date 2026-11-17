@@ -537,3 +537,74 @@ body {
 .fade.on {
   opacity: 0.92;
 }
+
+/* ---------- the opening and the ending ---------- */
+/* low on the screen, so the nest shows above it */
+.sheet.low {
+  top: auto;
+  bottom: calc(var(--sab) + 7%);
+  transform: translateX(-50%);
+}
+.skip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--sab) + 26px);
+  transform: translateX(-50%);
+  padding: 7px 14px;
+  border-radius: 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ui-text);
+  background: color-mix(in srgb, var(--ui-panel) 55%, transparent);
+  pointer-events: none !important;
+}
+.skip[hidden],
+.journal[hidden] {
+  display: none;
+}
+/* a page of the Field Journal: paper and ink, where everything else in play is dark glass */
+.journal {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--sab) + 5%);
+  transform: translateX(-50%) rotate(-0.6deg);
+  width: min(330px, calc(100vw - 44px));
+  padding: 18px 20px 16px;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  color: var(--ink);
+  background: linear-gradient(175deg, #f8f0de, var(--paper) 55%, #eadfc6);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(90, 70, 40, 0.18);
+  animation: journal-in 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.1);
+}
+@keyframes journal-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(40px) rotate(2deg);
+  }
+}
+.journal small {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #8a5a1c;
+}
+.journal p {
+  margin: 0;
+  font-size: 19px;
+  line-height: 1.35;
+}
+.journal .big {
+  margin-top: 4px;
+  height: 50px;
+  border-radius: 12px;
+  border: none;
+  font: inherit;
+  font-weight: 700;
+  font-size: 19px;
+  color: #1c1a17;
+  background: var(--amber);
+}

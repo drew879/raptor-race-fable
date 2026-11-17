@@ -491,7 +491,8 @@ svg text { font-family: var(--body); fill: var(--ink); }
       <li><b>Young Psittacosaurus cross the trail.</b> Three of them, walking in a file across all three lanes: a jump. The dozing adult stays as scenery beside the trail.</li>
       <li><b>Fan out is measured in meters now.</b> The fans stay out for ${level.power.reach} m, about ${f1(level.power.reach / SPEED)} s at speed ${SPEED}, which ends just past the last amber on the drop at any speed setting.</li>
       <li><b>Losing the egg ends the level.</b> A sheet says the egg got away and Try again starts the level over. The checkpoints stay marked here in case restarts from them are wanted later.</li>
-      <li><b>Still to come:</b> the opening at the nest, the scoop and hatching, sound and music, and the title, results and Field Journal screens.</li>
+      <li><b>The opening and the ending are in.</b> The level opens on the nest: the egg cracks, tips out and rolls off, and the parent gets up and gives chase. In the clearing a swipe up scoops the egg, the parent settles round it, and the chick peeks out.</li>
+      <li><b>Still to come:</b> sound and music, and the title, results and Field Journal screens.</li>
     </ol>
   </div>
 </main>
