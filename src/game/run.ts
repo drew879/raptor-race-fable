@@ -56,15 +56,11 @@ const SLIDE_TIME = 0.62;
 /**
  * How long the egg is, in meters. It is one size everywhere, in the nest, in the chase and in
  * the parent's care, so it never seems to change. (The real egg was probably about 8 cm long;
- * ours is drawn large so it can be followed from far behind.) Two sizes to choose between for
- * now, in the pause sheet.
+ * ours is drawn large so it can be followed from far behind.) Drew tried 34 and 45 cm in build
+ * 30 and chose 34: the larger read better in the chase but was "too comically large next to
+ * the dinosaur in the nest".
  */
-export const EGG_SIZES = ['Medium', 'Large'];
-const EGG_LENGTHS = [0.34, 0.45];
-const savedSize = localStorage.getItem('rr-eggsize1');
-// (Large unless told otherwise: it is the nearer to how the chase has looked all along)
-const EGG_PICK = savedSize === null ? 1 : THREE.MathUtils.clamp(Number(savedSize) || 0, 0, EGG_LENGTHS.length - 1);
-const EGG_LEN = EGG_LENGTHS[EGG_PICK];
+const EGG_LEN = 0.34;
 const EGG_R = EGG_WAIST * EGG_LEN; // half its width
 const EGG_HALF = 0.5 * EGG_LEN; // half its length
 const EGG_G = 9.5;
@@ -129,11 +125,13 @@ const END = { chase: 0, shelf: 1, dash: 2, dive: 3, caught: 4, turn: 5, hatch: 6
  * where it will be caught, `catch` short of the edge, and comes down on it there. The last
  * `slowFrom` meters run in slow motion. A swipe with less than `late` meters to go is too late.
  */
-const FINALE = { park: 9, near: 3.2, v0: 2.6, a: 4.6, catch: 0.4, dive: 2.6, late: 0.8, slowFrom: 4.6, slow: 0.45 };
+const FINALE = { park: 9, near: 3.2, v0: 2.6, a: 5.2, catch: 0.4, dive: 2.6, late: 0.8, slowFrom: 4.6, slow: 0.5 };
 const PARK_S = END_S - FINALE.park;
 const CATCH_S = END_S - FINALE.catch;
 /** How far in front of its hips the parent holds the egg, how far back from the edge they settle, and how long turning round takes. */
 const HOLD = 0.3 + EGG_LEN * 0.55;
+/** At the catch it is pinned further out, beyond the beak, so the head is never in it. */
+const CATCH_HOLD = HOLD + 0.22;
 const SETTLE_BACK = 1.3;
 const TURN_TIME = 1.15;
 /** The hatching, in seconds from when the parent has settled: taps, the top coming off, and the journal card. */
@@ -231,7 +229,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       (ps > END_S - 27 && Math.abs(pu) > spurHalf(ps, END_S) - 1),
   });
   scene.add(flora.group);
-  scene.add(makeOverlook(terrain, small, END_S));
+  scene.add(makeOverlook(terrain, small, trees, END_S));
 
   const basisAt = (s: number, follow = 1): THREE.Quaternion => {
     const t = track.sample(s);
@@ -453,10 +451,14 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   materialFor('egg').uniforms.uGlow.value.set('#3fd0c0');
   const eggShadow = makeContactShadow(0.7, 0.52, 0.55);
   scene.add(eggShadow);
+  // a soft light round it in the chase, so an egg this size can still be picked out from far behind
+  const eggGlow = makeGlow('#5fe0cf', 1.25, 0.26);
+  eggGlow.renderOrder = 3;
+  scene.add(eggGlow);
 
   // ---------------------------------------------------------------- the nest, and what the hatching needs
   const nestBasis = basisAt(START_S, 0);
-  const nest = makeNest(terrain, props, START_S, 0, nestBasis, EGG_LEN);
+  const nest = makeNest(terrain, props, small, START_S, 0, nestBasis, EGG_LEN);
   scene.add(nest.group);
   /** The opening is shown once; starting again in the same visit goes straight to the chase. */
   let introSeen = false;
@@ -769,17 +771,6 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
         /* private mode */
       }
     },
-    eggSizes: EGG_SIZES,
-    eggSize: EGG_PICK,
-    onEggSize: (pick) => {
-      // the nest and everything in it are built to the egg's size, so start again with the new one
-      try {
-        localStorage.setItem('rr-eggsize1', String(pick));
-      } catch {
-        /* private mode */
-      }
-      location.reload();
-    },
     // (a miss at the edge is tried again from a little way back; losing the egg on the way down starts the level over)
     onRetry: () => (st.end === END.miss ? tryAgain(RETRY_S) : LOST_RESTART === 'checkpoint' ? tryAgain() : reset()),
     onJournalNext: () => {
@@ -1052,7 +1043,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       st.eggY *= Math.max(0, 1 - dt * 9);
       rollEgg(dt, true);
       const k = 1 - (1 - e) * (1 - e);
-      st.s = L(st.fromS, CATCH_S - HOLD, k);
+      st.s = L(st.fromS, CATCH_S - CATCH_HOLD, k);
       st.u = L(st.fromU, st.eggU, k);
       st.lane = Math.round(st.u / LANE);
       st.y = 0.36 * 4 * e * (1 - e) * Math.min(1, st.diveT / 0.3);
@@ -1060,7 +1051,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       st.air += ((e < 0.55 ? 1 : 0) - st.air) * ease;
       st.slide += ((e > 0.4 ? 1 : 0) - st.slide) * ease;
       st.fan += (1 - st.fan) * ease;
-      st.speed = (CATCH_S - HOLD - st.fromS) / st.diveT;
+      st.speed = (CATCH_S - CATCH_HOLD - st.fromS) / st.diveT;
       st.phase += dt * 1.2;
       st.slow = FINALE.slow;
       if (e >= 1) {
@@ -1102,8 +1093,10 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       st.turn = -Math.PI * k;
       st.s = L(st.fromS, END_S - SETTLE_BACK, k);
       st.u = st.fromU;
-      cradle.s = st.s + HOLD * Math.cos(st.turn);
-      cradle.u = st.u - HOLD * Math.sin(st.turn);
+      // (gathered in from where it was pinned to where it is carried, against the breast)
+      const hold = L(CATCH_HOLD, HOLD, smoothstep(0, 0.35, e));
+      cradle.s = st.s + hold * Math.cos(st.turn);
+      cradle.u = st.u - hold * Math.sin(st.turn);
       st.slide += ((e < 0.12 ? 1 : 0) - st.slide) * ease;
       st.fan += ((e < 0.75 ? 0.55 : 0) - st.fan) * ease;
       st.sit = smoothstep(TURN_TIME * 0.75, TURN_TIME * 1.3, t);
@@ -1667,7 +1660,8 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   const endCam = { pos: [-2.4, 0.9, 0.7], look: [0.3, -0.1, 0.25], fov: 38, near: [-2.0, 0.95, 0.5], nearLook: [0.25, -0.1, 0.2], nearFov: 34 };
   // The catch: beside the last of the ground on the valley side, low, looking along the edge. [meters from the edge, across, height]
   const catchCam = { pos: [-2.7, 2.3, 0.7], look: [-0.5, 0, 0.22], fov: 46 };
-  const endPose = { pitch: -1.4, bow: 0.16, chickFrom: 0.34, chickTo: 0.46, chickLow: -0.31, chickHigh: 0.2, chickSit: 0.3, chickYaw: Math.PI * 0.72 };
+  // (the chick: how big it is against the egg as it starts and ends, where its hips ride along the cup's middle as fractions of the egg's length from its center, how high its hips are in its own measure, how far it sits up, and which way it faces)
+  const endPose = { pitch: -1.4, bow: 0.16, chickFrom: 0.4, chickTo: 0.56, chickLow: -0.42, chickHigh: 0.1, chickHip: 0.03, chickTilt: 0.8, chickSit: 1, chickYaw: Math.PI * 0.72 };
   /** 0 before a, 1 after b, and gentle at both ends in between. */
   const smoother = (a: number, b: number, x: number) => {
     const k = THREE.MathUtils.clamp((x - a) / (b - a), 0, 1);
@@ -1758,16 +1752,24 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     const up = st.end > END.hatch ? 1 : smoothstep(0.1, 0.95, a);
     const c = chick;
     c.group.visible = true;
-    c.group.scale.setScalar(c.size * THREE.MathUtils.lerp(endPose.chickFrom, endPose.chickTo, up));
-    terrain.place(cradle.s + 0.04 * EGG_LEN, cradle.u - 0.04 * EGG_LEN, THREE.MathUtils.lerp(endPose.chickLow, endPose.chickHigh, up) * EGG_LEN, c.group.position);
-    c.group.quaternion.copy(basisAt(cradle.s, 0)).multiply(heroYaw.setFromAxisAngle(upAxis, endPose.chickYaw));
+    const size = c.size * THREE.MathUtils.lerp(endPose.chickFrom, endPose.chickTo, up);
+    c.group.scale.setScalar(size);
+    // It comes up sitting upright, as a chick does out of a shell: body on end, head on top. Its
+    // hips ride up the middle of the cup, so the head comes out in the middle of the opening.
+    c.group.quaternion
+      .copy(basisAt(cradle.s, 0))
+      .multiply(heroYaw.setFromAxisAngle(upAxis, endPose.chickYaw))
+      .multiply(heroYaw.setFromAxisAngle(rightAxis, endPose.chickTilt));
+    sceneAxis.set(0, 1, 0).applyQuaternion(sceneQ);
+    c.group.position.copy(tmp).addScaledVector(sceneAxis, THREE.MathUtils.lerp(endPose.chickLow, endPose.chickHigh, up) * EGG_LEN);
+    c.group.position.sub(scenePos.set(0, endPose.chickHip * size, 0).applyQuaternion(c.group.quaternion));
     const toParent = st.end > END.hatch ? 1 : smoothstep(1.5, 2.1, a);
     const cs = c.state;
     cs.idle = st.sceneT * 1.6;
     cs.blink = Math.max(blinkAt(st.sceneT, 0.61), a < 0.5 ? 1 - a / 0.5 : 0);
     cs.sit = endPose.chickSit;
     cs.lookYaw = THREE.MathUtils.lerp(0.8, -0.95, toParent) + 0.08 * Math.sin(st.sceneT * 2.1);
-    cs.lookPitch = THREE.MathUtils.lerp(0.15, 0.6, toParent) + 0.05 * Math.sin(st.sceneT * 1.7);
+    cs.lookPitch = THREE.MathUtils.lerp(0.15, 0.6, toParent) - endPose.chickTilt * 0.8 + 0.05 * Math.sin(st.sceneT * 1.7);
     const peep = (st.sceneT * 0.9) % 1;
     cs.beak = up > 0.9 && peep < 0.16 ? Math.sin((peep / 0.16) * Math.PI) * 0.8 : 0;
     c.rig.pose(cs);
@@ -1830,7 +1832,8 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       pitchTo = -0.9; // after the egg, over the edge
     } else if (st.end >= END.dive) {
       const settled = st.end > END.turn || (st.end === END.turn && st.endT > TURN_TIME);
-      pitchTo = settled ? endPose.pitch + 0.06 * Math.sin(st.sceneT * 1.3) : -0.45;
+      // head up over the egg while it is pinned and carried; down to it once they have settled
+      pitchTo = settled ? endPose.pitch + 0.06 * Math.sin(st.sceneT * 1.3) : st.end === END.turn ? 0 : 0.5;
       yawTo = settled ? 0.1 * Math.sin(st.sceneT * 0.7) : 0;
       // a soft call down to the chick once it is out
       const out = st.end > END.hatch || (st.end === END.hatch && st.endT > HATCH.pop + 1.6);
@@ -1885,6 +1888,8 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       (eggShadow.material as THREE.ShaderMaterial).uniforms.uStrength.value = 0.55 * (1 - Math.min(0.75, st.eggY * 1.6));
     }
 
+    eggGlow.position.copy(egg.position);
+    eggGlow.visible = egg.visible && st.started && (st.introT < 0 || st.introT >= INTRO.roll) && st.end < END.caught;
     // the dozing Psittacosaurus breathes, and lifts its head to watch the runner go by
     for (const f of finds) {
       f.gem.rotation.y = st.clock * 1.4 + f.s;

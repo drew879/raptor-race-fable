@@ -12,10 +12,6 @@ export interface HudHooks {
   speed: number;
   eggModes: string[];
   eggMode: number;
-  eggSizes: string[];
-  eggSize: number;
-  /** Picking another size starts the game again, since the nest is built to it. */
-  onEggSize(pick: number): void;
   /** "Try again" on the sheet that says the egg got away. */
   onRetry(): void;
   /** "Next" on the Field Journal card that closes the level. */
@@ -87,7 +83,6 @@ export function makeHud(root: HTMLElement, hooks: HudHooks): Hud {
         <div class="stepper"><button class="slower" aria-label="Slower">&minus;</button><b class="speed"></b><button class="faster" aria-label="Faster">+</button></div>
       </div>
       <div class="setting"><span>Egg</span><div class="tabs words egg-tabs"></div></div>
-      <div class="setting"><span>Egg size</span><div class="tabs words size-tabs"></div></div>
       <div class="links"><a class="link" href="?mode=close">Close-up</a><a class="link" href="?mode=bench">Speed test</a></div>
       <small class="about">Rough test run &middot; build ${BUILD}</small>
     </div>
@@ -162,16 +157,6 @@ export function makeHud(root: HTMLElement, hooks: HudHooks): Hud {
   });
   markEgg(hooks.eggMode);
 
-  const sizeTabs = q<HTMLElement>('.size-tabs');
-  hooks.eggSizes.forEach((name, i) => {
-    const b = document.createElement('button');
-    b.textContent = name;
-    b.classList.toggle('on', i === hooks.eggSize);
-    press(b, () => {
-      if (i !== hooks.eggSize) hooks.onEggSize(i);
-    });
-    sizeTabs.appendChild(b);
-  });
   const forkEls = [q<HTMLElement>('.fork-label.left'), q<HTMLElement>('.fork-label.right')];
   let forkShown = false;
 

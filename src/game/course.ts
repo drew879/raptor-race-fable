@@ -61,7 +61,7 @@ level.sections.forEach((sec, i) => {
     SEGMENTS.push(
       { length: sec.edge * 0.3, turn: turns[0] * 0.3, slope: sec.slope },
       { length: sec.edge * 0.7, turn: turns[0] * 0.7, slope: sec.slope },
-      { length: 1, slope: CLIFF },
+      { length: 0.5, slope: CLIFF },
       { length: 80, slope: CLIFF },
     );
     return;

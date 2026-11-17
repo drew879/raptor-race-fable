@@ -265,13 +265,21 @@ body {
   border: 1.5px solid color-mix(in srgb, var(--ui-accent) 70%, transparent);
   pointer-events: none !important;
 }
+/* Just above where the trail runs out of sight, which is where the eye is while running, and
+   see-through so nothing behind them is hidden. (They were at the very top, and went unread.) */
+.hint,
+.warn {
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.75);
+  background: color-mix(in srgb, var(--ui-panel) 38%, transparent);
+  border-color: color-mix(in srgb, var(--ui-accent) 55%, transparent);
+}
 .hint {
-  top: calc(var(--sat) + 64px + var(--blur, 0px));
+  top: 33%;
 }
 .warn {
-  top: calc(var(--sat) + 116px + var(--blur, 0px));
+  top: calc(33% - 50px);
   font-size: 17px;
-  border-color: #d2552b;
+  border-color: color-mix(in srgb, #d2552b 80%, transparent);
 }
 .hint[hidden],
 .warn[hidden],
