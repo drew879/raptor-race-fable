@@ -185,6 +185,8 @@ export function makeHud(root: HTMLElement, hooks: HudHooks): Hud {
   const api: Hud = {
     setAmber(count) {
       amber.textContent = String(count);
+      // the counter's drop swells for a moment as each piece is taken
+      if (count > 0) q<HTMLElement>('.amber-count .drop').animate?.([{ transform: 'scale(1.6)' }, { transform: 'scale(1)' }], { duration: 200, easing: 'ease-out' });
     },
     hint(text) {
       hintEl.hidden = !text;

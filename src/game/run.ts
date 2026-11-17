@@ -72,7 +72,7 @@ const EGG_G = 9.5;
  * side-steps when the trail is clear. Wilder: all of that turned up, and now and then it lands
  * on its end and spins like a top, and it surges ahead and drops back.
  */
-export const EGG_MODES = ['Lively', 'Wild', 'Wilder'];
+export const EGG_MODES = ['Lively', 'Wild', 'Berserk'];
 
 // how far along the trail each kind of obstacle can catch you
 const DEPTH: Record<Obstacle['kind'], number> = { log: 0.3, arch: 0.45, boulder: 0.42, tree: 0.26, creek: 0.6, hollow: 1.7, crossing: 0.32 };
@@ -128,6 +128,8 @@ const END = { chase: 0, shelf: 1, dash: 2, dive: 3, caught: 4, turn: 5, hatch: 6
  */
 const FINALE = { park: 9, near: 3.2, v0: 2.6, a: 5.2, catch: 0.4, dive: 2.6, late: 0.8, slowFrom: 4.6, slow: 0.5 };
 const PARK_S = END_S - FINALE.park;
+/** Where the egg starts being reeled in for the ending. From here on it cannot be lost: the catch is the test. */
+const REEL_FROM = PARK_S - 78;
 const CATCH_S = END_S - FINALE.catch;
 /** How far in front of its hips the parent holds the egg, how far back from the edge they settle, and how long turning round takes. */
 const HOLD = 0.3 + EGG_LEN * 0.55;
@@ -166,6 +168,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   const playIntro = !testing || query.has('intro');
   const autoScoop = testing && !query.has('ending');
   const sound = new Sound();
+  sound.origin = START_S;
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(62, 0.46, 0.3, 2500);
   const track = new Track(SEGMENTS, START_SLOPE);
@@ -407,15 +410,25 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   const flyAt = new THREE.Vector3();
   const putAmber = (i: number) => {
     let size = collected[i] ? 0 : 1;
+    let glow = size;
     let at = amberPos[i];
+    if (collected[i] && pop[i] > 0 && pop[i] < 1) {
+      // just taken: it swells, lifts and is gone in a flash of its own light
+      const k = pop[i];
+      size = (1 + 0.9 * k) * (1 - k * k);
+      glow = (1 + 2.4 * k) * (1 - k);
+      at = flyAt.copy(amberPos[i]);
+      at.y += 0.28 * k;
+    }
     if (!collected[i] && fly[i] > 0) {
       // swept toward the runner, quick at first, shrinking as it arrives
       const k = 1 - (1 - fly[i]) ** 2;
       at = flyAt.copy(amberPos[i]).lerp(chest, k);
       size = 1 - 0.55 * k;
+      glow = size;
     }
     amberMesh.setMatrixAt(i - shownFrom, m4.compose(at, qI, v3.setScalar(0.19 * size)));
-    amberGlow.setMatrixAt(i - shownFrom, m4.compose(at, qI, v3.setScalar(0.8 * size)));
+    amberGlow.setMatrixAt(i - shownFrom, m4.compose(at, qI, v3.setScalar(0.8 * glow)));
     amberMesh.instanceMatrix.needsUpdate = true;
     amberGlow.instanceMatrix.needsUpdate = true;
   };
@@ -573,7 +586,8 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   const eggUAt = (s: number, wild = 0): number => {
     let u = weave(s);
     if (wild === 1) u += Math.sin(s * 0.47 + 1.3) * 0.17;
-    if (wild === 2) u += Math.sin(s * 0.62 + 1.3) * 0.3;
+    // (berserk: a wide swing with a sharp zig-zag on top of it, for no reason at all)
+    if (wild === 2) u += Math.sin(s * 0.62 + 1.3) * 0.3 + (Math.abs(((s * 0.19) % 2) - 1) - 0.5) * 0.5;
     for (const row of rows) {
       if (row.kind === 'hollow') {
         // lined up with the log's mouth in good time, and out the far end before it wanders again
@@ -638,6 +652,9 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
 
   /** Amber on its way to the runner while the fans are out: 0 = not flying, else how far along (0..1). */
   const fly = new Float32Array(AMBER.length);
+  /** Amber just taken, bursting: how far through its burst each piece is (0..1), and which are at it. */
+  const pop = new Float32Array(AMBER.length);
+  const popping: number[] = [];
   const flying: number[] = [];
   const chest = new THREE.Vector3();
 
@@ -712,6 +729,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     eggWasLow: false,
     /** The wilder egg: time left spinning on its end like a top. */
     eggTop: 0,
+    eggCork: 0,
     /** Fan out: time left, how far the fans are spread, and whether the leaf has been taken. */
     fanOn: false,
     /** Hidden finds picked up, and the seconds since the egg was lost (0 while it is still in reach). */
@@ -820,7 +838,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       finished: false, queued: null, queuedT: 0, hint: 0, hintT: 0,
       prevLane: 0, du: 0, heading: 0, bump: null, sideT: 0, wadeT: 0, flinch: 0, shakeT: 0, puffT: 0, camLead: 0, pending: null,
       pendingT: 0, boostT: 0, eggU: 0, eggV: 0, heroV: 0, eggHop: false, eggPop: 0, eggTip: 0,
-      eggWind: 0, eggSkips: 0, eggBounces: 0, eggJink: -1, eggWasLow: false, eggTop: 0, fanOn: false, fan: 0, leafTaken: false, lostT: 0,
+      eggWind: 0, eggSkips: 0, eggBounces: 0, eggJink: -1, eggWasLow: false, eggTop: 0, eggCork: 0, fanOn: false, fan: 0, leafTaken: false, lostT: 0,
       slow: 1,
       introT: opening ? 0 : -1, sit: opening ? 1 : 0, lookYaw: 0, lookPitch: 0, beak: 0,
       end: 0, endT: 0, scoop: false, dashT: 0, turn: 0,
@@ -834,6 +852,8 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     shell.cup.visible = shell.cap.visible = false;
     if (chick) chick.group.visible = false;
     fly.fill(0);
+    pop.fill(0);
+    popping.length = 0;
     flying.length = 0;
     st.found = FINDS.map(() => false);
     for (const f of finds) f.gem.visible = f.glow.visible = true;
@@ -1171,6 +1191,8 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     // lean the axis the way the egg is drifting across the trail, and tip it slowly up and down
     eggAxis.set(-1, 0.32 * Math.sin(st.eggS * 0.137 + 0.4), -0.45 * Math.cos(st.eggS * 0.13)).normalize();
     const topping = st.eggTop > 0 && rolling;
+    // (berserk's corkscrew: turning about the upright as well, while it is in the air)
+    if (st.eggCork > 0 && st.eggY > 0.15) eggQ.premultiply(eggSpinQ.setFromAxisAngle(eggSide.set(0, 1, 0), dt * 15)).normalize();
     const wanted = rolling && !topping ? st.eggV * 1.5 * (1 + st.eggKick) : 0;
     st.eggSpin += (wanted - st.eggSpin) * Math.min(1, dt * (rolling ? 8 : 3));
     st.eggKick = Math.max(0, st.eggKick - dt * 1.6);
@@ -1224,6 +1246,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
         // the chick kicks, and the egg jumps
         st.eggHop = true;
         st.eggKick = wilder ? 3.8 : wild ? 2.6 : 1.3;
+        st.eggCork = wilder ? 1 : 0;
         st.eggPop = 1;
         st.eggSkips = wilder ? 3 : wild ? 2 : 0;
       }
@@ -1235,6 +1258,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     if (st.eggHop) {
       // down from the hop: a skip, then back to its own bouncing
       st.eggHop = false;
+      st.eggCork = 0;
       st.eggY = 0;
       st.eggVy = Math.sqrt(2 * EGG_G * 0.1);
     }
@@ -1244,8 +1268,9 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
         if (!r.around || r === prow || st.eggJink === r.s || st.eggS < r.s - 5 || st.eggS > r.s - 3.4) continue;
         st.eggJink = r.s;
         st.eggY = 0.001;
-        st.eggVy = Math.sqrt(2 * EGG_G * 0.3);
-        st.eggKick = 1.0;
+        st.eggVy = Math.sqrt(2 * EGG_G * (wilder ? 0.6 : 0.3));
+        st.eggKick = wilder ? 2.8 : 1.0;
+        st.eggCork = wilder ? 1 : 0;
         st.eggPop = 0.6;
       }
     }
@@ -1274,16 +1299,38 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
             height = [0.2, 0.2, 0.42, 0.5][Math.min(3, st.eggSkips)];
             st.eggSkips--;
             st.eggPop = 0.5;
-          } else if (st.eggBounces % (wilder ? 2 : 3) === 0 && eggFree(st.eggS)) {
+          } else if (wilder && eggFree(st.eggS)) {
+            // berserk: where there is room, something every time it lands
+            const trick = st.eggBounces % 4;
+            if (trick === 0) {
+              // a high flip
+              height = 1.05;
+              st.eggKick = 3.2;
+              st.eggPop = 0.8;
+            } else if (trick === 1) {
+              // down on its end, spinning like a top
+              st.eggTop = 0.85;
+              height = 0.14;
+            } else if (trick === 2) {
+              // a run of quick skips
+              height = 0.5;
+              st.eggSkips = 2;
+              st.eggKick = 1.6;
+              st.eggPop = 0.5;
+            } else {
+              // and the big one: sky high, flipping end over end and turning like a corkscrew
+              height = 1.5;
+              st.eggKick = 4.6;
+              st.eggPop = 1;
+              st.eggCork = 1;
+            }
+          } else if (!wilder && st.eggBounces % 3 === 0 && eggFree(st.eggS)) {
             // every so often, where there is room, a big bounce with a flip
-            height = wilder ? 0.85 : 0.66;
-            st.eggKick = wilder ? 1.7 : 1.3;
+            height = 0.66;
+            st.eggKick = 1.3;
             st.eggPop = 0.7;
-          } else if (wilder && st.eggBounces % 4 === 1 && eggFree(st.eggS)) {
-            // or it lands on its end and spins there for a moment
-            st.eggTop = 0.7;
-            height = 0.12;
           }
+          if (height < 1.2) st.eggCork = 0;
         }
         st.eggVy = Math.sqrt(2 * EGG_G * height);
       }
@@ -1445,6 +1492,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     }
     const cruise = st.finished || st.lostT > 0 || onNest ? 0 : pace;
     const uBefore = st.u;
+    const sBefore = st.s;
     if (st.bump) {
       stepBump(dt);
     } else {
@@ -1586,6 +1634,13 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       if (i >= shownFrom && i < shownTo) putAmber(i);
     }
 
+    for (let k = popping.length - 1; k >= 0; k--) {
+      const i = popping[k];
+      pop[i] = Math.min(1, pop[i] + dt / 0.22);
+      if (pop[i] >= 1) popping.splice(k, 1);
+      if (i >= shownFrom && i < shownTo) putAmber(i);
+    }
+
     // amber
     for (let i = 0; i < AMBER.length; i++) {
       if (collected[i] || fly[i] > 0) continue;
@@ -1594,9 +1649,11 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       if (a.s > st.s + 1) break;
       if (Math.abs(a.s - st.s) < 0.55 && Math.abs(st.u - laneU(a.lane, a.s)) < 0.42 && Math.abs(st.y + 0.3 - a.lift) < 0.6) {
         collected[i] = true;
+        pop[i] = 1e-4;
+        popping.push(i);
         if (i >= shownFrom && i < shownTo) putAmber(i);
         st.amber++;
-        sound.amber();
+        sound.amber(a.s);
         hud.setAmber(st.amber);
       }
     }
@@ -1605,6 +1662,8 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     // own steady pace, so when the runner stops dead the egg rolls on.
     // The further behind you are, the faster you gain, so a bad patch can be won back.
     sound.setClose(1 - smoothstep(5.5, 19, st.eggS - st.s));
+    // (the chase's music is tied to the ground: it goes as fast as the runner really is, and stops when it does)
+    sound.drive(st.s, dt > 0 ? (st.s - sBefore) / dt : 0);
     const closing = 0.13 + 0.47 * smoothstep(START_LEAD, MAX_LEAD, st.gap);
     if (!st.bump && st.sideT <= 0 && st.wadeT <= 0 && st.introT < 0) st.gap = Math.max(MIN_LEAD, st.gap - closing * dt);
     st.gap = Math.min(st.gap, MAX_LEAD);
@@ -1614,8 +1673,11 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     else if (st.introT < 0 || st.introT >= INTRO.roll) {
       // the wilder egg surges ahead and drops back when the trail is clear
       const surge = eggMode === 2 && eggFree(st.eggS) ? 1.3 * Math.sin(st.clock * 1.5) : 0;
-      // (it never runs on past the place where it stops to wait, short of the edge)
-      const wantS = Math.min(st.s + st.gap + surge, PARK_S);
+      // Over the last of the trail the egg is reeled in, however far ahead it was, so that the
+      // runner comes up right behind it just as it reaches the place it sets off from again.
+      // (It used to stop there and wait, which Drew found "very anticlimactic".)
+      const reel = smoothstep(REEL_FROM, PARK_S - FINALE.near - 2, st.s);
+      const wantS = Math.min(st.s + THREE.MathUtils.lerp(st.gap + surge, FINALE.near + 0.9, reel), PARK_S);
       let eggSpeed = THREE.MathUtils.clamp(st.heroV + (wantS - st.eggS) * 1.6, 0, baseSpeed * 1.3 + 0.5);
       if (st.introT >= 0) {
         // fresh off the rim it rolls as the slope lets it, gathering speed, and then it bolts
@@ -1626,14 +1688,14 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       st.eggS = Math.min(PARK_S, st.eggS + st.eggV * dt);
       rollEgg(dt, st.eggS < PARK_S - 0.05);
     }
-    hud.warn(st.gap > WARN_LEAD && !st.finished && st.lostT <= 0 && st.end === END.chase);
+    hud.warn(st.gap > WARN_LEAD && !st.finished && st.lostT <= 0 && st.end === END.chase && st.s < REEL_FROM);
     if (st.lostT > 0) {
       // the egg is out of sight: the runner pulls up, the picture dims, and the level is over
       const before = st.lostT;
       st.lostT += dt;
       if (before < 1.1 && st.lostT >= 1.1) hud.fade(true);
       if (before < 2.0 && st.lostT >= 2.0) hud.showLost();
-    } else if (!noLose && !st.finished && st.gap >= MAX_LEAD - 0.01) {
+    } else if (!noLose && !st.finished && st.gap >= MAX_LEAD - 0.01 && st.s < REEL_FROM) {
       st.lostT = 1e-4;
       sound.lost();
       hud.hint('The egg got away!');
