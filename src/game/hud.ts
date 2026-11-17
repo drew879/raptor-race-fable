@@ -12,6 +12,8 @@ export interface HudHooks {
   speed: number;
   eggModes: string[];
   eggMode: number;
+  soundOn: boolean;
+  onSound(on: boolean): void;
   /** "Try again" on the sheet that says the egg got away. */
   onRetry(): void;
   /** "Next" on the Field Journal card that closes the level. */
@@ -83,6 +85,7 @@ export function makeHud(root: HTMLElement, hooks: HudHooks): Hud {
         <div class="stepper"><button class="slower" aria-label="Slower">&minus;</button><b class="speed"></b><button class="faster" aria-label="Faster">+</button></div>
       </div>
       <div class="setting"><span>Egg</span><div class="tabs words egg-tabs"></div></div>
+      <div class="setting"><span>Sound</span><div class="tabs words sound-tabs"></div></div>
       <div class="links"><a class="link" href="?mode=close">Close-up</a><a class="link" href="?mode=bench">Speed test</a></div>
       <small class="about">Rough test run &middot; build ${BUILD}</small>
     </div>
@@ -157,6 +160,17 @@ export function makeHud(root: HTMLElement, hooks: HudHooks): Hud {
   });
   markEgg(hooks.eggMode);
 
+  const soundTabs = q<HTMLElement>('.sound-tabs');
+  ['On', 'Off'].forEach((name, i) => {
+    const b = document.createElement('button');
+    b.textContent = name;
+    b.classList.toggle('on', (i === 0) === hooks.soundOn);
+    press(b, () => {
+      [...soundTabs.children].forEach((el, k) => el.classList.toggle('on', k === i));
+      hooks.onSound(i === 0);
+    });
+    soundTabs.appendChild(b);
+  });
   const forkEls = [q<HTMLElement>('.fork-label.left'), q<HTMLElement>('.fork-label.right')];
   let forkShown = false;
 

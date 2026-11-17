@@ -3,6 +3,7 @@
 
 import * as THREE from 'three';
 import { setReloadGuard } from '../app/build';
+import { Sound } from '../audio/sound';
 import { blinkAt, HeroRig, strideLength, type HeroState } from '../hero/rig';
 import type { Lookdev } from '../lookdev/scene';
 import { paintMaterial, world } from '../render/paint';
@@ -164,6 +165,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   // test runs start on the chase and scoop by themselves, unless asked for the scenes
   const playIntro = !testing || query.has('intro');
   const autoScoop = testing && !query.has('ending');
+  const sound = new Sound();
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(62, 0.46, 0.3, 2500);
   const track = new Track(SEGMENTS, START_SLOPE);
@@ -771,6 +773,8 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
         /* private mode */
       }
     },
+    soundOn: sound.on,
+    onSound: (on) => sound.setOn(on),
     // (a miss at the edge is tried again from a little way back; losing the egg on the way down starts the level over)
     onRetry: () => (st.end === END.miss ? tryAgain(RETRY_S) : LOST_RESTART === 'checkpoint' ? tryAgain() : reset()),
     onJournalNext: () => {
@@ -804,6 +808,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     if (st.finished || !st.started || st.lostT > 0) return;
     st.paused = p;
     hud.setPaused(p);
+    sound.setPaused(p);
   }
 
   /** Put every single thing back to the start. */
@@ -824,6 +829,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     hud.hideJournal();
     hud.skip(false);
     hud.clean(opening);
+    sound.setMode(opening ? 'quiet' : 'chase');
     egg.visible = true;
     shell.cup.visible = shell.cap.visible = false;
     if (chick) chick.group.visible = false;
@@ -867,6 +873,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     });
     egg.visible = true;
     hud.clean(false);
+    sound.setMode('chase');
     for (const o of obstacles) o.hit = false;
     for (const row of rows) row.hit = false;
     for (const c of crossings) c.fled = 0;
@@ -911,12 +918,14 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       if (to !== st.lane) {
         st.prevLane = st.lane;
         st.lane = to;
+        sound.step_();
       }
     } else if (move === 'up') {
       if (st.y <= 0.001) {
         st.vy = JUMP_V;
         st.y = 0.001;
         st.slideT = 0;
+        sound.jump();
       } else {
         st.queued = 'up'; // jump again the moment we land
         st.queuedT = 0.14;
@@ -928,6 +937,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
         st.queuedT = 0.5;
       } else {
         st.slideT = SLIDE_TIME;
+        sound.slide();
       }
     }
   }
@@ -939,6 +949,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     st.introT = -1;
     introSeen = true;
     st.sit = 0;
+    sound.setMode('chase');
     materialFor('egg').uniforms.uEggNear.value = 0;
     st.eggS = st.s + START_LEAD;
     st.gap = START_LEAD;
@@ -982,6 +993,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     st.eggPop = 1;
     hud.hint('Swipe up!');
     st.hintT = 1e9;
+    sound.setMode('dash');
   }
 
   /** The egg's dash, at its own pace, the last of it in slow motion. */
@@ -1021,6 +1033,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     missFrom.copy(egg.position);
     missQ.copy(egg.quaternion);
     missV = st.eggV;
+    sound.lost();
     camPos.copy(camera.position);
     camLook.copy(look);
     camFov = camera.fov;
@@ -1065,6 +1078,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
         st.shakeT = 0.3;
         st.puffT = 0.34;
         puff.position.copy(terrain.place(CATCH_S - 0.2, st.u, 0.2));
+        sound.caught();
       }
     } else if (st.end === END.caught) {
       // held, at the very edge: a breath in slow motion, and then time runs again
@@ -1108,6 +1122,11 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     } else if (st.end === END.hatch) {
       // the chick has to be here before the top can come off
       if (!chick && st.endT > HATCH.pop - 0.05) st.endT = HATCH.pop - 0.05;
+      HATCH.taps.forEach((tap, i) => {
+        if (before < tap && st.endT >= tap) sound.tap(i / 2);
+      });
+      if (before < HATCH.pop && st.endT >= HATCH.pop) sound.crack();
+      for (const at of [HATCH.pop + 1.0, HATCH.pop + 2.2]) if (before < at && st.endT >= at) sound.peep();
       let crack = 0.5;
       for (const tap of HATCH.taps) crack += (0.5 / HATCH.taps.length) * smoothstep(tap, tap + 0.2, st.endT);
       materialFor('egg').uniforms.uCrack.value = crack;
@@ -1273,6 +1292,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
 
   /** The runner has walked into something. It stops where its body meets it, then gets past. */
   function startBump(row: Row, member: (typeof obstacles)[number]) {
+    sound.bump();
     row.hit = true;
     for (const o of row.members) o.hit = true;
     let toLane = st.lane;
@@ -1304,6 +1324,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
 
   /** Missed the jump over a creek: nothing to bump, so it is a splash and a slow wade out. */
   function wade(row: Row) {
+    sound.splash();
     row.hit = true;
     for (const o of row.members) o.hit = true;
     st.wadeT = 0.75;
@@ -1317,6 +1338,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
 
   /** A sideways knock: the runner swiped into something beside it and bounces back to its lane. */
   function sideBump(row: Row, member: (typeof obstacles)[number]) {
+    sound.bump();
     row.hit = true;
     for (const o of row.members) o.hit = true;
     (puff.material as THREE.ShaderMaterial).uniforms.uColor.value.set('#e6d2a8');
@@ -1381,6 +1403,11 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     if (st.introT >= 0) {
       const before = st.introT;
       st.introT += dt;
+      INTRO.taps.forEach((tap, i) => {
+        if (before < tap && st.introT >= tap) sound.tap(i / 2);
+      });
+      if (before < INTRO.roll && st.introT >= INTRO.roll) sound.roll();
+      if (before < INTRO.run && st.introT >= INTRO.run) sound.setMode('chase');
       const eggMat = materialFor('egg').uniforms;
       // the cracks spread with each tap from inside
       let crack = 0;
@@ -1529,6 +1556,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       st.fanOn = true;
       leaf.visible = leafGlow.visible = false;
       hud.hint('Fan out! Catch it all');
+      sound.leaf();
       st.hintT = 2.2;
     }
     // the fans stay out for a stretch of trail, so they cover the same amber at any speed
@@ -1552,6 +1580,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
         collected[i] = true;
         flying.splice(k, 1);
         st.amber++;
+        sound.amber();
         hud.setAmber(st.amber);
       }
       if (i >= shownFrom && i < shownTo) putAmber(i);
@@ -1567,6 +1596,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
         collected[i] = true;
         if (i >= shownFrom && i < shownTo) putAmber(i);
         st.amber++;
+        sound.amber();
         hud.setAmber(st.amber);
       }
     }
@@ -1574,6 +1604,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     // The egg: clean running closes the gap, a bump lets it roll further ahead. It keeps its
     // own steady pace, so when the runner stops dead the egg rolls on.
     // The further behind you are, the faster you gain, so a bad patch can be won back.
+    sound.setClose(1 - smoothstep(5.5, 19, st.eggS - st.s));
     const closing = 0.13 + 0.47 * smoothstep(START_LEAD, MAX_LEAD, st.gap);
     if (!st.bump && st.sideT <= 0 && st.wadeT <= 0 && st.introT < 0) st.gap = Math.max(MIN_LEAD, st.gap - closing * dt);
     st.gap = Math.min(st.gap, MAX_LEAD);
@@ -1604,6 +1635,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       if (before < 2.0 && st.lostT >= 2.0) hud.showLost();
     } else if (!noLose && !st.finished && st.gap >= MAX_LEAD - 0.01) {
       st.lostT = 1e-4;
+      sound.lost();
       hud.hint('The egg got away!');
       st.hintT = 2.0;
     }
@@ -1616,6 +1648,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
         f.gem.visible = f.glow.visible = false;
         hud.setFinds(st.found);
         hud.hint('A hidden find!');
+        sound.find();
         st.hintT = 1.6;
       }
     });
@@ -2059,7 +2092,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
 
   reset();
   // for testing from the console: read the state, make moves, pause, start over
-  Object.assign(window, { rrGame: { st, act, setPaused, reset, obstacles, rows, collected, DEPTH, flora, laneU, FORK, finds: FINDS, CHECKPOINTS, tryAgain, skipIntro, END_S, introCam, endCam, endPose, catchCam, END, FINALE, startDash, scene, camera } });
+  Object.assign(window, { rrGame: { st, act, setPaused, reset, obstacles, rows, collected, DEPTH, flora, laneU, FORK, finds: FINDS, CHECKPOINTS, tryAgain, skipIntro, END_S, introCam, endCam, endPose, catchCam, END, FINALE, startDash, scene, camera, sound } });
   if (testing) {
     st.started = true;
     (ui.querySelector('.start-sheet') as HTMLElement).hidden = true;

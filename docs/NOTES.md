@@ -4,9 +4,9 @@ Decisions and progress. Read `raptor-race-brief.md` first; it's the source of tr
 
 ## Where things stand
 
-- **Level 1 plays from the nest to a catch at a cliff and the hatching** (build 31, 2026-11-17). `src/game/course.ts` reads `docs/level-1/course.mjs`, so the map and the game can't drift apart.
+- **Level 1 plays from the nest to a catch at a cliff and the hatching** (build 32, 2026-11-17). `src/game/course.ts` reads `docs/level-1/course.mjs`, so the map and the game can't drift apart.
 - **In and working:** the opening on the nest (once per visit); all nine sections; seven obstacle kinds (tree, boulder, log, creek, propped trunk, hollow log, young Psittacosaurus crossing); the fork round the island, with a see-through label on each side of the screen; the Fan out power-up (50 m of trail); the three hidden finds; losing the egg on the way down, which ends the level; the first-time hints; the egg's dodges through all of it; the egg's dash for the cliff edge, the dive that catches it, the miss and its retry; the hatching and a Field Journal card.
-- **Not built yet:** sounds and music; the title, results and journal screens proper (the start sheet, the results sheet and the one journal card are stand-ins). The hidden finds are collected and counted, but the journal pages they unlock don't exist yet.
+- **A first sketch only:** music and sound (see below). **Not built yet:** the title, results and journal screens proper (the start sheet, the results sheet and the one journal card are stand-ins). The hidden finds are collected and counted, but the journal pages they unlock don't exist yet.
 - **First-pass art to come back to:** the Psittacosaurus, young and adult (fine in play, rough up close); the island's rock (plain); the creek's stones; the hidden finds (a pale blue piece of amber with nothing inside it yet, and the brief describes inclusions); the spur of rock at the end (its walls and the forest below are only seen in the catch and the miss, and the sides beyond the walls are smooth slopes); the sitting pose up close (the feet lie out in front); the dive (the slide pose with fans out, no pose of its own).
 - **Decided:** look B; chick Slate; egg Lively/Wild/Wilder all offered for now ("eventually we can just pick one"; Wild is the default, Wilder is "Fun!"); body turn "perfect"; bumps "honestly perfect"; hollow log "reads well and enjoyed the view"; 2x edge smoothing looks clean.
 - **Drew's playtest of the first creek:** "Doesn't read very well, in large part because it doesn't appear to continue on the left and right side of the trail (the bumps obscure it)." He wanted water clearly flowing left to right and continuous either side. Rebuilt: see "Creek" under the level notes.
@@ -26,6 +26,16 @@ What changed:
 - **Losing the egg (as first built; changed in Round 4):** at a 26 m lead the hint says "The egg got away!", the runner stops, the picture dims, and `tryAgain()` puts the runner at the last checkpoint it passed (or the nest) with the egg 15 m ahead. Amber and finds are kept, and the leaf comes back if it is ahead again. `?nolose=1` turns losing off for test runs.
 - **Two bugs fixed on the way:** the egg clipped a boulder where two go-around rows sit 3 m apart (its lane now has to be open for every go-around row within 6.5 m), and the crossing was being judged as something to go around.
 - **Test runs** (bots, in the browser): perfect play on either side of the fork finishes with no bumps (right side 79.4 s). A bot that misses 20 to 35% of the obstacles finishes with 7 to 9 bumps and never loses the egg (worst lead about 25 m). One that misses half loses it. With no input at all the egg is lost at the fourth boulder in Fern hollow, before the first checkpoint, so that restart is from the nest.
+
+### Music and sound: first sketch (build 32, 2026-11-17)
+Nothing is recorded: `src/audio/sound.ts` plays everything with the browser's own synthesizer as the game runs. **It was written without being able to hear it.** Timing, notes and levels were checked by measurement (rendered offline: no clipping, peaks 2 to 9 dB under full, the chase about 12 dB under on average); whether it sounds right is for Drew to say.
+- **The grid:** 120 beats a minute, sixteenth notes 125 ms apart. A scheduler walks the grid 160 ms ahead of the clock.
+- **The music:** eight bars in D minor, two seconds each: Dm, Dm, B flat, Gm, Dm, Dm, E flat (the eerie one), A. Layers come in as the runner closes on the egg (`setClose`, from the lead: 0 at 19 m, 1 at 5.5 m): held strings always; a long brooding bass with echo on beats one and three; a low pulse in threes and twos from 0.12; a second bass on every eighth from 0.3; short sharp strings on every sixteenth from 0.55; a shaker from 0.78. A slow high line (A, B flat, A, F...) over the top while it is sparse.
+- **Amber on the beat:** a pickup plays one marimba-like note on the next grid step, from the current bar's chord, climbing as a line of amber is collected (a new line starts from the bottom). At speed 8 a line of amber is 4 pieces a second, which is exactly eighth notes at this tempo. Several in the same step (the fans) are one note. A hidden find is three ringing notes; the leaf is a run up the chord.
+- **Modes:** `quiet` (the nest: strings and the high line only), `chase`, `dash` (the egg going for the edge: a heartbeat and one uneasy pair of notes), `won` (the catch: the key turns major), `lost`.
+- **Sounds:** jump, slide, a lane change, bump, splash, the taps on the shell and the shell cracking, the egg's rumble off the nest, the chick's peeps.
+- **Starting it:** browsers only let sound start from a tap, so it begins at the end of the first one (on "Run!"). An iPhone with its ring switch off mutes this kind of sound, so a silent recording is looped alongside as ordinary audio, the usual way round that. Not tested on a phone. Pausing the game suspends it. The pause sheet has Sound: On / Off (`rr-sound1`).
+- **Where it could go:** the strings are two detuned saw waves through a filter, which is as far as a synthesizer in the browser gets toward real strings. Drew has Ableton Live 12, Spitfire LABS and Kontakt 7 on the laptop and has said it is fine to drive Live there. One route: settle the notes and the feel in this sketch, then record the strings (and perhaps the bass) from those as one loop per bar and have the game play the recordings in place of the synthesized layers, keeping this scheduler for the amber notes and for bringing layers in.
 
 ### Round 6 (builds 31 and on, 2026-11-17), from Drew's playtest of build 30
 What he said, and what was done:
@@ -219,12 +229,11 @@ Build numbers here are the ones shown on the phone.
 **For the story scenes later** (from the same fact check): oviraptorosaur nests held many eggs in pairs, in rings, blunt ends up; adults have been found sitting on them with arms spread round the edge; which parent sat is unknown (possibly the father). The game says "parent", which is right. Drew chose a clutch for the opening nest (2026-11-16), with ours the one that rolls away.
 
 ### Not yet verified on the real phone
-- Builds 29 and 30: the egg at one size (both choices), the egg tipping off the nest and rolling, the cliff, the catch, a miss and the retry, and whether any of it costs frames.
+- Builds 31 and 32: the Medium egg with its glow, the hints a third of the way down, the detailed nest, the cliff with the trail to its edge, the 2.0 s catch, the chick in the middle of the shell. All of the sound: whether it plays at all on the phone (and with the ring switch off), how it sounds on the phone's speaker, and whether it costs frames.
 
 ### Next
-- Drew and Aidan play build 30. Questions out: which egg size, whether the tip-over now reads as an accident, whether the end reads as a cliff, how the catch feels and whether the window is right, and what a miss feels like.
-- Then: sound and music, and the screens around the run (title, results, Field Journal).
-- A note for the test bots: the old `perfect` and `sim` helpers lived only in the browser's session storage and were lost when the pane restarted. Simpler ones were rewritten on 2026-11-17 (they do not count overlaps, and the new `perfect` mistimes slides at speed 4).
+- Drew listens to the sketch and says what to change. Then either keep improving it in the browser or record the strings from his libraries.
+- After that: the screens around the run (title, results, Field Journal).
 
 ## How the code is laid out
 
@@ -235,6 +244,7 @@ Build numbers here are the ones shown on the phone.
 - `src/render/noisetex.ts` one small tiling noise texture, read by the paint shader, the finishing pass, mist and shafts.
 - `src/render/shadow.ts` sun shadow map. Trunks, tree ferns and everything low cast real shadows; the high canopy's shade is painted as dappled light so it can be art-directed.
 - `src/world/` track (the trail's centerline from segments of length, turn and slope), terrain (a hillside ribbon in trail space: s along, u across), assets (model kits, instancing), sky (ridges, volcano), fx (mist, shafts, glows, contact shadows).
+- `src/audio/sound.ts` the music and the sounds, played live.
 - `src/game/` the run: `course.ts` (the level, read from `docs/level-1/course.mjs`), `run.ts` (state, rules, camera, and the opening and ending), `story.ts` (the nest, the shell and the chick), `overlook.ts` (the rock at the cliff's edge), `flora.ts` (forest streaming), `input.ts` (swipes), `hud.ts` (controls and sheets).
 - `src/hero/rig.ts` poses the hero's skeleton in code. `src/herolab/` is its test view. `src/closeup/` is the turntable for the runner, egg and chick.
 - `src/lookdev/` the concept viewer scene and its controls. This goes away or moves behind a debug flag once the game proper starts.
