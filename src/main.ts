@@ -78,6 +78,24 @@ async function start() {
       quality: () =>
         `${quality.scale < 1 ? `sharpness ${Math.round(quality.scale * 100)}%` : 'full sharpness'} · ${draws} draws` +
         (quality.history() ? `\nsharpness log: ${quality.history()}` : ''),
+      // Draw a burst of frames flat out and time them, the way the speed test does. A fresh
+      // phone takes about 8.6 ms at full sharpness; a warm or nearly flat one takes longer.
+      speedNow: () =>
+        new Promise((resolve) => {
+          setTimeout(() => {
+            const gl = renderer.getContext();
+            const px = new Uint8Array(4);
+            const burst = (n: number) => {
+              for (let i = 0; i < n; i++) post.render(view.scene, view.camera);
+              gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+            };
+            burst(10);
+            const t0 = performance.now();
+            burst(18);
+            const ms = (performance.now() - t0) / 18;
+            resolve(`one frame costs ${ms.toFixed(1)} ms right now at ${Math.round(quality.scale * 100)}% sharpness (60 a second needs under 16.7)`);
+          }, 350);
+        }),
     });
     boot.remove();
   } else if (mode === 'close') {

@@ -14,6 +14,8 @@ export interface HudHooks {
   eggMode: number;
   /** A short note on how sharp the picture is being drawn, for the pause sheet's small print. */
   quality?(): string;
+  /** What one frame costs right now, measured after the sheet is up. */
+  speedNow?(): Promise<string>;
   onEgg(mode: number): void;
   onStart(): void;
   onPause(): void;
@@ -143,6 +145,12 @@ export function makeHud(root: HTMLElement, hooks: HudHooks): Hud {
         q<HTMLElement>('.about').textContent =
           `Rough test run · build ${BUILD} · ${currentFps().toFixed(0)} fps · ${isStandalone() ? 'Home Screen' : 'browser'}` +
           `${hooks.quality ? ` · ${hooks.quality()}` : ''}\n${lateFrames()}\n${fitLine()}`;
+        // the phone's own speed at this moment, so a screenshot says whether the phone or the game is slow
+        const about = q<HTMLElement>('.about');
+        const shown = about.textContent;
+        void hooks.speedNow?.().then((line) => {
+          if (!pauseSheet.hidden && about.textContent === shown) about.textContent = `${shown}\n${line}`;
+        });
       }
     },
     showFinish(count, total) {

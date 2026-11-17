@@ -30,6 +30,8 @@ export interface RunHooks {
   pickStyle(index: number): void;
   /** A short note on how sharp the picture is being drawn right now. */
   quality?(): string;
+  /** Times a few frames and says what one costs right now. Slow to answer, so it is asked for after the pause sheet is up. */
+  speedNow?(): Promise<string>;
 }
 
 /** The run, plus a few handles the speed test uses to switch parts of the picture off. */
@@ -52,12 +54,13 @@ const EGG_R = 0.275 * EGG_SCALE; // half its width
 const EGG_HALF = 0.5 * EGG_SCALE; // half its length
 const EGG_G = 9.5;
 /**
- * How the egg travels. Wobbly: tumbling at changing angles with even bounces. Lively: each
- * bounce depends on how it lands. Wild: Lively, and it shows off: it shivers before a hop and
- * flips over the log, jinks late and hard round trees, shoots out from under arches, and
- * throws in big bounces and quick side-steps when the trail is clear.
+ * How the egg travels. Lively: tumbling at changing angles, each bounce depending on how it
+ * lands. Wild: Lively, and it shows off: it shivers before a hop and flips over the log, jinks
+ * late and hard round trees, shoots out from under arches, and throws in big bounces and quick
+ * side-steps when the trail is clear. Wilder: all of that turned up, and now and then it lands
+ * on its end and spins like a top, and it surges ahead and drops back.
  */
-export const EGG_MODES = ['Wobbly', 'Lively', 'Wild'];
+export const EGG_MODES = ['Lively', 'Wild', 'Wilder'];
 
 // how far along the trail each kind of obstacle can catch you
 const DEPTH: Record<Obstacle['kind'], number> = { log: 0.3, arch: 0.45, boulder: 0.42, tree: 0.26 };
@@ -75,6 +78,12 @@ const BUMP_COST = 3.2;
 const HOP_HALF = 2.3; // meters either side of a log that a hop covers
 const HOP_HEIGHT = 0.85;
 const HOP_HEIGHT_WILD = 1.25;
+const HOP_HEIGHT_WILDER = 1.6;
+// The chase: how far ahead the egg starts, the nearest it lets you get, and when it is getting away.
+const START_LEAD = 15;
+const MIN_LEAD = 4.8;
+const WARN_LEAD = 21;
+const MAX_LEAD = 26; // in the level, this is where the egg is lost; here it is just the limit
 const LOW_HALF = 1.4; // meters either side of an arch where it stays on the ground
 const SETTLE = 7.5; // meters before either where it stops bouncing, so it arrives on the ground
 
@@ -329,15 +338,16 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   /** Where the egg is across the trail: weaving between the lanes, so it never sits on a line of
    *  amber, and swinging into an open lane in good time to pass a tree or a boulder. The wild
    *  egg adds quick side-steps, and leaves its swing late and takes it wide. */
-  const eggUAt = (s: number, wild = false): number => {
+  const eggUAt = (s: number, wild = 0): number => {
     let u = weave(s);
-    if (wild) u += Math.sin(s * 0.47 + 1.3) * 0.17;
+    if (wild === 1) u += Math.sin(s * 0.47 + 1.3) * 0.17;
+    if (wild === 2) u += Math.sin(s * 0.62 + 1.3) * 0.3;
     for (const row of rows) {
       if (!row.around || s < row.s - 8 || s > row.s + 6) continue;
       const k = wild
         ? smoothstep(row.s - 5.2, row.s - 1.7, s) * (1 - smoothstep(row.s + 1.5, row.s + 4, s))
         : smoothstep(row.s - 7.5, row.s - 2.5, s) * (1 - smoothstep(row.s + 1.5, row.s + 5.5, s));
-      u += (row.eggLane * LANE * (wild ? 1.12 : 1) - u) * k;
+      u += (row.eggLane * LANE * (wild === 2 ? 1.22 : wild === 1 ? 1.12 : 1) - u) * k;
     }
     return u;
   };
@@ -377,8 +387,8 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   const collected: boolean[] = AMBER.map(() => false);
   let baseSpeed = Number(localStorage.getItem('rr-speed2')) || DEFAULT_SPEED;
   // (a new key: the list changed when Wild came in, and everyone should meet Wild first)
-  const savedEgg = localStorage.getItem('rr-egg2');
-  let eggMode = savedEgg === null ? 2 : THREE.MathUtils.clamp(Number(savedEgg) || 0, 0, 2);
+  const savedEgg = localStorage.getItem('rr-egg3');
+  let eggMode = savedEgg === null ? 1 : THREE.MathUtils.clamp(Number(savedEgg) || 0, 0, 2);
   // the egg's turn, in the trail's own frame (x across to the right, y up, z back up the trail)
   const eggQ = new THREE.Quaternion();
   const eggAxis = new THREE.Vector3();
@@ -418,8 +428,8 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     camU: 0,
     camDuck: 0,
     started: false,
-    gap: 9,
-    eggS: START_S + 9,
+    gap: START_LEAD,
+    eggS: START_S + START_LEAD,
     eggY: 0,
     eggVy: 0,
     eggSpin: 0,
@@ -437,6 +447,8 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     eggBounces: 0,
     eggJink: -1,
     eggWasLow: false,
+    /** The wilder egg: time left spinning on its end like a top. */
+    eggTop: 0,
     /** Fan out: time left, how far the fans are spread, and whether the leaf has been taken. */
     fanT: 0,
     fan: 0,
@@ -458,12 +470,13 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     styleIndex: hooks.styleIndex(),
     speed: baseSpeed,
     quality: hooks.quality,
+    speedNow: hooks.speedNow,
     eggModes: EGG_MODES,
     eggMode,
     onEgg: (mode) => {
       eggMode = mode;
       try {
-        localStorage.setItem('rr-egg2', String(mode));
+        localStorage.setItem('rr-egg3', String(mode));
       } catch {
         /* private mode */
       }
@@ -498,11 +511,11 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   function reset() {
     Object.assign(st, {
       s: START_S, lane: 0, u: 0, y: 0, vy: 0, slideT: 0, safeT: 0, speed: 0, phase: 0, air: 0,
-      slide: 0, camU: 0, camDuck: 0, gap: 9, eggS: START_S + 9, eggY: 0, eggVy: 0, eggSpin: 0, eggKick: 0, amber: 0, paused: false,
+      slide: 0, camU: 0, camDuck: 0, gap: START_LEAD, eggS: START_S + START_LEAD, eggY: 0, eggVy: 0, eggSpin: 0, eggKick: 0, amber: 0, paused: false,
       finished: false, queued: null, queuedT: 0, hint: 0, hintT: 0,
       prevLane: 0, du: 0, heading: 0, bump: null, sideT: 0, flinch: 0, shakeT: 0, puffT: 0, camLead: 0, pending: null,
       pendingT: 0, boostT: 0, eggU: 0, eggV: 0, heroV: 0, eggHop: false, eggPop: 0, eggTip: 0,
-      eggWind: 0, eggSkips: 0, eggBounces: 0, eggJink: -1, eggWasLow: false, fanT: 0, fan: 0, leafTaken: false,
+      eggWind: 0, eggSkips: 0, eggBounces: 0, eggJink: -1, eggWasLow: false, eggTop: 0, fanT: 0, fan: 0, leafTaken: false,
     });
     fly.fill(0);
     flying.length = 0;
@@ -575,15 +588,26 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
    * and spins faster; flat on its side, it skips low. No physics engine: a few lines of rules.
    */
   function rollEgg(dt: number, rolling: boolean) {
-    const lively = eggMode >= 1;
-    const wild = eggMode === 2;
+    const lively = true;
+    const wild = eggMode >= 1;
+    const wilder = eggMode === 2;
     // lean the axis the way the egg is drifting across the trail, and tip it slowly up and down
     eggAxis.set(-1, 0.32 * Math.sin(st.eggS * 0.137 + 0.4), -0.45 * Math.cos(st.eggS * 0.13)).normalize();
-    const wanted = rolling ? st.eggV * 1.5 * (1 + st.eggKick) : 0;
+    const topping = st.eggTop > 0 && rolling;
+    const wanted = rolling && !topping ? st.eggV * 1.5 * (1 + st.eggKick) : 0;
     st.eggSpin += (wanted - st.eggSpin) * Math.min(1, dt * (rolling ? 8 : 3));
     st.eggKick = Math.max(0, st.eggKick - dt * 1.6);
     st.eggPop = Math.max(0, st.eggPop - dt * 5);
     eggQ.premultiply(eggTurn.setFromAxisAngle(eggAxis, st.eggSpin * dt)).normalize();
+    if (topping) {
+      // up on its end and spinning like a top, until it tips back into its tumble
+      st.eggTop -= dt;
+      eggLong.set(0, 1, 0).applyQuaternion(eggQ);
+      eggSide.set(0, eggLong.y >= 0 ? 1 : -1, 0);
+      eggTurn.setFromUnitVectors(eggLong, eggSide);
+      eggQ.premultiply(eggNudge.identity().slerp(eggTurn, Math.min(1, dt * 10)));
+      eggQ.premultiply(eggTurn.setFromAxisAngle(eggSide.set(0, 1, 0), dt * 24)).normalize();
+    }
 
     // what is coming: a log to hop, or an arch to stay down for
     const row = rolling ? eggRow(st.eggS, st.eggV) : null;
@@ -594,6 +618,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     // the wild egg shivers for a moment before the chick kicks
     st.eggWind = wild && row !== null && row.kind === 'log' && !hop && d < 0 ? smoothstep(-HOP_HALF - 2.4, -HOP_HALF - 0.3, d) : 0;
 
+    if (row) st.eggTop = 0;
     if (row && row.kind === 'arch') {
       // Under an arch it rolls like a barrel, long way across the trail, so it passes with room
       // to spare. Its long axis is eased round to lie across the trail on the way in.
@@ -611,8 +636,8 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     if (wild && st.eggWasLow && !low && rolling && eggRow(st.eggS, st.eggV) === null) {
       // out from under the arch with a pop
       st.eggY = 0.001;
-      st.eggVy = Math.sqrt(2 * EGG_G * 0.5);
-      st.eggKick = 1.1;
+      st.eggVy = Math.sqrt(2 * EGG_G * (wilder ? 0.85 : 0.5));
+      st.eggKick = wilder ? 1.8 : 1.1;
       st.eggPop = 0.8;
     }
     st.eggWasLow = low;
@@ -621,11 +646,12 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       if (!st.eggHop) {
         // the chick kicks, and the egg jumps
         st.eggHop = true;
-        st.eggKick = wild ? 2.6 : 1.3;
+        st.eggKick = wilder ? 3.8 : wild ? 2.6 : 1.3;
         st.eggPop = 1;
-        st.eggSkips = wild ? 2 : 0;
+        st.eggSkips = wilder ? 3 : wild ? 2 : 0;
       }
-      st.eggY = Math.max(st.eggY * 0.5, (wild ? HOP_HEIGHT_WILD : HOP_HEIGHT) * (1 - (d / HOP_HALF) ** 2));
+      const top = wilder ? HOP_HEIGHT_WILDER : wild ? HOP_HEIGHT_WILD : HOP_HEIGHT;
+      st.eggY = Math.max(st.eggY * 0.5, top * (1 - (d / HOP_HALF) ** 2));
       st.eggVy = 0;
       return;
     }
@@ -647,6 +673,13 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       }
     }
     if (!rolling && st.eggY <= 0) return;
+    if (topping) {
+      // a top stays down
+      st.eggY = Math.max(0, st.eggY + Math.min(st.eggVy, 0) * dt);
+      st.eggVy -= EGG_G * dt;
+      if (st.eggY <= 0) st.eggVy = 0;
+      return;
+    }
     st.eggVy -= (low ? 40 : EGG_G) * dt;
     st.eggY += st.eggVy * dt;
     if (st.eggY <= 0) {
@@ -660,15 +693,19 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
         if (wild) {
           st.eggBounces++;
           if (st.eggSkips > 0) {
-            // two quick skips coming down from a hop
-            height = st.eggSkips === 2 ? 0.42 : 0.2;
+            // quick skips coming down from a hop, each lower than the last
+            height = [0.2, 0.2, 0.42, 0.5][Math.min(3, st.eggSkips)];
             st.eggSkips--;
             st.eggPop = 0.5;
-          } else if (st.eggBounces % 3 === 0 && eggFree(st.eggS)) {
-            // every third bounce, where there is room, is a big one with a flip
-            height = 0.66;
-            st.eggKick = 1.3;
+          } else if (st.eggBounces % (wilder ? 2 : 3) === 0 && eggFree(st.eggS)) {
+            // every so often, where there is room, a big bounce with a flip
+            height = wilder ? 0.85 : 0.66;
+            st.eggKick = wilder ? 1.7 : 1.3;
             st.eggPop = 0.7;
+          } else if (wilder && st.eggBounces % 4 === 1 && eggFree(st.eggS)) {
+            // or it lands on its end and spins there for a moment
+            st.eggTop = 0.7;
+            height = 0.12;
           }
         }
         st.eggVy = Math.sqrt(2 * EGG_G * height);
@@ -700,7 +737,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     st.shakeT = 0.3;
     st.puffT = 0.34;
     terrain.place(member.s - DEPTH[member.kind], st.u, row.kind === 'arch' ? 0.62 : 0.3, puff.position);
-    st.gap = Math.min(17, st.gap + BUMP_COST);
+    st.gap = Math.min(MAX_LEAD, st.gap + BUMP_COST);
     st.vy = 0;
     st.queued = null;
     st.slideT = 0;
@@ -717,7 +754,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     st.shakeT = 0.22;
     st.puffT = 0.3;
     terrain.place(member.s, (st.u + blockedLane * LANE) / 2, 0.35, puff.position);
-    st.gap = Math.min(17, st.gap + BUMP_COST);
+    st.gap = Math.min(MAX_LEAD, st.gap + BUMP_COST);
   }
 
   function stepBump(dt: number) {
@@ -900,15 +937,19 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
 
     // The egg: clean running closes the gap, a bump lets it roll further ahead. It keeps its
     // own steady pace, so when the runner stops dead the egg rolls on.
-    if (!st.bump && st.sideT <= 0) st.gap = Math.max(4.8, st.gap - 0.28 * dt);
-    st.gap = Math.min(st.gap, 17);
+    // The further behind you are, the faster you gain, so a bad patch can be won back.
+    const closing = 0.13 + 0.47 * smoothstep(START_LEAD, MAX_LEAD, st.gap);
+    if (!st.bump && st.sideT <= 0) st.gap = Math.max(MIN_LEAD, st.gap - closing * dt);
+    st.gap = Math.min(st.gap, MAX_LEAD);
     st.heroV += (st.speed - st.heroV) * (1 - Math.exp(-dt / 0.5));
-    const wantS = Math.min(st.s + st.gap, END_S);
+    // the wilder egg surges ahead and drops back when the trail is clear
+    const surge = eggMode === 2 && eggFree(st.eggS) ? 1.3 * Math.sin(st.clock * 1.5) : 0;
+    const wantS = Math.min(st.s + st.gap + surge, END_S);
     const eggSpeed = THREE.MathUtils.clamp(st.heroV + (wantS - st.eggS) * 1.6, 0, baseSpeed * 1.3 + 0.5);
     st.eggV += (eggSpeed - st.eggV) * Math.min(1, dt * 6);
     st.eggS = Math.min(END_S, st.eggS + st.eggV * dt);
     rollEgg(dt, st.eggS < END_S - 0.05);
-    hud.warn(st.gap > 12.5 && !st.finished);
+    hud.warn(st.gap > WARN_LEAD && !st.finished);
 
     // first-time hints: one at a time, shown early enough to act on
     if (st.hint < HINTS.length && st.s >= HINTS[st.hint].s) {
@@ -962,7 +1003,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
 
     // egg: bouncing and tumbling down the trail ahead
     // it weaves between the lanes, so it never sits on top of a line of amber
-    const wildEgg = eggMode === 2;
+    const wildEgg = eggMode; // 0 lively, 1 wild, 2 wilder
     const eggU = eggUAt(st.eggS, wildEgg);
     st.eggU = eggU;
     egg.scale.setScalar(EGG_SCALE * (1 + (wildEgg ? 0.26 : 0.16) * st.eggPop) * (1 - 0.08 * st.eggWind));
@@ -973,7 +1014,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     egg.quaternion.copy(basisAt(st.eggS));
     if (wildEgg) {
       // it leans into its swerves, and shivers as it winds up for a hop
-      const lean = THREE.MathUtils.clamp((eggUAt(st.eggS + 0.4, true) - eggUAt(st.eggS - 0.4, true)) * 1.4, -0.6, 0.6);
+      const lean = THREE.MathUtils.clamp((eggUAt(st.eggS + 0.4, wildEgg) - eggUAt(st.eggS - 0.4, wildEgg)) * 1.4, -0.6, 0.6);
       egg.quaternion.multiply(eggTurn.setFromAxisAngle(eggBack, lean + Math.sin(st.clock * 52) * 0.2 * st.eggWind));
     }
     egg.quaternion.multiply(eggQ);
@@ -1038,14 +1079,16 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     // runner has covered some ground. That keeps its cost off most frames.
     if (shadowsOn && Math.abs(st.s - shadowAt) >= 2.5) {
       shadowAt = st.s;
+      flora.shadowPass(true);
       shadow.render(renderer, scene, terrain.place(st.s + 14, 0, 0, tmp));
+      flora.shadowPass(false);
     }
     st.frame++;
   }
 
   reset();
   // for testing from the console: read the state, make moves, pause, start over
-  Object.assign(window, { rrGame: { st, act, setPaused, reset, obstacles, rows, collected, DEPTH } });
+  Object.assign(window, { rrGame: { st, act, setPaused, reset, obstacles, rows, collected, DEPTH, flora } });
   if (testing) {
     st.started = true;
     (ui.querySelector('.start-sheet') as HTMLElement).hidden = true;

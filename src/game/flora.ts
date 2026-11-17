@@ -48,6 +48,9 @@ interface Batch {
   meshes: THREE.InstancedMesh[];
   mats: THREE.InstancedBufferAttribute;
   cols: THREE.InstancedBufferAttribute;
+  /** How many placements are in the list, and how many of them are near enough to cast into the shadow map. */
+  n: number;
+  near: number;
 }
 
 // model heights, so swapping detail levels keeps each tree the same size
@@ -56,6 +59,8 @@ const GINKGO_H = [9, 11];
 const TREEFERN_H = [3.0, 4.2];
 
 const LEVELS = 4;
+/** Plants further ahead than this can't reach the shadow map (it covers about 41 m ahead; the list is rebuilt every 13 m). */
+const SHADOW_REACH = 58;
 /** Which level of detail a chunk shows, from how far ahead of the runner it starts. */
 const levelFor = (ahead: number) => (ahead < 13 ? 0 : ahead < 52 ? 1 : ahead < 104 ? 2 : 3);
 
@@ -243,7 +248,19 @@ export class Flora {
         this.group.add(mesh);
         return mesh;
       });
-      this.batches.set(name, { meshes, mats, cols });
+      this.batches.set(name, { meshes, mats, cols, n: 0, near: 0 });
+    }
+  }
+
+  /**
+   * The sun's shadow map only covers the ground near the runner, but each model is one list of
+   * placements for the whole view. Without this, every refresh of the map pushed the far
+   * forest's trunks through the graphics chip for nothing. Call with true before drawing the
+   * shadow map and false after.
+   */
+  shadowPass(on: boolean) {
+    for (const batch of this.batches.values()) {
+      for (const mesh of batch.meshes) mesh.count = on ? batch.near : batch.n;
     }
   }
 
@@ -266,14 +283,19 @@ export class Flora {
     if (!changed) return;
     for (const [name, batch] of this.batches) {
       let n = 0;
+      let near = -1;
       for (const c of this.chunks) {
         if (c.shown < 0) continue;
+        // chunks come in trail order, so everything near the runner is at the front of the list
+        if (near < 0 && c.s0 - playerS > SHADOW_REACH) near = n;
         const slab = c.levels[c.shown].get(name);
         if (!slab) continue;
         (batch.mats.array as Float32Array).set(slab.mats, n * 16);
         (batch.cols.array as Float32Array).set(slab.cols, n * 3);
         n += slab.n;
       }
+      batch.n = n;
+      batch.near = near < 0 ? n : near;
       for (const mesh of batch.meshes) {
         mesh.count = n;
         mesh.visible = n > 0;
