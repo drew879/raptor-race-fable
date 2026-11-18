@@ -6,7 +6,7 @@ Decisions and progress. Read `raptor-race-brief.md` first; it's the source of tr
 
 - **Level 1 plays from the nest to a catch at a cliff and the hatching** (build 36, 2026-11-17). `src/game/course.ts` reads `docs/level-1/course.mjs`, so the map and the game can't drift apart.
 - **In and working:** the opening on the nest (once per visit); all nine sections; seven obstacle kinds (tree, boulder, log, creek, propped trunk, hollow log, young Psittacosaurus crossing); the fork round the island, with a see-through label on each side of the screen; the Fan out power-up (50 m of trail); the three hidden finds; losing the egg on the way down, which ends the level; the first-time hints; the egg's dodges through all of it; the egg's dash for the cliff edge, the dive that catches it, the miss and its retry; the hatching and a Field Journal card.
-- **Music:** the chase music is Chase Strings, rebuilt from Drew's description and matched to his clip by measurement (2026-11-18, see "Chase Strings, built"). Waiting on his ears. The sounds of the run (jump, slide, bump and the rest) are the earlier ones. **Not built yet:** the title, results and journal screens proper (the start sheet, the results sheet and the one journal card are stand-ins). The hidden finds are collected and counted, but the journal pages they unlock don't exist yet.
+- **Music:** the chase music is Chase Strings, rebuilt from Drew's description and matched to his clip by measurement (2026-11-18, see "Chase Strings, built"). Waiting on his ears. The sounds of the run (jump, slide, bump and the rest) are the earlier ones. **Not built yet:** the title, results and journal screens proper (the start sheet, the results sheet and the one journal card are stand-ins). Their art is in `art/home`, `art/journal`, `art/finds` and `art/reference` (see "Art from Drew's review"). The hidden finds are collected and counted, but the journal pages they unlock don't exist yet.
 - **First-pass art to come back to:** the Psittacosaurus, young and adult (fine in play, rough up close); the island's rock (plain); the creek's stones; the hidden finds (a pale blue piece of amber with nothing inside it yet, and the brief describes inclusions); the spur of rock at the end (its walls and the forest below are only seen in the catch and the miss, and the sides beyond the walls are smooth slopes); the sitting pose up close (the feet lie out in front); the dive (the slide pose with fans out, no pose of its own).
 - **Decided:** look B; chick Slate; egg Lively/Wild/Wilder all offered for now ("eventually we can just pick one"; Wild is the default, Wilder is "Fun!"); body turn "perfect"; bumps "honestly perfect"; hollow log "reads well and enjoyed the view"; 2x edge smoothing looks clean.
 - **Drew's playtest of the first creek:** "Doesn't read very well, in large part because it doesn't appear to continue on the left and right side of the trail (the bumps obscure it)." He wanted water clearly flowing left to right and continuous either side. Rebuilt: see "Creek" under the level notes.
@@ -40,6 +40,48 @@ What changed:
 - **Amber flare:** he could not see it. It was hidden: a piece is taken when it is level with the runner's neck, which from the chase camera is behind its body. Removed (he said to put the idea on ice and that it could be undone). The amber counter's drop still swells on each pickup.
 - **Amber and the tune, his question:** it does not feel like one note per piece, more that the melody plays for as long as he keeps collecting. Answer given: each piece does trigger exactly one sound at its own spot, but the tune rests on 20 of its 64 eighth-note slots and a piece on a rest plays only a chord note at about a quarter of the volume; and every amber note rings for about half a second and goes through the echo (a repeat three sixteenths later, then fainter ones) and the reverb, so notes sound between pickups and after he stops. Agreed for when the music is locked: one piece of amber for each note of the tune, none on the rests. Offered in the meantime: cutting the echo and the ring from amber so each pickup is one clear note. He chose to leave the sound as it is until the music is locked ("Leave it for now", 2026-11-18).
 - **UX concepts:** he will look later.
+
+### Art from Drew's review (2026-11-18)
+Drew reviewed the ChatGPT art drafts in a side session and asked for its log (`docs/local/art-review-log.md`) to be folded in here. **Nothing below is built, and no game code was touched.**
+
+**The files** (committed 2026-11-18):
+
+| File | Size | What it is |
+|---|---|---|
+| `art/home/home-background.png` | 822 x 1914 | Home screen painting, no text or buttons: a Velociraptor in front, larger raptors behind, a Microraptor overhead, a low amber sun. Ships. |
+| `art/home/home-title.png` | 2172 x 724 | RAPTOR RACE lettering, transparent. Ships. |
+| `art/journal/jehol-forest-page.png` | 910 x 1728 | Level 1's journal page, the finds row left blank. Ships. |
+| `art/finds/feathered-tail.png`, `baby-bird.png`, `spider-web.png` | about 1500 x 1000 each | The three hidden finds, transparent, bright turquoise with a thin amber rim. Ship, and are the one set used by results, journal and loading. |
+| `art/reference/results-mockup.png` | 910 x 1728 | Results screen. Reference only. |
+| `art/reference/field-journal-mockup.png` | 910 x 1728 | Journal page with the finds and the uncorrected notes. Reference only. |
+
+**How the art gets used (agreed):** every screen is rebuilt in code and the artwork is the reference for the look. Painted parts (paper, animals, amber, finds, cards) can be image layers. Level names, numbers and buttons are live type on top. Layout, type and motion changes go to the build, not back to ChatGPT. Reference mock-ups carry baked-in text and never ship; they live in `art/reference/`, named by screen. Art that ships goes in a folder per screen.
+
+**Home screen.** Drew is happy with the pack scene. Decided:
+- The gear is a live button and goes **bottom right**, below JOURNAL (his words: "Bottom right"). The top stays clear for the phone's status bar. Proposed and not objected to: a quiet chip in the dark teal of LEVELS and JOURNAL, the icon in cream at about 60% strength.
+- The title is an image, not live type: the name never changes and its painted texture is part of the look. PLAY, LEVELS, JOURNAL and the gear are built in code. If they fall short of the painted ones, ask for blank button plates then.
+- The background is the wide version (animals across the width). Sky is clear down to about a third of the height, for the title; the ground is dark and calm from about 73% down, for the buttons. It is 9 by 21 and a phone is about 9 by 19.5, so about 130 px comes off the height, evenly or mostly from the bottom. At 822 px wide it will be scaled up about 1.5 times on a phone: check it there, and upscale or ask for a larger one if it looks soft.
+- A lesson for prompts: "keep the animals inside the middle 70%" made a second version with small animals that lost its impact. It was not needed, since the picture came back phone-shaped.
+
+**Field Journal page.** Drew is happy with the look; this is the answer to "generic and soulless": a full page, handwriting, taped scraps, finds as rough nuggets.
+- The handwriting stays baked into the page art, since a page's notes are fixed for a level. The finds row is live, laid over the blank paper, because it has four states (0 to 3 found).
+- ChatGPT invented some notes. Four were changed in the shipped page: the footprint's "7.6 cm" is gone, "Nest site (eggs!)" became "Good nesting ground?", "Tridactyl foot" became "Three long toes.", and "It probably used its tail fan to attract a mate" became "Maybe the tail fan was for attracting a mate."
+- **Still to check before it ships:** the footprint sketch and its label "Footprint (in soft mud)" are still on the page, and no Caudipteryx footprints are known as far as either session knows. The first find is drawn as a single feather where the real fossil is a feathered tail, so the journal's words about it must say tail.
+- The back arrow sits where the phone's status bar is. Place it in code.
+- The finds are different sizes and shapes: scale them to a common height in the build. The second should read as a spider web with its prey, the third is the baby bird.
+
+**Results screen.** Kept from the draft: the plain panel for the results, the bold tall lettering, turquoise finds with an amber rim, the clipped "New page!" card, the next level on its own taped sheet headed "Next: Velociraptor in the Gobi Desert", AGAIN small on the left and NEXT large on the right. Drew's changes, for the build:
+- The level title stays where it is.
+- The three parts of the score show one at a time, each as a row with its numbers right-aligned and the math visible, for example 214 x 10 = 2,140. What was earned (214) and what it was worth (2,140) are strongly emphasized; the "x 10" is small and faint.
+- The score comes last, so it reads as the sum of the three rows. It should not look like an arithmetic problem.
+- Suggested by the side session and not yet confirmed by him: drop the "=" and let the right-aligned column do that job; the score counts up as each row lands; the found pieces stay as pictures (two glowing, one outline) in place of "2 of 3".
+
+**Open, for Drew:**
+- The bump row. The rule (a clean-run bonus of 500 less 100 for each bump) does not read as "n x points". Proposed: show "Clean run 500" and have each bump knock 100 off as the row lands. The alternative is changing the rule.
+- Does each hidden find unlock a journal page of its own (the brief says so), with this page as the level's page, or do the finds unlock parts of this one?
+- The footprint on the journal page (above).
+- There are no art layers for the results screen yet, only the mock-up.
+- The log lists a home screen mock-up with title and buttons at `docs/local/home-screen.png`; it is not in that folder now.
 
 ### Chase Strings, round 2 (build 45, 2026-11-18; build 46 is these notes only), from Drew's listen to build 44
 - **What he said:** the match sounds like the original ("Yes"); he "truly cannot tell the difference between *any* of the first three clips", so the fuller strings are dropped and the plain sound stays until Live; amber is "Definitely Line"; music against the jump and bump sounds is "Right"; no crackle or stutter noticed on the phone. The ending: "Not really, and the final note feels out of place." Not ready to lay the level out: "Something's up with the strings--the first two notes start (about 4-6 seconds after starting the level, including the egg/nest animation), then the strings suddenly cut off, and then resume at about 20 seconds."
