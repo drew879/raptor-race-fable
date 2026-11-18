@@ -108,3 +108,43 @@ Accuracy: every dinosaur is a real animal drawn from fossils, fully feathered li
 ## Notes on the example numbers
 
 The results example uses the score proposed to Drew on 2026-11-18: 10 for each piece of amber, 250 for each hidden find, and a clean-run bonus of 500 that loses 100 for each bump. So 214 amber, 2 finds and 1 bump is 2,140 + 500 + 400 = 3,040.
+
+## Results screen pieces (sent 2026-11-18)
+
+The results screen is built in code over painted pieces: the score, the rows, the buttons and the "New page!" card are live. These are the pieces to paint. Attach `art/reference/results-mockup.png` with each prompt, so they match it. Save them in `art/results/`.
+
+Blank page, `page.png`:
+
+```text
+Using the attached image as the style reference, paint only the empty notebook page: the same aged cream paper with the stitched binding down the left edge, soft stains and smudges, and nothing else. No text, no drawings, no numbers, no buttons, no cards, no tape. Keep any marks faint and near the edges, so the middle of the page is calm enough to put text over. Tall portrait, the same shape as the attached image, filling the whole frame.
+```
+
+The chick, `chick.png`:
+
+```text
+Using the attached image as the style reference, redraw only the newly hatched chick peeking out of its blue-green eggshell, with the few ferns around it, in the same ink-and-watercolor style. Put it alone on a fully transparent background, with soft uneven watercolor edges. No paper, no text, no border.
+```
+
+Amber, `amber.png`:
+
+```text
+Using the attached image as the style reference, redraw only the little pile of golden amber pieces in the same ink-and-watercolor style. Put it alone on a fully transparent background. No paper, no numbers, no text, no border.
+```
+
+Obstacles, `log.png`:
+
+```text
+Using the attached image as the style reference, redraw only the mossy fallen log in the same ink-and-watercolor style. Put it alone on a fully transparent background. No paper, no text, no border.
+```
+
+Next level, `next-gobi.png`:
+
+```text
+Using the attached image as the style reference, redraw only the sheet of paper at the bottom that shows the next level: a separate, slightly paler sheet held on with two strips of yellowed tape, with a torn top edge. On it, the unfinished drawing of a Velociraptor standing on a sand dune, in pencil with only the first pale washes of watercolor. Leave the top third of the sheet empty, with no lettering at all, so text can be set there. Put the sheet alone on a fully transparent background. No buttons, no other text.
+```
+
+Stamp, `clean-run.png` (only wanted if the one built in code looks wrong):
+
+```text
+A rubber stamp impression that reads "CLEAN RUN!" in bold capital letters inside a rough double-ruled rectangle, stamped slightly crooked in deep blue-green ink, with the uneven, patchy ink of a real stamp. Alone on a fully transparent background. No paper.
+```

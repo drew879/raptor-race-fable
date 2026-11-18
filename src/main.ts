@@ -2,6 +2,7 @@ import './style.css';
 import * as THREE from 'three';
 import { runBench } from './app/bench';
 import { startUpdates } from './app/build';
+import { makeFront, type Front } from './app/front';
 import { Quality } from './app/quality';
 import { tickFps, watchViewport } from './app/viewport';
 import { buildCloseup } from './closeup/scene';
@@ -21,9 +22,15 @@ const params = new URLSearchParams(location.search);
 const boot = document.createElement('div');
 boot.className = 'boot';
 boot.textContent = 'Loading the forest…';
-ui.appendChild(boot);
+// The game itself opens on the loading screen and then the home screen. The test views and
+// test runs (the links with a mode, or with nopause) go straight in, as before.
+let front: Front | null = null;
+if ((params.get('mode') ?? 'run') === 'run' && !params.has('nopause')) front = makeFront(document.body);
+else ui.appendChild(boot);
 
 function fail(message: string) {
+  document.querySelector('.front')?.remove();
+  front = null;
   boot.textContent = `Something went wrong.\n${message}`;
   if (!boot.isConnected) ui.appendChild(boot);
 }
@@ -75,6 +82,7 @@ async function start() {
       styles: STYLES,
       styleIndex: () => styleIndex,
       pickStyle: setStyle,
+      home: front !== null,
       quality: () =>
         `${quality.scale < 1 ? `sharpness ${Math.round(quality.scale * 100)}%` : 'full sharpness'} · ${draws} draws` +
         (quality.history() ? `\nsharpness log: ${quality.history()}` : ''),
@@ -140,11 +148,32 @@ async function start() {
     return;
   }
 
+  if (front) {
+    const run = view as RunView;
+    const home = front;
+    run.onHome = () => home.showHome();
+    run.sound.setMode('home');
+    // one frame drawn now, behind the loading screen, so the frame that builds every shader is not the first one after PLAY
+    view.update(0, renderer);
+    post.render(view.scene, view.camera);
+    void home.ready({
+      play: () => run.play(),
+      bell: (kind) => run.sound.menu(kind),
+      soundOn: () => run.sound.on,
+      setSound: (on) => run.sound.setOn(on),
+    });
+  }
+
   const t0 = performance.now();
   let last = t0;
   let sinceReport = 0;
   renderer.setAnimationLoop(() => {
     const now = performance.now();
+    // nothing is drawn behind the loading screen and the home screen
+    if (front?.up) {
+      last = now;
+      return;
+    }
     const time = (now - t0) / 1000;
     tickFps((now - last) / 1000);
     quality.tick(now - last, view.steady?.() ?? true);

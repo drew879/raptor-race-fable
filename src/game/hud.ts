@@ -24,6 +24,8 @@ export interface HudHooks {
   speedNow?(): Promise<string>;
   onEgg(mode: number): void;
   onStart(): void;
+  /** Back to the home screen. Left out where there is none (test runs), and its buttons with it. */
+  onHome?: () => void;
   onPause(): void;
   onResume(): void;
   onRestart(): void;
@@ -53,6 +55,8 @@ export interface Hud {
   setPaused(paused: boolean): void;
   showFinish(amber: number, total: number, finds: number, totalFinds: number): void;
   hideFinish(): void;
+  /** Put the stand-in start sheet away: the home screen's PLAY has done its job. */
+  hideStart(): void;
   setStyle(index: number): void;
 }
 
@@ -80,6 +84,7 @@ export function makeHud(root: HTMLElement, hooks: HudHooks): Hud {
       <h2>Paused</h2>
       <button class="big resume">Keep running</button>
       <button class="big ghost restart">Start over</button>
+      <button class="big ghost go-home">Home</button>
       <div class="setting look-row"><span>Look</span><div class="tabs"></div></div>
       <div class="setting"><span>Speed</span>
         <div class="stepper"><button class="slower" aria-label="Slower">&minus;</button><b class="speed"></b><button class="faster" aria-label="Faster">+</button></div>
@@ -98,11 +103,13 @@ export function makeHud(root: HTMLElement, hooks: HudHooks): Hud {
       <h2>The egg got away!</h2>
       <p>Every bump lets it roll further ahead.</p>
       <button class="big retry">Try again</button>
+      <button class="big ghost go-home">Home</button>
     </div>
     <div class="sheet finish-sheet low" hidden>
       <h2>You caught the egg!</h2>
       <p class="tally"></p>
       <button class="big again">Run again</button>
+      <button class="big ghost go-home">Home</button>
     </div>`;
   const q = <T extends HTMLElement>(sel: string) => root.querySelector(sel) as T;
   const amber = q<HTMLElement>('.amber-count .n');
@@ -133,6 +140,10 @@ export function makeHud(root: HTMLElement, hooks: HudHooks): Hud {
   press(q('.again'), hooks.onRestart);
   press(q('.retry'), hooks.onRetry);
   press(q('.next'), hooks.onJournalNext);
+  for (const el of root.querySelectorAll<HTMLElement>('.go-home')) {
+    el.hidden = !hooks.onHome;
+    press(el, () => hooks.onHome?.());
+  }
   const skipEl = q<HTMLElement>('.skip');
   const showSpeed = () => (speedEl.textContent = speed.toFixed(1));
   press(q('.slower'), () => {
@@ -249,6 +260,9 @@ export function makeHud(root: HTMLElement, hooks: HudHooks): Hud {
     },
     hideFinish() {
       finishSheet.hidden = true;
+    },
+    hideStart() {
+      q<HTMLElement>('.start-sheet').hidden = true;
     },
     setStyle(index) {
       const style = hooks.styles[index];

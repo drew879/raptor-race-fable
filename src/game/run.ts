@@ -37,10 +37,18 @@ export interface RunHooks {
   quality?(): string;
   /** Times a few frames and says what one costs right now. Slow to answer, so it is asked for after the pause sheet is up. */
   speedNow?(): Promise<string>;
+  /** There is a home screen to go back to. */
+  home?: boolean;
 }
 
 /** The run, plus a few handles the speed test uses to switch parts of the picture off. */
 export interface RunView extends Lookdev {
+  /** Start the level from its beginning: the home screen's PLAY. */
+  play(): void;
+  /** The music and the sounds, for the menus' bells. */
+  sound: Sound;
+  /** Set by the app when there is a home screen: called when the player goes back to it. */
+  onHome: (() => void) | null;
   debug: {
     st: { s: number; eggS: number; paused: boolean; started: boolean };
     forest: THREE.Object3D;
@@ -807,6 +815,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     onStart: () => {
       st.started = true;
     },
+    onHome: hooks.home ? () => goHome() : undefined,
     onPause: () => setPaused(true),
     onResume: () => setPaused(false),
     onRestart: () => reset(),
@@ -829,6 +838,18 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     st.paused = p;
     hud.setPaused(p);
     sound.setPaused(p);
+  }
+
+  /** Back to the home screen: the level is put back to its start and left waiting there. */
+  function goHome() {
+    st.paused = false;
+    hud.setPaused(false);
+    sound.setPaused(false);
+    reset();
+    hud.hideFinish();
+    st.started = false;
+    sound.setMode('home');
+    view.onHome?.();
   }
 
   /** Put every single thing back to the start. */
@@ -2174,9 +2195,17 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   // the chick is a big file and is only needed at the end: fetch it once the first picture is up
   setTimeout(fetchChick, 1200);
   let last = -1;
-  return {
+  const view: RunView = {
     scene,
     camera,
+    sound,
+    onHome: null,
+    play() {
+      reset();
+      hud.hideFinish();
+      hud.hideStart();
+      st.started = true;
+    },
     debug: {
       st,
       forest: flora.group,
@@ -2215,6 +2244,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       draw(renderer);
     },
   };
+  return view;
 }
 
 void SHADOW_LAYER;

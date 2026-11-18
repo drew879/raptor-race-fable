@@ -107,7 +107,7 @@ function chordFrom(bar: Bar, midi: number) {
   return m;
 }
 
-type Mode = 'quiet' | 'chase' | 'dash' | 'leap' | 'won' | 'lost';
+type Mode = 'home' | 'quiet' | 'chase' | 'dash' | 'leap' | 'won' | 'lost';
 interface NoteOpts {
   t: number;
   f: number;
@@ -690,7 +690,7 @@ export class Sound {
       this.dashEnd = (Math.floor(n / 16) + 1) * 16;
       this.startDash(ctx, ctx.currentTime + 0.01);
     }
-    if (mode === 'quiet' || mode === 'chase') {
+    if (mode === 'quiet' || mode === 'chase' || mode === 'home') {
       // a fresh start: nothing left hanging from an ending
       if (ctx) {
         this.cut(this.rise, ctx.currentTime, 0.03);
@@ -816,6 +816,20 @@ export class Sound {
   mix(music: number, all: number) {
     this.music.gain.value = music;
     this.out.gain.value = all;
+  }
+
+  /**
+   * A tap on a menu: the amber's bell, in the music's key. `go` is the button that starts a run,
+   * `back` one that closes something, `tap` any other. (The home screen has only these and the
+   * wind until the game has a theme of its own.)
+   */
+  menu(kind: 'tap' | 'go' | 'back' = 'tap') {
+    this.unlock();
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const t = ctx.currentTime + 0.03;
+    const notes = kind === 'go' ? [85, 88, 92, 97] : kind === 'back' ? [85] : [88];
+    notes.forEach((m, i) => this.chime(ctx, t + i * 0.07, m, 0.11, kind === 'go' ? 0.3 : 0.2));
   }
 
   /** A hidden find: three bells up the chord, ringing on. */
