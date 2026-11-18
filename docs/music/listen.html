@@ -52,29 +52,51 @@ ul.plain b { font-weight: 600; }
   <section class="top">
     <span class="eyebrow">Raptor Race &middot; music</span>
     <h1>Chase Strings, rebuilt</h1>
-    <p class="lede">Four clips. Play the original, then the match, and go back and forth. All four are set to the same loudness. Headphones show the most, but the phone's speaker is what the game will be heard on, so try both.</p>
+    <p class="lede">New this round: the ending, in two versions. The earlier clips are underneath. Headphones show the most, but the phone's speaker is what the game will be heard on, so try both.</p>
   </section>
 
-  <section class="clips">
-    <div class="clip">
-      <header><span class="num">1</span><h3>The original</h3></header>
-      <p>Your clip, as you sent it.</p>
-      <audio id="clip-original" controls preload="metadata" src="clips/original.mp4"></audio>
+  <section class="block">
+    <h2>The ending, reworked</h2>
+    <p>Each clip is two bars of the chase at full strength, then the egg's dash at <b>4 s</b>, the dive at <b>5.4 s</b> and the landing at <b>6 s</b>, ringing out.</p>
+    <div class="clips">
+      <div class="clip mine">
+        <header><span class="num">A</span><h3>The third on top</h3><span class="tag">in the game now</span></header>
+        <p>The last chord as your description has it, with its bright third as the highest note.</p>
+        <audio id="clip-ending" controls preload="metadata" src="clips/ending.mp4"></audio>
+      </div>
+      <div class="clip">
+        <header><span class="num">B</span><h3>The home note on top</h3></header>
+        <p>The same, with that top note taken off, so the home note is the highest. It is the more settled of the two.</p>
+        <audio id="clip-ending-home" controls preload="metadata" src="clips/ending-home.mp4"></audio>
+      </div>
     </div>
-    <div class="clip mine">
-      <header><span class="num">2</span><h3>The match</h3><span class="tag">in the game now</span></header>
-      <p>The same 34 seconds from the game's new music code. <b>0 to 16 s:</b> short strings, cellos, kick and wind. <b>16 to 34 s:</b> everything. Amber climbs the chord at 4 s and at 20 s, the way the original's did.</p>
-      <audio id="clip-match" controls preload="metadata" src="clips/match.mp4"></audio>
-    </div>
-    <div class="clip">
-      <header><span class="num">3</span><h3>Fuller strings</h3></header>
-      <p>The same notes with a fuller string sound: more players to each part, the scrape of the bow at the start of each note, the wooden body of the instruments, and a hall. Still made in code. It is not in the game.</p>
-      <audio id="clip-full" controls preload="metadata" src="clips/full.mp4"></audio>
-    </div>
-    <div class="clip mine">
-      <header><span class="num">4</span><h3>The amber's bell line</h3><span class="tag">first draft</span></header>
-      <p>The amber's own part, over the music at middle strength. <b>0 to 16 s:</b> every bell, all 64 notes. <b>16 to 32 s:</b> the same eight bars with lines and gaps, the way a level might lay the amber out.</p>
-      <audio id="clip-bells" controls preload="metadata" src="clips/bells.mp4"></audio>
+    <ul class="plain">
+      <li><b>A stray note is gone.</b> In the last build the rising sound before the leap was cut off at the landing and then came back by mistake about a second later, as one buzzing note that faded out.</li>
+      <li><b>The landing is clean.</b> Whatever chord the chase was on used to hang over the last chord. Now everything is let go at the landing.</li>
+      <li><b>The build-up is longer.</b> From the dash to the landing, about two seconds, the whole band sits on the one chord that wants to go home, with a drum roll growing under it. Before, that chord had only the half second of the dive.</li>
+      <li><b>Nothing follows the last chord.</b> The soft chord I had added after it is gone.</li>
+    </ul>
+  </section>
+
+  <section class="block">
+    <h2>The earlier clips</h2>
+    <p>You couldn't tell the fuller strings from the plain ones, so that clip is gone and the plain sound stays until the sounds are redone in Live.</p>
+    <div class="clips">
+      <div class="clip">
+        <header><span class="num">1</span><h3>The original</h3></header>
+        <p>Your clip, as you sent it.</p>
+        <audio id="clip-original" controls preload="metadata" src="clips/original.mp4"></audio>
+      </div>
+      <div class="clip">
+        <header><span class="num">2</span><h3>The match</h3></header>
+        <p>The same 34 seconds from the game's music code. The bells at 4 s and 20 s are the original's climb up the chord, there so the two clips can be compared like for like.</p>
+        <audio id="clip-match" controls preload="metadata" src="clips/match.mp4"></audio>
+      </div>
+      <div class="clip">
+        <header><span class="num">3</span><h3>The amber's bell line</h3><span class="tag">first draft</span></header>
+        <p>A demonstration of the amber's own part. <b>0 to 16 s:</b> every bell, all 64 notes. <b>16 to 32 s:</b> the same eight bars with lines and gaps. In the game a bell sounds only when the runner takes a piece of amber.</p>
+        <audio id="clip-bells" controls preload="metadata" src="clips/bells.mp4"></audio>
+      </div>
     </div>
   </section>
 
@@ -119,7 +141,7 @@ ul.plain b { font-weight: 600; }
       <li><b>The wind.</b> It is too quiet in your clip to measure well. Mine is set by the description and a rough fit.</li>
       <li><b>Levels the description leaves out:</b> the click on the kick and the toms, the bell's brighter edge, and how far right the hats sit.</li>
       <li><b>How a short string note dies away.</b> I read "exponential release" as fading to nothing within the release time.</li>
-      <li><b>The ending.</b> The riser, the leap and the landing are in the game and not in these clips. Your description gives their notes but not their levels, so those are mine.</li>
+      <li><b>The ending's levels.</b> Your description gives the ending's notes but not how loud each part is, so those are mine. I also added a knock to the landing and a rattle to the drum roll, because a phone's speaker can't play the low drums.</li>
     </ul>
   </section>
 </div>

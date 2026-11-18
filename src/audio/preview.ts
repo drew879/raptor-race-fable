@@ -12,12 +12,15 @@
 //   bells  the amber's own written line: the eight bars with every bell, then the eight bars
 //          again with lines and gaps as a level might lay them
 //   game   sixteen seconds as the game mixes it, limiter and all, to check the levels
+//   ending       two bars of the chase at full strength, then the egg's dash (1.4 s), the dive
+//                (0.56 s) and the landing, ringing out
+//   ending-home  the same, landing with the home note on top
 
 import { Sound } from './sound';
 
 const RATE = 44100;
 const STEP = 0.125;
-export type Clip = 'match' | 'full' | 'bells' | 'game';
+export type Clip = 'match' | 'full' | 'bells' | 'game' | 'ending' | 'ending-home';
 
 /** Lines and gaps for the second half of the bells clip: one string of eight eighths for each bar. */
 const LINES = ['11110000', '00111111', '11111111', '00001111', '11110011', '11111111', '00111100', '11110000'];
@@ -40,15 +43,21 @@ function solo(band: Sound, part: string) {
 }
 
 export async function clip(kind: Clip, only?: string): Promise<Float32Array[]> {
-  const seconds = kind === 'game' ? 16 : 34;
+  const ending = kind === 'ending' || kind === 'ending-home';
+  const seconds = kind === 'game' ? 16 : ending ? 12 : 34;
   const ctx = new OfflineAudioContext(2, seconds * RATE, RATE);
   const band = new Sound(false);
   band.build(ctx, kind === 'full');
   if (only) solo(band, only);
-  band.bed = kind === 'bells' || kind === 'game';
+  band.bed = kind === 'bells' || kind === 'game' || ending;
   // (quiet enough that the limiter never touches it: the clip is brought up to level afterwards)
   if (kind !== 'game') band.mix(0.5, 1);
-  const steps = kind === 'bells' ? 256 : seconds / STEP;
+  if (ending) {
+    // (bars six and seven, so the dash comes in off the D chord: the hardest place to land from)
+    for (let n = 80; n < 112; n++) band.step(ctx, n, (n - 80) * STEP, 0.95);
+    band.finale(ctx, 112, 4, 1.4, 0.56, kind === 'ending-home');
+  }
+  const steps = ending ? 0 : kind === 'bells' ? 256 : seconds / STEP;
   for (let n = 0; n < steps; n++) {
     const t = n * STEP;
     const k = kind === 'match' || kind === 'full' ? (n < 128 ? 0.25 : 0.9) : 0.6;

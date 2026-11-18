@@ -79,6 +79,19 @@ const TUNE_AT = BARS.map((bar) => {
   return at;
 });
 
+/**
+ * The parts that come and go, and the intensity each comes in at. Who is playing is decided at
+ * the top of a bar, and for the tune and the high strings only at the top of a four-bar phrase;
+ * and a part that is in stays in until the intensity is well under its mark. So nothing comes in
+ * for two notes and leaves again, which the first build of this did at the start of every run.
+ */
+const MARKS = { cello: 0.22, snare: 0.3, tune: 0.38, hats: 0.4, push: 0.5, busy: 0.65, octave: 0.7, high: 0.75 };
+type Part = keyof typeof MARKS;
+const PARTS = Object.keys(MARKS) as Part[];
+/** The bar the egg's dash for the edge is played over, whatever bar it comes in: the chord that wants to go home. */
+const DOMINANT = 7;
+const ease01 = (x: number) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
+
 /** The note `steps` notes of the bar's chord above (or below) `midi`. */
 function chordStep(bar: Bar, midi: number, steps: number) {
   let m = midi;
@@ -130,6 +143,8 @@ interface BowOpts {
   pan?: number;
   vibrato?: boolean;
   tremolo?: boolean;
+  /** Die away this slowly: the release ends at this fraction of the note's volume, not at nothing. For a chord that should ring out. */
+  ring?: number;
   to?: AudioNode;
 }
 
@@ -140,6 +155,10 @@ export class Sound {
   private music!: GainNode;
   /** The bowed notes all go in here. */
   private strings!: GainNode;
+  /** And on their way there they pass through this, which can be swapped for a new one to let every held note go at once. */
+  private bows!: GainNode;
+  /** Which of the parts that come and go are playing now. */
+  private playing: Partial<Record<Part, boolean>> | null = null;
   private reverb!: GainNode;
   private noise!: AudioBuffer;
   private wind!: GainNode;
@@ -164,7 +183,9 @@ export class Sound {
   // the clock's grid
   private t0 = 0;
   private next = 0;
-  private wonAt = 0;
+  /** When the egg's dash began, and when the next stroke of its drum roll is due. */
+  private dashAt = 0;
+  private rollNext = 0;
   // the ground's grid
   /** Where on the trail the music starts, and how many meters the chase runs for. */
   origin = 0;
@@ -239,6 +260,7 @@ export class Sound {
       this.groundNext = -1;
       this.amberStep = -1e9;
       this.rise = this.hold = null;
+      this.playing = null;
       this.timer = window.setInterval(() => this.schedule(), 30);
     }
     if (!this.silent) {
@@ -316,6 +338,9 @@ export class Sound {
     this.reverb.gain.value = 0.5;
     this.reverb.connect(conv).connect(this.out);
     this.strings = ctx.createGain();
+    this.bows = ctx.createGain();
+    this.bows.connect(this.strings);
+    this.playing = null;
     if (!full) this.strings.connect(this.music);
     else {
       // the wooden body of the instruments: a few fixed resonances, and the very top rolled off
@@ -366,7 +391,7 @@ export class Sound {
   /** Somewhere between the left ear and the right. Made once for each place and kept. */
   private panned(ctx: BaseAudioContext, amount: number, to: AudioNode) {
     if (!amount || !ctx.createStereoPanner) return to;
-    const key = `${amount}${to === this.strings ? 's' : 'm'}`;
+    const key = `${amount}${to === this.bows ? 'b' : 'm'}`;
     let node = this.pans.get(key);
     if (!node) {
       const pan = ctx.createStereoPanner();
@@ -382,7 +407,7 @@ export class Sound {
    * `hold` seconds after it began, and dies away.
    */
   private bow(ctx: BaseAudioContext, o: BowOpts) {
-    const to = o.to ?? this.panned(ctx, o.pan ?? 0, this.strings);
+    const to = o.to ?? this.panned(ctx, o.pan ?? 0, this.bows);
     if (!this.full) return this.bowed(ctx, o, [-o.detune, o.detune], 1, to);
     // more players, a few thousandths of a second apart, and the scrape of the bow as each note starts
     const late = o.hold < 0.2 ? 0.006 : 0.014;
@@ -393,12 +418,13 @@ export class Sound {
 
   private bowed(ctx: BaseAudioContext, o: BowOpts, detunes: number[], scale: number, to: AudioNode) {
     const end = o.t + Math.max(o.hold, o.attack);
-    const stop = end + o.release + 0.03;
+    const stop = end + o.release + (o.ring ? 0.25 : 0.03);
     const amp = ctx.createGain();
     amp.gain.setValueAtTime(0, o.t);
     amp.gain.linearRampToValueAtTime(o.vol * scale * BOWED, o.t + o.attack);
     amp.gain.setValueAtTime(o.vol * scale * BOWED, end);
-    amp.gain.exponentialRampToValueAtTime(0.0001, end + o.release);
+    amp.gain.exponentialRampToValueAtTime(o.ring ? o.vol * scale * BOWED * o.ring : 0.0001, end + o.release);
+    if (o.ring) amp.gain.linearRampToValueAtTime(0, end + o.release + 0.2);
     const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass';
     filter.Q.value = 0.7;
@@ -543,51 +569,62 @@ export class Sound {
   }
 
   // ---------------------------------------------------------------- the score
+  /** Decide who is playing, from the intensity `k`, at the top of bar `index`. */
+  private cast(index: number, k: number) {
+    const first = !this.playing;
+    const playing = (this.playing ??= {});
+    for (const part of PARTS) {
+      if (!first && (part === 'tune' || part === 'high') && index % 4 !== 0) continue;
+      if (k > MARKS[part]) playing[part] = true;
+      else if (k < MARKS[part] - 0.08) playing[part] = false;
+    }
+  }
+
   /**
-   * What every part plays on one sixteenth. `k` is the intensity, 0 to 1: each part comes in
-   * above its own mark. `dur` is how long a sixteenth is lasting, for the notes that are held.
+   * What every part plays on one sixteenth. `k` is the intensity, 0 to 1. `dur` is how long a
+   * sixteenth is lasting, for the notes that are held. With `dash`, it is the egg's dash for the
+   * edge: everything short and driving, all on the one chord that wants to go home.
    */
-  step(ctx: BaseAudioContext, n: number, t: number, k: number, dur = STEP) {
-    const index = ((Math.floor(n / 16) % BARS.length) + BARS.length) % BARS.length;
+  step(ctx: BaseAudioContext, n: number, t: number, k: number, dur = STEP, dash = false) {
+    const index = dash ? DOMINANT : ((Math.floor(n / 16) % BARS.length) + BARS.length) % BARS.length;
     const bar = BARS[index];
     const at = stepIn(n);
     const long = dur / STEP;
+    if (at === 0 || !this.playing) this.cast(index, k);
+    const on = (part: Part) => dash || this.playing?.[part] === true;
     // the short string notes, never stopping, leaned on in threes and twos
     this.bow(ctx, { t, midi: bar.root + 12 + OSTINATO[at], attack: 0.01, hold: 0.07, release: 0.04, cut: 1500 + 1200 * k, open: 1.8, detune: 7, vol: ACCENT.includes(at) ? 0.07 : 0.045, pan: at % 2 ? 0.15 : -0.15 });
-    if (k > 0.7) this.bow(ctx, { t, midi: bar.root + 24 + OSTINATO[at], attack: 0.01, hold: 0.06, release: 0.04, cut: 2600, detune: 7, vol: 0.03, pan: 0.3 });
+    if (on('octave')) this.bow(ctx, { t, midi: bar.root + 24 + OSTINATO[at], attack: 0.01, hold: 0.06, release: 0.04, cut: 2600, detune: 7, vol: 0.03, pan: 0.3 });
     // the held strings under everything
-    if (this.bed && at === 0) {
+    if (this.bed && at === 0 && !dash) {
       this.bow(ctx, { t, midi: bar.root + 12, attack: 0.35, hold: 1.95 * long, release: 0.35, cut: 900 + 500 * k, detune: 10, vol: 0.035, pan: -0.2 });
       this.bow(ctx, { t, midi: bar.root + 19, attack: 0.35, hold: 1.95 * long, release: 0.35, cut: 900 + 500 * k, detune: 10, vol: 0.028, pan: 0.2 });
     }
     // cellos on beats one and three
-    if (k > 0.22 && at % 8 === 0) this.bow(ctx, { t, midi: bar.root, attack: 0.04, hold: 0.9 * long, release: 0.12, cut: 520, detune: 6, vol: 0.075 });
+    if (on('cello') && at % 8 === 0) this.bow(ctx, { t, midi: bar.root, attack: 0.04, hold: 0.9 * long, release: 0.12, cut: 520, detune: 6, vol: 0.075 });
     // the kit
-    if (at % 8 === 0 || (k > 0.5 && at === 10)) this.kick(ctx, t);
-    if (k > 0.3 && at % 8 === 4) this.snare(ctx, t);
-    if (k > 0.4 && (at % 2 === 0 || k > 0.65)) this.hat(ctx, t, at % 4 === 2 ? 0.035 : 0.02);
-    if (k > 0.5 && index === BARS.length - 1 && at >= 12) this.tom(ctx, t, [180, 155, 130, 105][at - 12]);
+    if (at % 8 === 0 || (on('push') && at === 10)) this.kick(ctx, t);
+    if (on('snare') && at % 8 === 4) this.snare(ctx, t);
+    if (on('hats') && (at % 2 === 0 || on('busy'))) this.hat(ctx, t, at % 4 === 2 ? 0.035 : 0.02);
+    if (on('push') && index === BARS.length - 1 && at >= 12) this.tom(ctx, t, [180, 155, 130, 105][at - 12]);
+    if (dash) return;
     // the violin's tune
     const tune = TUNE_AT[index].get(at);
-    if (k > 0.38 && tune) this.bow(ctx, { t, midi: tune[0], attack: 0.04, hold: tune[1] * dur * 0.97, release: 0.12, cut: 3200, detune: 6, vol: 0.05, pan: 0.12, vibrato: true });
+    if (on('tune') && tune) this.bow(ctx, { t, midi: tune[0], attack: 0.04, hold: tune[1] * dur * 0.97, release: 0.12, cut: 3200, detune: 6, vol: 0.05, pan: 0.12, vibrato: true });
     // and at the top of the chase, high strings shaking on one note a bar
-    if (k > 0.75 && at === 0) this.bow(ctx, { t, midi: bar.high, attack: 0.2, hold: 1.9 * long, release: 0.2, cut: 4000, detune: 7, vol: 0.025, pan: -0.3, tremolo: true });
+    if (on('high') && at === 0) this.bow(ctx, { t, midi: bar.high, attack: 0.2, hold: 1.9 * long, release: 0.2, cut: 4000, detune: 7, vol: 0.025, pan: -0.3, tremolo: true });
   }
 
   /** The music away from the chase, on the clock. */
   private free(ctx: BaseAudioContext, n: number, t: number) {
-    // the egg's dash for the edge: the chase goes on at full strength, in time, whatever the slow motion does
-    if (this.mode === 'dash') return this.step(ctx, n, t, 1);
-    if (stepIn(n) !== 0) return;
+    // the egg's dash for the edge and the leap after it: in time, whatever the slow motion does
+    if (this.mode === 'dash' || this.mode === 'leap') return this.step(ctx, n, t, 1, STEP, true);
     // the nest: only the held strings, on the home chord, and the wind
-    if (this.mode === 'quiet') {
+    if (this.mode === 'quiet' && stepIn(n) === 0) {
       this.bow(ctx, { t, midi: 49, attack: 0.5, hold: 1.95, release: 0.5, cut: 800, detune: 10, vol: 0.03, pan: -0.2 });
       this.bow(ctx, { t, midi: 56, attack: 0.5, hold: 1.95, release: 0.5, cut: 800, detune: 10, vol: 0.024, pan: 0.2 });
     }
-    // safe: once the landing has rung out, the home chord again, turned major and very soft
-    if (this.mode === 'won' && t > this.wonAt + 3) {
-      for (const [midi, vol, pan] of [[49, 0.028, -0.2], [56, 0.022, 0.2], [65, 0.016, 0]]) this.bow(ctx, { t, midi, attack: 0.6, hold: 1.95, release: 0.6, cut: 1100, detune: 10, vol, pan });
-    }
+    // (once the egg is safe the landing rings out and there is nothing after it but the wind)
   }
 
   private schedule() {
@@ -600,6 +637,14 @@ export class Sound {
       this.free(ctx, this.next, this.t0 + this.next * STEP);
       this.next++;
     }
+    // the drum roll under the dash and the leap, for as long as they last (within reason)
+    if ((this.mode === 'dash' || this.mode === 'leap') && this.hold) {
+      if (this.rollNext < ctx.currentTime) this.rollNext = ctx.currentTime + 0.005;
+      while (this.rollNext < ctx.currentTime + 0.16 && this.rollNext - this.dashAt < 5) {
+        this.stroke(ctx, this.rollNext, this.rollNext - this.dashAt);
+        this.rollNext += 0.072;
+      }
+    }
   }
 
   /**
@@ -611,13 +656,22 @@ export class Sound {
     this.lastV = v;
     const ctx = this.ctx;
     if (!ctx || ctx.state !== 'running' || this.mode !== 'chase') return;
-    // more of the band the further down the trail, and the closer the egg: eased over about a second
-    const want = Math.min(0.95, 0.2 + 0.45 * Math.min(1, Math.max(0, (s - this.origin) / this.span)) + 0.3 * this.close);
+    const pos = (s - this.origin) / METERS_PER_STEP;
+    const far = Math.min(1, Math.max(0, (s - this.origin) / this.span));
+    // starting out, or after being put back somewhere else on the trail
+    if (this.groundNext < 0 || this.groundNext < pos - 1 || this.groundNext > pos + 6) {
+      if (this.groundNext >= 0) this.letGo(ctx, ctx.currentTime, 0.1);
+      this.groundNext = Math.ceil(pos);
+      this.level = 0.2 + 0.45 * far;
+      this.playing = null;
+    }
+    // More of the band the further down the trail, and the closer the egg: eased over about a
+    // second. The egg starts close by and then gets away, so being close only comes to count
+    // over the first six bars: the music builds from the start, and does not start full and thin
+    // out. Run cleanly and the tune comes in at the fifth bar, eight seconds in.
+    const want = Math.min(0.95, 0.2 + 0.45 * far + 0.3 * this.close * ease01((s - this.origin) / 96));
     this.level += (want - this.level) * (1 - Math.exp(-Math.min(0.25, Math.max(0, ctx.currentTime - this.levelAt))));
     this.levelAt = ctx.currentTime;
-    const pos = (s - this.origin) / METERS_PER_STEP;
-    // starting out, or after being put back somewhere else on the trail
-    if (this.groundNext < 0 || this.groundNext < pos - 1 || this.groundNext > pos + 6) this.groundNext = Math.ceil(pos);
     while (v > 0.8) {
       const wait = ((this.groundNext - pos) * METERS_PER_STEP) / v;
       if (wait > 0.14) break;
@@ -638,21 +692,35 @@ export class Sound {
       const wait = this.lastV > 0.8 ? ((n - pos) * METERS_PER_STEP) / this.lastV : 0;
       this.t0 = ctx.currentTime + Math.min(0.2, Math.max(0.005, wait)) - n * STEP;
       this.next = n;
-      this.riser(ctx, ctx.currentTime + 0.01);
+      this.startDash(ctx, ctx.currentTime + 0.01);
     }
-    if (ctx && (mode === 'quiet' || mode === 'chase')) {
+    if (mode === 'quiet' || mode === 'chase') {
       // a fresh start: nothing left hanging from an ending
-      this.fade(this.rise, 0.03);
-      this.fade(this.hold, 0.05);
+      if (ctx) {
+        this.cut(this.rise, ctx.currentTime, 0.03);
+        this.cut(this.hold, ctx.currentTime, 0.05);
+      }
       this.rise = this.hold = null;
-      if (mode === 'chase' && this.mode !== 'chase' && this.mode !== 'quiet') this.level = 0.2;
+      this.playing = null;
     }
     this.mode = mode;
     this.groundNext = -1;
   }
 
-  private fade(node: GainNode | null, time: number) {
-    if (node && this.ctx) node.gain.setTargetAtTime(0, this.ctx.currentTime, time);
+  /** Bring something to silence from `t`, whatever it had been told to do after that. */
+  private cut(node: GainNode | null, t: number, time: number) {
+    if (!node) return;
+    if (node.gain.cancelAndHoldAtTime) node.gain.cancelAndHoldAtTime(t);
+    else node.gain.cancelScheduledValues(t);
+    node.gain.setTargetAtTime(0, t, time);
+  }
+
+  /** Let go of every bowed note still sounding, over `time` seconds, so nothing of the last chord hangs over what comes next. */
+  private letGo(ctx: BaseAudioContext, t: number, time: number) {
+    this.bows.gain.setTargetAtTime(0, t, time);
+    this.bows = ctx.createGain();
+    this.bows.connect(this.strings);
+    this.pans = new Map();
   }
 
   /** How close the runner is to the egg, 0 to 1. More of the band plays the closer it is. */
@@ -824,7 +892,7 @@ export class Sound {
     for (const d of [0, 0.16]) this.note(c[0], { t: c[1] + d, f: 2700, bend: 3500, len: 0.07, vol: 0.1, attack: 0.01, release: 0.05, rev: 0.3 });
   }
 
-  /** The egg is going for the edge: air rushing upward and one note sliding up an octave, over the chase. */
+  /** Air rushing upward and one note sliding up an octave. */
   private riser(ctx: BaseAudioContext, t: number) {
     const len = 1.6;
     const rise = ctx.createGain();
@@ -851,9 +919,13 @@ export class Sound {
     up.gain.setValueAtTime(0, t);
     up.gain.linearRampToValueAtTime(0.05, t + len);
     saw.connect(low).connect(up).connect(rise);
-    // (if nobody leaps or misses, it does not hang on for ever)
-    rise.gain.setValueAtTime(1, t + len + 1.5);
-    rise.gain.linearRampToValueAtTime(0, t + len + 2.5);
+    // If nobody leaps or misses it does not hang on for ever. (This fade is on the two parts, not
+    // on `rise`: the first build put it on `rise`, where it undid the cut at the landing, and the
+    // riser came back as a stray note a second after the music had landed.)
+    for (const g of [swell, up]) {
+      g.gain.setValueAtTime(g === swell ? 0.07 : 0.05, t + len + 1.5);
+      g.gain.linearRampToValueAtTime(0, t + len + 2.5);
+    }
     air.start(t);
     saw.start(t);
     air.stop(t + len + 2.6);
@@ -862,61 +934,106 @@ export class Sound {
   }
 
   /**
-   * The leap for the egg, which will land in `dur` seconds: a low hit, the chord that wants to
-   * go home swelling under shaking strings, and a drum roll that grows until the landing.
+   * The egg goes for the edge at `t`. Whatever chord the chase was on is let go, and from here
+   * to the landing everything is on the one chord that wants to go home: the short strings and
+   * the kit driving on (see `step`), that chord swelling under shaking strings, air rushing
+   * upward, and a drum roll that grows.
    */
+  private startDash(ctx: BaseAudioContext, t: number) {
+    this.letGo(ctx, t, 0.08);
+    this.riser(ctx, t);
+    const hold = ctx.createGain();
+    hold.gain.setValueAtTime(1, t);
+    hold.connect(this.music);
+    this.hold = hold;
+    // G sharp major, low to high, the top three shaking
+    for (const [midi, vol, cut] of [[44, 0.06, 600], [56, 0.05, 1200], [60, 0.04, 2400], [63, 0.04, 2800], [68, 0.035, 3200]]) {
+      this.bow(ctx, { t, midi, attack: 1.6, hold: 8, release: 0.4, cut, detune: 7, vol, tremolo: midi >= 60, to: hold });
+    }
+    this.dashAt = this.rollNext = t;
+  }
+
+  /** One stroke of the drum roll, louder the longer the roll has gone on. */
+  private stroke(ctx: BaseAudioContext, t: number, since: number) {
+    const vol = 0.03 + 0.13 * Math.min(1, since / 2);
+    const out = this.hold ?? this.music;
+    this.thump(ctx, { t, from: 108, to: 100, len: 0.2, vol, left: 0.02, out });
+    // (the skin of the drum: the part of it a phone's speaker can play)
+    this.hiss(ctx, { t, len: 0.05, vol: vol * 0.45, cut: 480, q: 0.8, to: out });
+  }
+
+  /** The leap at `t`, landing `dur` seconds later: a low hit, and everything that was swelling swells faster. */
+  private leapAt(ctx: BaseAudioContext, t: number, dur: number) {
+    this.thump(ctx, { t, from: 110, to: 40, len: 0.8, vol: 0.24 });
+    this.hiss(ctx, { t, len: 0.14, vol: 0.09, cut: 420, q: 0.7, to: this.music });
+    if (this.hold) {
+      this.hold.gain.setValueAtTime(1, t);
+      this.hold.gain.linearRampToValueAtTime(1.5, t + Math.max(0.2, dur));
+    }
+  }
+
+  /**
+   * The landing at `t`: everything that was building stops dead, and the music lands at home in
+   * the major and rings out. `home` puts the home note on top in place of the bright third.
+   */
+  private landAt(ctx: BaseAudioContext, t: number, home = false) {
+    this.cut(this.rise, t, 0.02);
+    this.cut(this.hold, t, 0.04);
+    this.rise = this.hold = null;
+    this.letGo(ctx, t, 0.04);
+    // a big drum, a timpani on the home note, a wash of cymbal, and a knock a small speaker can play
+    // (the two drums are kept modest: a phone cannot play them, and at full weight they only use up room the chord needs)
+    this.thump(ctx, { t, from: 92, to: 36, len: 1.6, vol: 0.2 });
+    this.thump(ctx, { t, from: 70.5, to: 68.5, len: 2.2, vol: 0.11, left: 0.01 });
+    this.hiss(ctx, { t, len: 1.8, vol: 0.05, cut: 6500, type: 'highpass', attack: 0.01, to: this.music });
+    this.hiss(ctx, { t, len: 0.22, vol: 0.14, cut: 380, q: 0.6, to: this.music });
+    // C sharp major from the bottom of the cellos to the top of the violins, brighter the higher
+    // it goes, the home notes strongest and the third on top the softest
+    const chord = [[37, 0.068], [49, 0.074], [56, 0.054], [61, 0.074], [65, 0.047], [68, 0.047], [73, 0.061], [77, 0.03]];
+    if (home) chord.pop();
+    chord.forEach(([midi, vol], i) => {
+      const up = i / 7;
+      this.bow(ctx, { t, midi, attack: 0.03, hold: 1.6, release: 3.2, cut: 500 + 3100 * up, detune: 7, vol, pan: (i % 2 ? 1 : -1) * 0.25 * up, vibrato: midi >= 61, ring: 0.012 });
+    });
+  }
+
+  /** For clips of the music (see preview.ts): the whole ending from the sixteenth `n` at time `t`, with a dash and a dive of these lengths. */
+  finale(ctx: BaseAudioContext, n: number, t: number, dash: number, dive: number, home = false) {
+    this.startDash(ctx, t);
+    const land = t + dash + dive;
+    for (let i = 0; t + i * STEP < land - 0.01; i++) this.step(ctx, n + i, t + i * STEP, 1, STEP, true);
+    for (let at = t; at < land - 0.01; at += 0.072) this.stroke(ctx, at, at - t);
+    this.leapAt(ctx, t + dash, dive);
+    this.landAt(ctx, land, home);
+  }
+
+  /** The leap for the egg, which will land in `dur` seconds. */
   leap(dur: number) {
     const c = this.now();
     this.setMode('leap');
-    if (!c) return;
-    const [ctx, t] = c;
-    this.fade(this.rise, 0.04);
-    this.rise = null;
-    const hold = ctx.createGain();
-    hold.connect(this.music);
-    this.hold = hold;
-    const swell = Math.min(1.4, Math.max(0.3, dur));
-    this.thump(ctx, { t, from: 110, to: 40, len: 0.8, vol: 0.24 });
-    // G sharp major, low to high, the top three shaking
-    for (const [midi, vol, cut] of [[44, 0.06, 600], [56, 0.05, 1200], [60, 0.04, 2400], [63, 0.04, 2800], [68, 0.035, 3200]]) {
-      this.bow(ctx, { t, midi, attack: swell, hold: swell + 5, release: 0.4, cut, detune: 7, vol, tremolo: midi >= 60, to: hold });
-    }
-    // a drum roll on the same note, each stroke louder than the last
-    const strokes = Math.min(22, Math.max(4, Math.round(swell / 0.072)));
-    for (let i = 0; i < strokes; i++) this.thump(ctx, { t: t + i * 0.072, from: 108, to: 100, len: 0.2, vol: 0.04 + (0.12 * (i + 1)) / strokes, left: 0.02, out: hold });
+    if (c) this.leapAt(c[0], c[1], dur);
   }
 
-  /** The catch: the held chord lets go and the music lands at home, in the major, and rings out. */
+  /** The catch. */
   caught() {
     const c = this.now();
-    this.fade(this.rise, 0.04);
-    this.fade(this.hold, 0.06);
-    this.rise = this.hold = null;
     this.setMode('won');
-    if (!c) return;
-    const [ctx, t] = c;
-    this.wonAt = t;
-    // a big drum, a timpani on the home note, and a wash of cymbal
-    this.thump(ctx, { t, from: 92, to: 36, len: 1.6, vol: 0.3 });
-    this.thump(ctx, { t, from: 70.5, to: 68.5, len: 2.2, vol: 0.16, left: 0.01 });
-    this.hiss(ctx, { t, len: 1.8, vol: 0.05, cut: 6500, type: 'highpass', attack: 0.01, to: this.music });
-    // C sharp major from the bottom of the cellos to the top of the violins, brighter the higher it goes
-    const chord = [37, 49, 56, 61, 65, 68, 73, 77];
-    chord.forEach((midi, i) => {
-      const up = i / (chord.length - 1);
-      this.bow(ctx, { t, midi, attack: 0.03, hold: 1.6, release: 3.2, cut: 500 + 3100 * up, detune: 7, vol: 0.05 - 0.02 * up, pan: (i % 2 ? 1 : -1) * 0.25 * up, vibrato: midi >= 61 });
-    });
+    if (c) this.landAt(c[0], c[1]);
+    else this.rise = this.hold = null;
   }
 
   /** Too late, or lost on the way down: whatever was building lets go, and the music falls away. */
   lost() {
     const c = this.now();
-    this.fade(this.rise, 0.15);
-    this.fade(this.hold, 0.3);
+    if (this.ctx) {
+      this.cut(this.rise, this.ctx.currentTime, 0.15);
+      this.cut(this.hold, this.ctx.currentTime, 0.3);
+    }
     this.rise = this.hold = null;
     this.setMode('lost');
     if (!c) return;
     const [ctx, t] = c;
+    this.letGo(ctx, t, 0.25);
     this.note(ctx, { t, f: hz(61), bend: hz(49), wave: 'triangle', len: 1.3, vol: 0.14, attack: 0.05, release: 0.6, rev: 0.7 });
     // the home note with the wrong notes over it, low and dark, and nothing after
     for (const midi of [49, 52, 55]) this.bow(ctx, { t: t + 0.2, midi, attack: 0.3, hold: 2.0, release: 1.2, cut: 900, detune: 9, vol: 0.035 });
