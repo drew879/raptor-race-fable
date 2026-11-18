@@ -14,10 +14,6 @@ export interface HudHooks {
   eggMode: number;
   soundOn: boolean;
   onSound(on: boolean): void;
-  /** The ways the amber can sound, and which is on. */
-  amberStyles: string[];
-  amberStyle: number;
-  onAmber(index: number): void;
   /** "Try again" on the sheet that says the egg got away. */
   onRetry(): void;
   /** "Next" on the Field Journal card that closes the level. */
@@ -89,7 +85,6 @@ export function makeHud(root: HTMLElement, hooks: HudHooks): Hud {
         <div class="stepper"><button class="slower" aria-label="Slower">&minus;</button><b class="speed"></b><button class="faster" aria-label="Faster">+</button></div>
       </div>
       <div class="setting"><span>Egg</span><div class="tabs words egg-tabs"></div></div>
-      <div class="setting"><span>Amber</span><div class="tabs words amber-tabs"></div></div>
       <div class="setting"><span>Sound</span><div class="tabs words sound-tabs"></div></div>
       <div class="links"><a class="link" href="?mode=close">Close-up</a><a class="link" href="?mode=bench">Speed test</a></div>
       <small class="about">Rough test run &middot; build ${BUILD}</small>
@@ -164,18 +159,6 @@ export function makeHud(root: HTMLElement, hooks: HudHooks): Hud {
     eggTabs.appendChild(b);
   });
   markEgg(hooks.eggMode);
-
-  const amberTabs = q<HTMLElement>('.amber-tabs');
-  hooks.amberStyles.forEach((name, i) => {
-    const b = document.createElement('button');
-    b.textContent = name;
-    b.classList.toggle('on', i === hooks.amberStyle);
-    press(b, () => {
-      [...amberTabs.children].forEach((el, k) => el.classList.toggle('on', k === i));
-      hooks.onAmber(i);
-    });
-    amberTabs.appendChild(b);
-  });
 
   const soundTabs = q<HTMLElement>('.sound-tabs');
   ['On', 'Off'].forEach((name, i) => {

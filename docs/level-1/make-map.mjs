@@ -4,7 +4,7 @@
 import { writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { build, check, EGG, eggLane, KIND_NAME, LANE, SPEED, stats } from './course.mjs';
+import { build, check, EGG, eggLane, KIND_NAME, LANE, SPEED, stats, BAR } from './course.mjs';
 
 const level = build();
 const st = stats(level);
@@ -133,14 +133,17 @@ function strip(sec) {
     o.push(`<path class="island" d="M${left.join(' L')} L${right.reverse().join(' L')} Z"/>`);
     o.push(`<circle class="ginkgo" cx="${X0}" cy="${y(mid)}" r="24"/><circle class="ginkgo-in" cx="${X0}" cy="${y(mid)}" r="7"/>`);
     o.push(`<text class="on-map" x="${X0}" y="${y(mid) + 42}" text-anchor="middle">giant ginkgo</text>`);
-    o.push(`<text class="side-name" x="${GUT_L - 10}" y="${y(i0 + 3)}" text-anchor="end">riskier, more amber</text>`);
-    o.push(`<text class="side-name" x="${GUT_R + 10}" y="${y(i0 + 3)}">safer, less amber</text>`);
+    o.push(`<text class="side-name" x="${GUT_L - 10}" y="${y(i0 + 7)}" text-anchor="end">riskier, more amber</text>`);
+    o.push(`<text class="side-name" x="${GUT_R + 10}" y="${y(i0 + 7)}">safer, less amber</text>`);
   }
 
-  // time ticks every five seconds
-  for (let s = Math.ceil(from / 40) * 40; s < to; s += 40) {
-    if (s - from < 3 && s !== 0) continue;
-    o.push(`<text class="tick" x="2" y="${y(s) + 3}">${clock(s)}</text><path class="tickline" d="M${GUT_L + 2},${y(s)} h7"/>`);
+  // The music's bars: a line across the trail where each begins, its number and its time down
+  // the left edge. A bar is 16 m and two seconds. Every eighth bar the music comes round again.
+  for (let s = Math.ceil(from / BAR) * BAR; s < to; s += BAR) {
+    const bar = s / BAR + 1;
+    const top = (bar - 1) % 8 === 0;
+    o.push(`<path class="barline${top ? ' top' : ''}" d="M${f1(laneX(-1, s) - LW / 2 - 6)},${y(s)} H${f1(laneX(1, s) + LW / 2 + 6)}"/>`);
+    o.push(`<text class="tick${top ? ' top' : ''}" x="2" y="${y(s) + 3}">bar ${bar} &#183; ${clock(s)}</text><path class="tickline" d="M${GUT_L - 2},${y(s)} h10"/>`);
   }
 
   // amber
@@ -233,7 +236,7 @@ function strip(sec) {
   if (level.retryFrom !== null && level.retryFrom >= from && level.retryFrom < to) {
     const c = level.retryFrom;
     o.push(`<path class="cp" d="M${laneX(-1, c) - LW / 2 - 17},${y(c)} H${laneX(1, c) + LW / 2 + 17}"/>`);
-    o.push(`<text class="cp-name" x="${GUT_R + 4}" y="${y(c) + 3.5}">Miss the catch: back to here</text>`);
+    o.push(`<text class="cp-name" x="${GUT_R + 4}" y="${y(c) - 5}">Miss the catch: back to here</text>`);
   }
   return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(sec.name)}: ${esc(sec.teaches)}">${o.join('')}</svg>`;
 }
@@ -399,6 +402,9 @@ svg text { font-family: var(--body); fill: var(--ink); }
 .ginkgo-in { fill: var(--wood-dark); }
 .on-map { font-size: 9.5px; font-weight: 600; fill: #eef3e6; }
 .tick { font-size: 9.5px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+.tick.top { fill: var(--ink); font-weight: 600; }
+.barline { stroke: var(--ink); stroke-width: 0.8; opacity: 0.22; }
+.barline.top { stroke-width: 1.6; opacity: 0.45; }
 .tickline { stroke: var(--muted); stroke-width: 1; }
 .amber { fill: var(--amber); }
 .eggline { fill: none; stroke: var(--egg); stroke-width: 1.7; stroke-dasharray: 2 4; stroke-linecap: round; }
@@ -447,16 +453,16 @@ svg text { font-family: var(--body); fill: var(--ink); }
 
 <main class="page">
   <div class="top">
-    <span class="eyebrow">Raptor Race · Level 1 · the layout in the game</span>
+    <span class="eyebrow">Raptor Race · Level 1 · laid out to the music</span>
     <h1>Jehol Forest course map</h1>
-    <p class="lede">The whole chase, top to bottom, drawn to scale: one second of running is ${f1(SPEED * K)} pixels of trail. The game reads its level from the same file as this map, so what you see here is what plays.</p>
+    <p class="lede">The whole chase, top to bottom, drawn to scale. The music is tied to the ground, a bar for every ${BAR} m, so the lines across the trail are the bars of the music. Every swipe falls on a beat, every line of amber starts on one, and the catch lands on a downbeat. The game reads its level from the same file as this map, so what you see here is what plays.</p>
   </div>
 
   <div class="facts">
-    <div><b>${st.chase} m</b><span>from the nest to the last shelf of rock</span></div>
-    <div><b>${Math.round(st.seconds)} s</b><span>at speed ${SPEED}, with no bumps</span></div>
+    <div><b>${st.bars} bars</b><span>of chase, ${st.chase} m, then the egg's dash is bar ${st.bars + 1}</span></div>
+    <div><b>${Math.round(st.seconds) + 2} s</b><span>to the catch at speed ${SPEED}: five times round the music</span></div>
     <div><b>${st.movesEasy} or ${st.movesHard}</b><span>moves: easy side or hard side of the fork</span></div>
-    <div><b>${st.amber}</b><span>pieces of amber</span></div>
+    <div><b>${st.amber}</b><span>pieces of amber, ${st.amberBest} of them on the richer way through</span></div>
     <div><b>3</b><span>hidden finds and 1 power-up</span></div>
     <div><b>${Math.round(st.drop)} m</b><span>downhill, start to finish</span></div>
   </div>
@@ -464,7 +470,7 @@ svg text { font-family: var(--body); fill: var(--ink); }
   <div class="block">
     <h2>How to read it</h2>
     <div class="key">${legend.map(([icon, name, what]) => `<div>${icon}<b>${name}</b><span>${what}</span></div>`).join('')}</div>
-    <p class="note">Times down the left edge are from the start of the chase. Words in quotes are the hints, shown where they appear.</p>
+    <p class="note">Down the left edge are the music's bars, with the time each begins. A bar is four beats, ${BAR} m and two seconds. The heavier lines are where the music's eight bars come round again. Words in quotes are the hints, shown where they appear.</p>
   </div>
 
   <div class="block">
@@ -494,21 +500,20 @@ svg text { font-family: var(--body); fill: var(--ink); }
       <tr><td>Egg lost, and the level starts over</td><td>${EGG.lostAt} m</td></tr>
       <tr><td>Fork: amber on the hard side against the easy side</td><td>${st.amberLeft} to ${st.amberRight}</td></tr>
     </table>
-    <p class="note">A bump never ends the run by itself. You only lose the egg by letting it get ${EGG.lostAt} m ahead: from the start that takes four bumps close together, late in a clean run six or more. In test runs a player who misses about a third of the obstacles still finishes, and one who misses half loses the egg. Then the picture dims and the level starts over from the nest. The level always ends at the clearing. The further behind you are, the faster you gain, so a bad patch can be won back.</p>
+    <p class="note">A bump never ends the run by itself. You only lose the egg by letting it get ${EGG.lostAt} m ahead: from the start that takes four bumps close together, late in a clean run six or more. In test runs a player who misses about a third of the obstacles still finishes, and one who misses half loses the egg. Then the picture dims and the level starts over from the nest. The level always ends at the edge. The further behind you are, the faster you gain, so a bad patch can be won back.</p>
   </div>
 
   <div class="block">
     <h2>Where it stands</h2>
     <ol class="asks">
-      <li><b>Busier after the build 25 playtest.</b> ${st.movesEasy} moves on the safe side of the fork and ${st.movesHard} on the risky side, up from 21 and 23. Most of the long empty stretches are gone, and moves now come about a second and a half apart.</li>
-      <li><b>The fork lives up to its promise.</b> Left is five moves in a row (jump, slide, jump, slide, jump) for ${st.amberLeft} pieces of amber and a hidden find. Right is two logs and ${st.amberRight} pieces. Both labels come up ${level.island[0] - level.labelsFrom} m before the rock, about ${f1((level.island[0] - level.labelsFrom) / SPEED)} s ahead, beside the trail at eye height. They can be see-through, or the game can hold still for a moment while they are read: both are in the pause sheet to try.</li>
-      <li><b>Young Psittacosaurus cross the trail.</b> Three of them, walking in a file across all three lanes: a jump. The dozing adult stays as scenery beside the trail.</li>
-      <li><b>Fan out is measured in meters now.</b> The fans stay out for ${level.power.reach} m, about ${f1(level.power.reach / SPEED)} s at speed ${SPEED}, which ends just past the last amber on the drop at any speed setting.</li>
-      <li><b>Losing the egg ends the level.</b> A sheet says the egg got away and Try again starts the level over. The checkpoints stay marked here in case restarts from them are wanted later.</li>
-      <li><b>The opening.</b> The egg stands on the rim of the nest, which sits on a shelf above a short steep pitch. Three taps from inside rock it, it hangs on the point of balance, tips over and rolls away down the slope. It plays once per visit.</li>
-      <li><b>The ending is a catch at a cliff.</b> The trail runs out on a spur of rock over the valley. The egg stops 9 m short of the edge and waits until the runner is right behind it. Then it rolls for the edge, and there are two seconds to swipe up. In time, the runner dives and pins it at the very edge, turns back with it, and it hatches there. Too late, and the egg goes over: Try again picks the run up from the marked point in the home stretch, about seven seconds back.</li>
-      <li><b>One egg size.</b> The egg is 34 cm long everywhere: in the nest, in the chase and at the hatching.</li>
-      <li><b>Still to come:</b> sound and music, and the title, results and Field Journal screens.</li>
+      <li><b>Laid out to the music.</b> ${st.bars} bars of chase, and the egg's dash for the edge is bar ${st.bars + 1}: the last bar of the music's loop, on the chord that wants to go home. The catch lands on the downbeat after it, ${Math.round(st.seconds) + 2} seconds in.</li>
+      <li><b>Swipes fall on beats.</b> Every obstacle stands 2 m past a beat, so the swipe for it lands on the beat. A jump takes off on one beat and comes down on the next. In the three teaching sections there is one move in a bar, two seconds apart. Where it gets busier they are three beats apart, a second and a half.</li>
+      <li><b>The band plays alone first.</b> There is no amber in bars 1 and 2. The first bell comes at bar 3, four seconds in, and the violin at bar 5 if you are running clean.</li>
+      <li><b>Amber is the bells' part.</b> A piece every 2 m is a bell on every eighth note, and every line starts on a beat. The five pieces over a jump are a quick run of five from take-off to landing. On the second drop the fans sweep in three lanes at once, and the bells sound as chords.</li>
+      <li><b>The fork.</b> Left is five moves three beats apart (jump, slide, jump, slide, jump) for ${st.amberLeft} pieces of amber and a hidden find. Right is two logs, two bars apart, and ${st.amberRight} pieces. Both labels come up ${level.island[0] - level.labelsFrom} m before the rock, ${f1((level.island[0] - level.labelsFrom) / SPEED)} s ahead.</li>
+      <li><b>A missed catch</b> picks the run up again from the top of bar ${level.retryFrom / BAR + 1}, six seconds before the dash, where a phrase of the music begins.</li>
+      <li><b>${st.movesEasy} moves on the safe side of the fork and ${st.movesHard} on the risky side</b> (28 and 31 before), and ${st.amber} pieces of amber (309 before).</li>
+      <li><b>Still to come:</b> the sounds redone in Live, and the home, results and Field Journal screens.</li>
     </ol>
   </div>
 </main>

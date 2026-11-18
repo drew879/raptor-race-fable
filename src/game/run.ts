@@ -3,7 +3,7 @@
 
 import * as THREE from 'three';
 import { setReloadGuard } from '../app/build';
-import { Sound, type AmberStyle } from '../audio/sound';
+import { Sound } from '../audio/sound';
 import { blinkAt, HeroRig, strideLength, type HeroState } from '../hero/rig';
 import type { Lookdev } from '../lookdev/scene';
 import { paintMaterial, world } from '../render/paint';
@@ -73,11 +73,6 @@ const EGG_G = 9.5;
  * on its end and spins like a top, and it surges ahead and drops back.
  */
 export const EGG_MODES = ['Lively', 'Wild', 'Berserk'];
-/** How the amber sounds, to compare by playing: its own written line of bells, or the earlier version's climb up the chord. */
-const AMBER_STYLES: { name: string; style: AmberStyle }[] = [
-  { name: 'Line', style: 'line' },
-  { name: 'Climb', style: 'climb' },
-];
 
 // how far along the trail each kind of obstacle can catch you
 const DEPTH: Record<Obstacle['kind'], number> = { log: 0.3, arch: 0.45, boulder: 0.42, tree: 0.26, creek: 0.6, hollow: 1.7, crossing: 0.32 };
@@ -786,9 +781,6 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     },
     soundOn: sound.on,
     onSound: (on) => sound.setOn(on),
-    amberStyles: AMBER_STYLES.map((a) => a.name),
-    amberStyle: Math.max(0, AMBER_STYLES.findIndex((a) => a.style === sound.amberStyle)),
-    onAmber: (i) => sound.setAmberStyle(AMBER_STYLES[i].style),
     // (a miss at the edge is tried again from a little way back; losing the egg on the way down starts the level over)
     onRetry: () => (st.end === END.miss ? tryAgain(RETRY_S) : LOST_RESTART === 'checkpoint' ? tryAgain() : reset()),
     onJournalNext: () => {

@@ -109,8 +109,6 @@ function chordFrom(bar: Bar, midi: number) {
   return m;
 }
 
-/** How the amber sounds: its own written line, or the earlier version's climb up the chord. */
-export type AmberStyle = 'line' | 'climb';
 type Mode = 'quiet' | 'chase' | 'dash' | 'leap' | 'won' | 'lost';
 interface NoteOpts {
   t: number;
@@ -157,6 +155,8 @@ export class Sound {
   private strings!: GainNode;
   /** And on their way there they pass through this, which can be swapped for a new one to let every held note go at once. */
   private bows!: GainNode;
+  /** The chase's drums pass through this, for the same reason. */
+  private kit!: GainNode;
   /** Which of the parts that come and go are playing now. */
   private playing: Partial<Record<Part, boolean>> | null = null;
   private reverb!: GainNode;
@@ -178,8 +178,6 @@ export class Sound {
   private levelAt = 0;
   /** The quiet held strings under everything (not in the clip of the original, which came before them). */
   bed = true;
-  /** How the amber sounds. */
-  amberStyle: AmberStyle = 'line';
   // the clock's grid
   private t0 = 0;
   private next = 0;
@@ -195,8 +193,6 @@ export class Sound {
   private lastV = 0;
   private amberStep = -1e9;
   private amberCount = 0;
-  private amberRun = 0;
-  private amberAt = -1e9;
   /** The riser before the leap and the chord held through it, kept so they can be cut off. */
   private rise: GainNode | null = null;
   private hold: GainNode | null = null;
@@ -206,7 +202,6 @@ export class Sound {
     if (!listen) return;
     try {
       this.muted = localStorage.getItem('rr-sound1') === '0';
-      if (localStorage.getItem('rr-amber1') === 'climb') this.amberStyle = 'climb';
     } catch {
       /* private mode */
     }
@@ -233,15 +228,6 @@ export class Sound {
       /* private mode */
     }
     if (this.ctx) this.out.gain.setTargetAtTime(on ? 0.85 : 0, this.ctx.currentTime, 0.05);
-  }
-
-  setAmberStyle(style: AmberStyle) {
-    this.amberStyle = style;
-    try {
-      localStorage.setItem('rr-amber1', style);
-    } catch {
-      /* private mode */
-    }
   }
 
   /** Start the sound, or start it again after time away. Called at the end of every tap. */
@@ -340,6 +326,8 @@ export class Sound {
     this.strings = ctx.createGain();
     this.bows = ctx.createGain();
     this.bows.connect(this.strings);
+    this.kit = ctx.createGain();
+    this.kit.connect(this.music);
     this.playing = null;
     if (!full) this.strings.connect(this.music);
     else {
@@ -391,7 +379,7 @@ export class Sound {
   /** Somewhere between the left ear and the right. Made once for each place and kept. */
   private panned(ctx: BaseAudioContext, amount: number, to: AudioNode) {
     if (!amount || !ctx.createStereoPanner) return to;
-    const key = `${amount}${to === this.bows ? 'b' : 'm'}`;
+    const key = `${amount}${to === this.bows ? 'b' : 'k'}`;
     let node = this.pans.get(key);
     if (!node) {
       const pan = ctx.createStereoPanner();
@@ -544,22 +532,22 @@ export class Sound {
   }
 
   private kick(ctx: BaseAudioContext, t: number) {
-    this.thump(ctx, { t, from: 92, to: 42, len: 0.28, vol: 0.2 });
-    this.hiss(ctx, { t, len: 0.03, vol: 0.1, cut: 300, q: 1, to: this.music });
+    this.thump(ctx, { t, from: 92, to: 42, len: 0.28, vol: 0.2, out: this.kit });
+    this.hiss(ctx, { t, len: 0.03, vol: 0.1, cut: 300, q: 1, to: this.kit });
   }
 
   private snare(ctx: BaseAudioContext, t: number) {
-    this.hiss(ctx, { t, len: 0.15, vol: 0.09, cut: 1900, q: 0.8, to: this.music });
-    this.thump(ctx, { t, from: 200, to: 150, len: 0.08, vol: 0.045, wave: 'triangle' });
+    this.hiss(ctx, { t, len: 0.15, vol: 0.09, cut: 1900, q: 0.8, to: this.kit });
+    this.thump(ctx, { t, from: 200, to: 150, len: 0.08, vol: 0.045, wave: 'triangle', out: this.kit });
   }
 
   private hat(ctx: BaseAudioContext, t: number, vol: number) {
-    this.hiss(ctx, { t, len: 0.025, vol: vol * HATS, cut: 8000, type: 'highpass', to: this.panned(ctx, 0.2, this.music) });
+    this.hiss(ctx, { t, len: 0.025, vol: vol * HATS, cut: 8000, type: 'highpass', to: this.panned(ctx, 0.2, this.kit) });
   }
 
   private tom(ctx: BaseAudioContext, t: number, from: number) {
-    this.thump(ctx, { t, from, to: 90, len: 0.18, vol: 0.11 });
-    this.hiss(ctx, { t, len: 0.012, vol: 0.03, cut: 900, q: 1, to: this.music });
+    this.thump(ctx, { t, from, to: 90, len: 0.18, vol: 0.11, out: this.kit });
+    this.hiss(ctx, { t, len: 0.012, vol: 0.03, cut: 900, q: 1, to: this.kit });
   }
 
   /** The amber's voice: a small bell, gone in a tenth of a second, with a brighter edge that goes sooner still. */
@@ -715,11 +703,20 @@ export class Sound {
     node.gain.setTargetAtTime(0, t, time);
   }
 
-  /** Let go of every bowed note still sounding, over `time` seconds, so nothing of the last chord hangs over what comes next. */
-  private letGo(ctx: BaseAudioContext, t: number, time: number) {
+  /**
+   * Let go of every bowed note still sounding, over `time` seconds, so nothing of the last chord
+   * hangs over what comes next. With `drums`, the kit is stopped as well: a beat already on its
+   * way must not fall after the music has landed.
+   */
+  private letGo(ctx: BaseAudioContext, t: number, time: number, drums = false) {
     this.bows.gain.setTargetAtTime(0, t, time);
     this.bows = ctx.createGain();
     this.bows.connect(this.strings);
+    if (drums) {
+      this.kit.gain.setTargetAtTime(0, t, 0.01);
+      this.kit = ctx.createGain();
+      this.kit.connect(this.music);
+    }
     this.pans = new Map();
   }
 
@@ -760,16 +757,6 @@ export class Sound {
     const bar = barAt(n);
     const same = n === this.amberStep;
     this.amberStep = n;
-    if (this.amberStyle === 'climb') {
-      // the earlier version's way: each piece is the next note up the chord, starting over after a gap
-      if (same) return;
-      this.amberRun = ctx.currentTime - this.amberAt > 0.6 ? 0 : this.amberRun + 1;
-      this.amberAt = ctx.currentTime;
-      // (in the clip of the original the first two pieces of a run play the same note, and the climb starts from the second)
-      let m = chordStep(bar, chordFrom(bar, 76), Math.max(0, this.amberRun - 1));
-      while (m > 100) m = chordStep(bar, m, -1);
-      return this.chime(ctx, t, m);
-    }
     this.amberCount = same ? this.amberCount + 1 : 0;
     if (this.amberCount > 2) return;
     let m = bar.bells[stepIn(n) >> 1];
@@ -781,7 +768,8 @@ export class Sound {
 
   /**
    * For clips of the music (see preview.ts): the amber's bell for the sixteenth `n`, at time `t`.
-   * With `run`, the earlier version's climb, that many notes up the chord.
+   * With `run`, the earlier version's way, which Drew's clip of it has: that many notes up the
+   * chord, the first two pieces of a run on the same note. (The game plays the written line.)
    */
   ring(ctx: BaseAudioContext, n: number, t: number, run = -1) {
     const bar = barAt(n);
@@ -980,7 +968,7 @@ export class Sound {
     this.cut(this.rise, t, 0.02);
     this.cut(this.hold, t, 0.04);
     this.rise = this.hold = null;
-    this.letGo(ctx, t, 0.04);
+    this.letGo(ctx, t, 0.04, true);
     // a big drum, a timpani on the home note, a wash of cymbal, and a knock a small speaker can play
     // (the two drums are kept modest: a phone cannot play them, and at full weight they only use up room the chord needs)
     this.thump(ctx, { t, from: 92, to: 36, len: 1.6, vol: 0.2 });

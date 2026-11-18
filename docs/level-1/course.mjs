@@ -1,166 +1,189 @@
-// Level 1, Jehol Forest: the proposed course, as data. This is the plan Drew signs off on.
-// The map page is drawn from it (make-map.mjs), and once it is approved the game's level file
-// is ported from it, so what was agreed is what gets built.
+// Level 1, Jehol Forest: the course, as data. This is the plan Drew signs off on.
+// The map page is drawn from it (make-map.mjs), and the game reads it directly (src/game/course.ts),
+// so what was agreed is what gets built.
 //
 // Distances are meters along the trail from where the chase begins. Inside a section,
 // positions are measured from the section's start. Lanes are -1 (left), 0, 1 (right).
+//
+// THE COURSE IS LAID OUT TO THE MUSIC (agreed 2026-11-18). The chase music is tied to the
+// ground: a sixteenth note for every meter. So a beat is 4 m, a bar is 16 m (two seconds at the
+// usual speed), and the music's loop of eight bars is 128 m. Everything here sits on that grid:
+//   - every section is a whole number of bars;
+//   - the swipe for an obstacle falls on a beat, and the obstacle stands 2 m further on
+//     (a jump takes off on one beat and comes down on the next);
+//   - amber lies on the eighths, every 2 m, and every line of it starts on a beat;
+//   - the five pieces over a jump are five sixteenths, from the take-off beat to the landing;
+//   - the chase is 39 bars, and the egg's dash for the edge begins with bar 40: the last bar of
+//     the loop, on the chord that wants to go home. The catch lands where bar 41 would begin.
 
 export const SPEED = 8; // meters per second
 export const LANE = 0.68;
+/** Meters to a beat and to a bar. */
+export const BEAT = 4;
+export const BAR = 16;
 
-const A = (from, to, lane, low = false) => ({ from, to, lane, low }); // a line of amber
-const arc = (at, lane) => ({ arc: at, lane }); // amber in an arc over a jump
+/** A place in a section: bar and beat, both counted from 1. */
+const at = (bar, beat = 1) => (bar - 1) * BAR + (beat - 1) * BEAT;
+/** Where an obstacle stands when its swipe falls on that beat. */
+const past = (bar, beat = 1) => at(bar, beat) + 2;
+/** A line of amber from a beat, lasting so many beats (halves allowed): a piece every 2 m. */
+const line = (bar, beat, beats, lane, low = false) => ({ from: at(bar, beat), to: at(bar, beat) + beats * BEAT - 2, lane, low });
+/** One piece of amber on a beat. */
+const one = (bar, beat, lane) => line(bar, beat, 0.5, lane);
+/** Amber in an arc over a jump whose swipe falls on that beat. */
+const arc = (bar, beat, lane) => ({ arc: past(bar, beat), lane });
 
 export const SECTIONS = [
   {
     id: 'nest',
     name: 'Off the nest',
-    length: 26,
+    length: 2 * BAR,
     slope: -0.08,
     turn: 0,
-    teaches: 'Nothing in the way. The egg pulls ahead and the amber invites a first swipe.',
-    hints: [{ at: 8, text: 'Swipe left or right' }],
+    teaches: 'Nothing in the way and no amber yet. The egg pulls ahead, and the band plays alone.',
     rows: [],
-    amber: [A(4, 10, 0), A(14, 20, 1), A(23, 26, 0)],
+    amber: [],
   },
   {
     id: 'hollow',
     name: 'Fern hollow',
-    length: 100,
+    length: 6 * BAR,
     slope: -0.11,
     turn: [0.5, -0.6],
-    teaches: 'Lanes. Something to go around every second and a half or so, singly and in pairs.',
+    teaches: 'Lanes. The first amber, then something to go around in every bar, and two closer together at the end.',
+    hints: [{ at: 6, text: 'Swipe left or right' }],
     rows: [
-      { at: 8, kind: 'boulder', lanes: [0] },
-      { at: 21, kind: 'tree', lanes: [-1] },
-      { at: 34, kind: 'boulder', lanes: [0] },
-      { at: 47, kind: 'tree', lanes: [1], also: [{ kind: 'boulder', lanes: [-1] }] },
-      { at: 60, kind: 'boulder', lanes: [0] },
-      { at: 74, kind: 'boulder', lanes: [1] },
-      { at: 77, kind: 'tree', lanes: [-1], onlyFor: 'find' },
-      { at: 90, kind: 'boulder', lanes: [0], also: [{ kind: 'tree', lanes: [-1] }] },
+      { at: past(2), kind: 'boulder', lanes: [0] },
+      { at: past(3), kind: 'tree', lanes: [1] },
+      { at: past(4), kind: 'tree', lanes: [1], also: [{ kind: 'boulder', lanes: [-1] }] },
+      { at: past(5), kind: 'boulder', lanes: [0] },
+      { at: past(5, 4), kind: 'boulder', lanes: [1] },
+      { at: past(6, 3), kind: 'boulder', lanes: [0], also: [{ kind: 'tree', lanes: [-1] }] },
     ],
-    amber: [A(3, 13, -1), A(17, 26, 0), A(30, 39, 1), A(43, 52, 0), A(56, 70, 1), A(73, 82, 0), A(86, 96, 1)],
-    finds: [{ at: 66, lane: -1, n: 1, risk: 'Off the amber line. Pass the boulder on the left, grab it, then step back before the tree.' }],
+    amber: [line(1, 1, 2, 0), line(1, 4, 3, 1), line(2, 4, 3, 0), line(3, 4, 3, 0), line(4, 4, 2.5, 1), line(5, 3, 2.5, 0), line(6, 2, 3, 1)],
+    finds: [{ at: at(5, 2) + 2, lane: -1, n: 1, risk: 'Off the amber line. Pass the boulder on the left, grab it, then get right across before the last pair.' }],
   },
   {
     id: 'drop1',
     name: 'First drop',
-    length: 58,
+    length: 3 * BAR,
     slope: -0.3,
     turn: 0.08,
     drop: true,
-    teaches: 'The trail tips over and the valley opens up. Steep and clear, with a quick slalom of amber.',
+    teaches: 'The trail tips over and the valley opens up as the music comes round again. Steep and clear, with a slalom of amber: three bells and a breath, six times.',
     checkpoint: 0,
     rows: [],
-    amber: [A(4, 11, 0), A(14, 21, 1), A(24, 31, 0), A(34, 41, -1), A(44, 51, 0), A(54, 57, 1)],
+    amber: [line(1, 1, 1.5, 0), line(1, 3, 1.5, 1), line(2, 1, 1.5, 0), line(2, 3, 1.5, -1), line(3, 1, 1.5, 0), line(3, 3, 1.5, 1)],
   },
   {
     id: 'windfall',
     name: 'Windfall',
-    length: 86,
+    length: 6 * BAR,
     slope: -0.09,
     turn: 0.45,
-    teaches: 'Jumps. Logs and creeks, with a boulder between to keep the lanes in play.',
-    hints: [{ at: 1, text: 'Swipe up to jump' }],
+    teaches: 'Jumps. A log or a creek in every bar, a boulder to keep the lanes in play, and the last three closer together.',
+    hints: [{ at: 6, text: 'Swipe up to jump' }],
     rows: [
-      { at: 14, kind: 'log' },
-      { at: 27, kind: 'log' },
-      { at: 40, kind: 'creek' },
-      { at: 53, kind: 'boulder', lanes: [0] },
-      { at: 65, kind: 'log' },
-      { at: 77, kind: 'creek' },
+      { at: past(2), kind: 'log' },
+      { at: past(3), kind: 'log' },
+      { at: past(4), kind: 'creek' },
+      { at: past(5), kind: 'boulder', lanes: [0] },
+      { at: past(5, 4), kind: 'log' },
+      { at: past(6, 3), kind: 'creek' },
     ],
-    amber: [A(4, 9, 0), arc(14, 0), arc(27, -1), arc(40, 0), A(48, 58, 1), arc(65, 1), arc(77, 0), A(82, 85, 0)],
+    amber: [line(1, 1, 3, 0), arc(2, 1, 0), line(2, 3, 1.5, -1), arc(3, 1, -1), line(3, 3, 1.5, 0), arc(4, 1, 0), line(4, 4, 3, 1), arc(5, 4, 1), arc(6, 3, 0)],
   },
   {
     id: 'giants',
     name: 'Under the giants',
-    length: 78,
+    length: 5 * BAR,
     slope: -0.12,
     turn: -0.6,
-    teaches: 'Slides. Two propped trunks and the hollow log, then a jump and a slide back to back.',
-    hints: [{ at: 2, text: 'Swipe down to slide' }],
+    teaches: 'Slides. Two propped trunks and the hollow log, a bar apart, then a jump and a slide close together.',
+    hints: [{ at: 6, text: 'Swipe down to slide' }],
     rows: [
-      { at: 15, kind: 'arch' },
-      { at: 28, kind: 'arch' },
-      { at: 42, kind: 'hollow', lanes: [0] },
-      { at: 56, kind: 'log' },
-      { at: 68, kind: 'arch' },
+      { at: past(2), kind: 'arch' },
+      { at: past(3), kind: 'arch' },
+      // (the hollow log is 3.4 m long and is placed by its middle: this puts its mouth 2 m past the beat, like everything else)
+      { at: at(4) + 4, kind: 'hollow', lanes: [0] },
+      { at: past(5), kind: 'log' },
+      { at: past(5, 4), kind: 'arch' },
     ],
-    amber: [A(10, 20, 0, true), A(23, 33, -1, true), A(37, 46, 0, true), arc(56, 0), A(63, 73, 1, true)],
+    amber: [line(1, 1, 2, 0), line(1, 4, 3, 0, true), line(2, 4, 3, -1, true), line(3, 4, 3, 0, true), arc(5, 1, 0), line(5, 3, 2.5, 0, true)],
   },
   {
     id: 'fork',
     name: 'The old ginkgo',
-    length: 108,
+    length: 7 * BAR,
     slope: -0.08,
     turn: 0.3,
-    teaches: 'The fork. Left is riskier and richer: five moves in a row. Right is safer: two easy jumps.',
+    teaches: 'The fork, which begins as the music comes round a fourth time. Left is riskier and richer: five moves three beats apart. Right is safer: two easy jumps.',
     checkpoint: 0,
     labels: 0, // the two side labels show from here until the rock
-    island: [30, 92],
+    island: [at(3), at(7)],
     rows: [
-      { at: 39, kind: 'log', branch: 'left' },
-      { at: 50.5, kind: 'arch', branch: 'left' },
-      { at: 62, kind: 'creek', branch: 'left' },
-      { at: 73.5, kind: 'arch', branch: 'left' },
-      { at: 85, kind: 'log', branch: 'left' },
-      { at: 50, kind: 'log', branch: 'right' },
-      { at: 73, kind: 'log', branch: 'right' },
+      { at: past(3, 3), kind: 'log', branch: 'left' },
+      { at: past(4, 2), kind: 'arch', branch: 'left' },
+      { at: past(5, 1), kind: 'creek', branch: 'left' },
+      { at: past(5, 4), kind: 'arch', branch: 'left' },
+      { at: past(6, 3), kind: 'log', branch: 'left' },
+      { at: past(4, 1), kind: 'log', branch: 'right' },
+      { at: past(6, 1), kind: 'log', branch: 'right' },
     ],
     amber: [
-      A(4, 28, -1), arc(39, -1), A(46, 54, -1, true), arc(62, -1), A(69, 77, -1, true), arc(85, -1), A(89, 91, -1),
-      A(8, 8, 1), A(16, 16, 1), A(24, 24, 1), arc(50, 1), A(60, 60, 1), A(66, 66, 1), arc(73, 1), A(82, 82, 1),
-      A(96, 106, 0),
+      line(1, 3, 6, -1), arc(3, 3, -1), line(4, 1, 2.5, -1, true), arc(5, 1, -1), line(5, 3, 2.5, -1, true), arc(6, 3, -1),
+      one(1, 3, 1), one(2, 1, 1), one(2, 3, 1), one(3, 1, 1), arc(4, 1, 1), one(5, 1, 1), one(5, 3, 1), arc(6, 1, 1), one(6, 4, 1),
+      line(7, 2, 3, 0),
     ],
-    finds: [{ at: 62, lane: -1, n: 2, high: true, risk: 'On the risky side, at the top of the jump over the creek.' }],
+    finds: [{ at: past(5, 1), lane: -1, n: 2, high: true, risk: 'On the risky side, at the top of the jump over the creek.' }],
   },
   {
     id: 'drop2',
     name: 'Second drop',
-    length: 55,
+    length: 3 * BAR,
     slope: -0.28,
     turn: -0.1,
     drop: true,
-    teaches: 'The power-up, on a steep clear pitch with amber in all three lanes.',
+    teaches: 'The power-up, on a steep clear pitch with amber in all three lanes: the fans sweep it all in, and the bells sound as chords.',
     checkpoint: 0,
-    hints: [{ at: 2, text: 'Fan out! Catch it all' }],
-    power: { at: 4, lane: 0, reach: 50 }, // the fans stay out for this many meters: to just past the last amber
+    hints: [{ at: 6, text: 'Fan out! Catch it all' }],
+    power: { at: at(1, 2), lane: 0, reach: 44 }, // the fans stay out for this many meters: to the foot of the drop
     rows: [],
-    amber: [A(10, 52, -1), A(10, 52, 0), A(10, 52, 1)],
+    amber: [line(1, 3, 10, -1), line(1, 3, 10, 0), line(1, 3, 10, 1)],
   },
   {
     id: 'home',
     name: 'Home stretch',
-    length: 94,
+    length: 7 * BAR,
     slope: -0.06,
     turn: -0.45,
-    teaches: 'Everything, mixed. It opens with a file of young Psittacosaurus crossing the trail.',
+    teaches: 'The last time round. Everything, mixed and three beats apart, opening with a file of young Psittacosaurus crossing the trail. Then a clear bar, and the edge.',
     rows: [
-      { at: 10, kind: 'crossing' },
-      { at: 22, kind: 'arch' },
-      { at: 34, kind: 'boulder', lanes: [0], also: [{ kind: 'tree', lanes: [1] }] },
-      { at: 46, kind: 'log' },
-      { at: 58, kind: 'tree', lanes: [-1] },
-      { at: 78, kind: 'creek' },
-      { at: 90, kind: 'arch' },
+      { at: past(2), kind: 'crossing' },
+      { at: past(2, 4), kind: 'arch' },
+      { at: past(3, 3), kind: 'boulder', lanes: [0], also: [{ kind: 'tree', lanes: [1] }] },
+      { at: past(4, 2), kind: 'log' },
+      { at: past(5, 1), kind: 'tree', lanes: [-1] },
+      { at: past(5, 4), kind: 'creek' },
+      { at: past(6, 3), kind: 'arch' },
     ],
-    amber: [arc(10, 0), A(17, 27, 0, true), A(30, 39, -1), arc(46, -1), A(52, 55, -1), A(60, 72, 0), arc(78, 0), A(85, 93, 0, true)],
-    retry: 49, // miss the catch at the edge and the run picks up again from here, about ten seconds back
-    finds: [{ at: 66, lane: -1, n: 3, risk: 'Dart back in behind the tree, grab it, and still jump the creek.' }],
+    amber: [line(1, 2, 2, 0), arc(2, 1, 0), line(2, 3, 2.5, 0, true), line(3, 2, 2, -1), arc(4, 2, -1), line(4, 4, 2.5, 0), arc(5, 4, 0), line(6, 2, 3, 0, true), line(7, 1, 4, 0)],
+    retry: at(5), // miss the catch at the edge and the run picks up again from here: the top of bar 37, six seconds back
+    finds: [{ at: at(5, 2) + 2, lane: -1, n: 3, risk: 'Dart back in behind the tree, grab it, and still jump the creek.' }],
   },
   {
     id: 'edge',
     name: 'The edge',
-    length: 30,
+    length: BAR,
     slope: -0.02,
     turn: 0.2,
-    teaches: 'The trail runs out on a shelf of rock over the valley. The egg stops, then rolls for the edge. Swipe up to dive and catch it.',
-    hints: [{ at: 13, text: 'Swipe up!' }], // where the egg sets off again, 9 m short of the edge
+    teaches: 'The trail runs out over the valley, and bar 40 is the egg\'s dash for the edge: the whole band on the one chord that wants to go home. Swipe up to dive and catch it, and the music lands.',
+    // The egg waits 9 m short of the edge, and sets off when the runner is 3.2 m behind it. That
+    // puts the runner half a meter into the bar, and the catch, 1.94 s later, on the next downbeat.
+    hints: [{ at: 3.7, text: 'Swipe up!' }],
     rows: [],
-    amber: [A(1, 9, 0)],
-    edge: 22, // where the ground ends
+    amber: [],
+    edge: 12.7, // where the ground ends
   },
 ];
 
@@ -208,8 +231,8 @@ export function build() {
     }
     for (const a of sec.amber) {
       if ('arc' in a) {
-        // five pieces spread over the 4.5 m a jump covers at this speed, highest in the middle
-        for (let i = -2; i <= 2; i++) amber.push({ s: s0 + a.arc + i * 1.12, lane: a.lane, lift: 0.34 + Math.cos((i / 2) * (Math.PI / 2)) * 0.6 });
+        // five pieces a meter apart, from where the jump takes off to where it comes down, highest in the middle
+        for (let i = -2; i <= 2; i++) amber.push({ s: s0 + a.arc + i, lane: a.lane, lift: 0.34 + Math.cos((i / 2) * (Math.PI / 2)) * 0.6 });
       } else {
         for (let s = a.from; s <= a.to + 0.01; s += 2) amber.push({ s: s0 + s, lane: a.lane, lift: a.low ? 0.26 : 0.34 });
       }
@@ -262,6 +285,20 @@ export function check(level = build()) {
     const r = firstOf(move);
     out.push({ rule: `"${text}" hint before the first one`, value: `${((r.s - h.s) / SPEED).toFixed(1)} s ahead`, ok: (r.s - h.s) / SPEED >= 1.4 });
   }
+  // ---- the music's grid
+  const onBeat = (s) => Math.abs(s / BEAT - Math.round(s / BEAT)) < 1e-6;
+  const offBeat = level.rows.filter((r) => !onBeat(r.s - (r.kind === 'hollow' ? 4 : 2)));
+  out.push({ rule: 'Every swipe falls on a beat (the obstacle 2 m on)', value: offBeat.length ? `${offBeat.length} do not` : `all ${level.rows.length}`, ok: offBeat.length === 0 });
+  const odd = level.sections.filter((s) => s.edge === undefined && s.length % BAR !== 0);
+  out.push({ rule: 'Every section is a whole number of bars', value: odd.length ? odd.map((s) => s.name).join(', ') : `${level.chaseEnd / BAR} bars of chase`, ok: odd.length === 0 });
+  const offGrid = level.amber.filter((a) => Math.abs(a.s - Math.round(a.s)) > 1e-6 || (a.lift < 0.4 && Math.round(a.s) % 2 !== 0));
+  out.push({ rule: 'Amber on the eighths, and over a jump on the sixteenths', value: offGrid.length ? `${offGrid.length} pieces off the grid` : `all ${level.amber.length}`, ok: offGrid.length === 0 });
+  const lines = level.sections.flatMap((s) => s.amber.filter((a) => !('arc' in a)).map((a) => s.start + a.from));
+  const late = lines.filter((s) => !onBeat(s));
+  out.push({ rule: 'Every line of amber starts on a beat', value: late.length ? `${late.length} do not` : `all ${lines.length}`, ok: late.length === 0 });
+  const dashAt = level.end - 9 - 3.2;
+  out.push({ rule: "The egg's dash begins with the last bar of the loop", value: `${dashAt.toFixed(1)} m, ${(dashAt % (8 * BAR)).toFixed(1)} m into the loop (bar 8 begins at ${7 * BAR})`, ok: dashAt % (8 * BAR) >= 7 * BAR && dashAt % (8 * BAR) < 7 * BAR + 1 });
+  out.push({ rule: 'A missed catch retries from the top of a bar', value: `${level.retryFrom} m, bar ${level.retryFrom / BAR + 1}`, ok: level.retryFrom % BAR === 0 });
   for (let i = 1; i < level.hints.length; i++) {
     const d = (level.hints[i].s - level.hints[i - 1].s) / SPEED;
     if (d < 2.8) out.push({ rule: 'Hints never overlap', value: `${d.toFixed(1)} s apart`, ok: false });
@@ -273,7 +310,8 @@ export function check(level = build()) {
 export function stats(level = build()) {
   const main = level.rows.filter((r) => !r.onlyFor && r.branch !== 'left');
   const hard = level.rows.filter((r) => !r.onlyFor && r.branch !== 'right');
-  const inFork = (a) => level.island && a.s > level.island[0] - 14 && a.s < level.island[1];
+  const fork = level.sections.find((s) => s.island);
+  const inFork = (a) => fork && a.s >= fork.start && a.s < level.island[1];
   return {
     chase: level.chaseEnd,
     seconds: level.chaseEnd / SPEED,
@@ -282,6 +320,10 @@ export function stats(level = build()) {
     amber: level.amber.length,
     amberLeft: level.amber.filter((a) => inFork(a) && a.lane === -1).length,
     amberRight: level.amber.filter((a) => inFork(a) && a.lane === 1).length,
+    // the most a run can take: every piece but those on the fork's poorer side
+    amberBest: level.amber.length - Math.min(level.amber.filter((a) => inFork(a) && a.lane === -1).length, level.amber.filter((a) => inFork(a) && a.lane === 1).length),
+    bars: level.chaseEnd / BAR,
+    dashAt: level.end - 9 - 3.2,
     drop: level.sections.reduce((sum, s) => sum + s.length * -s.slope, 0),
   };
 }
