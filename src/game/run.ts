@@ -73,6 +73,9 @@ const EGG_G = 9.5;
  * on its end and spins like a top, and it surges ahead and drops back.
  */
 export const EGG_MODES = ['Lively', 'Wild', 'Berserk'];
+/** The side of the fork the egg takes (-1 is left, the harder and richer one), and the side a runner is put on if it meets the rock head-on. */
+const EGG_FORK = -1;
+const EASY_SIDE = 1;
 
 // how far along the trail each kind of obstacle can catch you
 const DEPTH: Record<Obstacle['kind'], number> = { log: 0.3, arch: 0.45, boulder: 0.42, tree: 0.26, creek: 0.6, hollow: 1.7, crossing: 0.32 };
@@ -549,13 +552,20 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     if (o.kind === 'hollow') row.eggLane = o.lanes[0]; // the egg rolls through it too
   }
   // The island's prow is a row like any other: go round it. Meet it head-on in the middle lane
-  // and the runner bumps and steps to the egg's side, the easy one.
+  // and the runner bumps and steps to the easy side. The egg takes the other one, the richer and
+  // riskier side (Drew, build 50: "let's have the egg take the left side").
   const prow: Row | null = FORK
-    ? { branch: 0, s: FORK.from + 1.7, kind: 'boulder', around: true, blocked: [0], eggLane: 1, members: [{ s: FORK.from + 1.7, kind: 'boulder', lanes: [0], hit: false }], hit: false }
+    ? { branch: 0, s: FORK.from + 1.7, kind: 'boulder', around: true, blocked: [0], eggLane: EGG_FORK, members: [{ s: FORK.from + 1.7, kind: 'boulder', lanes: [0], hit: false }], hit: false }
     : null;
   if (prow) rows.push(prow);
   rows.sort((a, b) => a.s - b.s);
   const inFork = (s: number) => FORK !== null && s > FORK.from - 0.5 && s < FORK.to;
+  // The rock tapers to nothing over its last few meters, and from behind the runner it looks
+  // passed before the runner is level with its tip. So the way back to the middle opens a little
+  // before the tip, and a swipe made a second or so early is kept and answered the moment it does.
+  const FORK_OPEN = 3;
+  const FORK_EARLY = 12;
+  const besideRock = (s: number) => FORK !== null && s > FORK.from - 0.5 && s < FORK.to - FORK_OPEN;
   const weave = (s: number) => Math.sin(s * 0.13) * 0.36;
   const openLanes = (row: Row) => [-1, 0, 1].filter((lane) => !row.blocked.includes(lane));
   for (const row of rows) {
@@ -570,7 +580,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     const from = weave(row.s);
     row.eggLane = pick.reduce((best, lane) => (Math.abs(lane * LANE - from) < Math.abs(best * LANE - from) ? lane : best), pick[0] ?? 0);
   }
-  if (prow) prow.eggLane = 1;
+  if (prow) prow.eggLane = EGG_FORK;
   /** Where the egg is across the trail: weaving between the lanes, so it never sits on a line of
    *  amber, and swinging into an open lane in good time to pass a tree or a boulder. The wild
    *  egg adds quick side-steps, and leaves its swing late and takes it wide. */
@@ -594,9 +604,9 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       u += (row.eggLane * LANE * (wild === 2 ? 1.22 : wild === 1 ? 1.12 : 1) - u) * k;
     }
     if (FORK) {
-      // at the fork it takes the easy side, down the middle of that lane
+      // at the fork it takes its side, down the middle of that lane
       const k = smoothstep(FORK.from - 15, FORK.from - 5, s) * (1 - smoothstep(FORK.to + 2, FORK.to + 10, s));
-      u += (laneU(1, s) - u) * k;
+      u += (laneU(EGG_FORK, s) - u) * k;
     }
     return u;
   };
@@ -607,7 +617,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   const eggRow = (s: number, speed: number): Row | null => {
     const settle = Math.max(SETTLE, speed * 0.8);
     for (const row of rows) {
-      if (row.around || row.branch === -1) continue; // (the fork's left side is not the egg's way)
+      if (row.around || row.branch === -EGG_FORK) continue; // (the fork's other side is not the egg's way)
       const half = lowHalf(row);
       if (s > row.s - half - settle && s < row.s + half) return row;
     }
@@ -679,6 +689,10 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     bump: null as Bump | null,
     /** Time left reeling from a sideways knock, recoiling, shaking the view and showing dust. */
     sideT: 0,
+    /** A shoulder against the fork's rock: a wobble, nothing more. */
+    nudgeT: 0,
+    /** A swipe back to the middle lane, made before the rock was passed and waiting for it. */
+    toMiddle: false,
     wadeT: 0,
     flinch: 0,
     shakeT: 0,
@@ -916,11 +930,15 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     }
     if (move === 'left' || move === 'right') {
       const to = THREE.MathUtils.clamp(st.lane + (move === 'left' ? -1 : 1), -1, 1);
-      if (to === 0 && inFork(st.s)) {
-        // the rock is in the way: a shoulder against it, and on
-        st.sideT = Math.max(st.sideT, 0.25);
+      if (to === 0 && besideRock(st.s)) {
+        // the rock is in the way. Near its end the swipe is kept for when the way opens; before
+        // that it is a shoulder against the rock, which no longer costs any speed (slowing here
+        // made the music, which follows the runner, stumble).
+        if (FORK && st.s > FORK.to - FORK_EARLY) st.toMiddle = true;
+        else st.nudgeT = 0.25;
         return;
       }
+      st.toMiddle = false;
       if (to !== st.lane) {
         st.prevLane = st.lane;
         st.lane = to;
@@ -1336,7 +1354,9 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       const open = openLanes(row);
       const near = Math.min(...open.map((lane) => Math.abs(lane - st.lane)));
       const nearest = open.filter((lane) => Math.abs(lane - st.lane) === near);
-      toLane = nearest.includes(row.eggLane) ? row.eggLane : (nearest[0] ?? st.lane);
+      // (but off the island's prow, always to the easy side)
+      const side = row === prow ? EASY_SIDE : row.eggLane;
+      toLane = nearest.includes(side) ? side : (nearest[0] ?? st.lane);
     }
     (puff.material as THREE.ShaderMaterial).uniforms.uColor.value.set('#e6d2a8');
     st.bump = {
@@ -1496,6 +1516,17 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     st.phase += (st.speed * dt) / strideLength(st.speed);
     st.safeT = Math.max(0, st.safeT - dt);
     st.sideT = Math.max(0, st.sideT - dt);
+    st.nudgeT = Math.max(0, st.nudgeT - dt);
+    if (st.toMiddle && FORK) {
+      if (!besideRock(st.s) && !st.bump && st.s < FORK.to + 6) {
+        if (st.lane !== 0) {
+          st.prevLane = st.lane;
+          st.lane = 0;
+          sound.step_();
+        }
+        st.toMiddle = false;
+      } else if (st.s >= FORK.to + 6 || st.s < FORK.from) st.toMiddle = false;
+    }
     st.wadeT = Math.max(0, st.wadeT - dt);
     st.shakeT = Math.max(0, st.shakeT - dt);
     st.puffT = Math.max(0, st.puffT - dt);
@@ -1616,7 +1647,8 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
         collected[i] = true;
         flying.splice(k, 1);
         st.amber++;
-        sound.amber();
+        // (swept in by the fans: its row plays as a run of three, left to right)
+        sound.amber(AMBER[i].s, AMBER[i].lift, AMBER[i].lane + 1);
         hud.setAmber(st.amber);
       }
       if (i >= shownFrom && i < shownTo) putAmber(i);
@@ -1870,7 +1902,8 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     hero.quaternion.copy(basisAt(st.s, 0.8)).multiply(heroYaw.setFromAxisAngle(upAxis, -st.heading + st.turn));
     // settled over the egg, it leans in over it
     if (st.end >= END.turn) hero.quaternion.multiply(heroYaw.setFromAxisAngle(rightAxis, -endPose.bow * st.sit));
-    const wobble = st.sideT > 0 ? Math.sin(st.clock * 34) * 0.35 * (st.sideT / 0.55) : 0;
+    const shaken = Math.max(st.sideT, st.nudgeT);
+    const wobble = shaken > 0 ? Math.sin(st.clock * 34) * 0.35 * (shaken / 0.55) : 0;
     heroState.phase = st.phase;
     heroState.speed = st.speed;
     heroState.run = Math.min(1, st.speed / 3);

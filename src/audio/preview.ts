@@ -15,12 +15,14 @@
 //   ending       two bars of the chase at full strength, then the egg's dash (1.4 s), the dive
 //                (0.56 s) and the landing, ringing out
 //   ending-home  the same, landing with the home note on top
+//   fan    bars 29 to 33 of the level: a line of amber, then the fans out over three lanes for
+//          two and a half bars (each row a run of three bells), then a line again
 
 import { Sound } from './sound';
 
 const RATE = 44100;
 const STEP = 0.125;
-export type Clip = 'match' | 'full' | 'bells' | 'game' | 'ending' | 'ending-home';
+export type Clip = 'match' | 'full' | 'bells' | 'game' | 'ending' | 'ending-home' | 'fan';
 
 /** Lines and gaps for the second half of the bells clip: one string of eight eighths for each bar. */
 const LINES = ['11110000', '00111111', '11111111', '00001111', '11110011', '11111111', '00111100', '11110000'];
@@ -44,12 +46,12 @@ function solo(band: Sound, part: string) {
 
 export async function clip(kind: Clip, only?: string): Promise<Float32Array[]> {
   const ending = kind === 'ending' || kind === 'ending-home';
-  const seconds = kind === 'game' ? 16 : ending ? 12 : 34;
+  const seconds = kind === 'game' ? 16 : ending || kind === 'fan' ? 12 : 34;
   const ctx = new OfflineAudioContext(2, seconds * RATE, RATE);
   const band = new Sound(false);
   band.build(ctx, kind === 'full');
   if (only) solo(band, only);
-  band.bed = kind === 'bells' || kind === 'game' || ending;
+  band.bed = kind === 'bells' || kind === 'game' || ending || kind === 'fan';
   // (quiet enough that the limiter never touches it: the clip is brought up to level afterwards)
   if (kind !== 'game') band.mix(0.5, 1);
   if (ending) {
@@ -57,7 +59,15 @@ export async function clip(kind: Clip, only?: string): Promise<Float32Array[]> {
     for (let n = 80; n < 112; n++) band.step(ctx, n, (n - 80) * STEP, 0.95);
     band.finale(ctx, 112, 4, 1.4, 0.56, kind === 'ending-home');
   }
-  const steps = ending ? 0 : kind === 'bells' ? 256 : seconds / STEP;
+  if (kind === 'fan') {
+    // (as the level lays them: the fork's last line on bar 29, three lanes from the third beat of bar 30 to the end of bar 32, and the first line of bar 33)
+    for (let n = 448; n < 528; n++) band.step(ctx, n, (n - 448) * STEP, 0.8);
+    const when = (n: number) => (n - 448) * STEP;
+    for (let n = 452; n <= 462; n += 2) band.ring(ctx, n, when(n));
+    for (let n = 472; n <= 510; n += 2) for (let third = 0; third < 3; third++) band.ring(ctx, n, when(n), -1, third);
+    for (let n = 516; n <= 522; n += 2) band.ring(ctx, n, when(n));
+  }
+  const steps = ending || kind === 'fan' ? 0 : kind === 'bells' ? 256 : seconds / STEP;
   for (let n = 0; n < steps; n++) {
     const t = n * STEP;
     const k = kind === 'match' || kind === 'full' ? (n < 128 ? 0.25 : 0.9) : 0.6;

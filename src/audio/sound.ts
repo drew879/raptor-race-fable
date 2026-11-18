@@ -88,8 +88,6 @@ const TUNE_AT = BARS.map((bar) => {
 const MARKS = { cello: 0.22, snare: 0.3, tune: 0.38, hats: 0.4, push: 0.5, busy: 0.65, octave: 0.7, high: 0.75 };
 type Part = keyof typeof MARKS;
 const PARTS = Object.keys(MARKS) as Part[];
-/** The bar the egg's dash for the edge is played over, whatever bar it comes in: the chord that wants to go home. */
-const DOMINANT = 7;
 const ease01 = (x: number) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
 
 /** The note `steps` notes of the bar's chord above (or below) `midi`. */
@@ -184,6 +182,8 @@ export class Sound {
   /** When the egg's dash began, and when the next stroke of its drum roll is due. */
   private dashAt = 0;
   private rollNext = 0;
+  /** The first sixteenth of the bar after the dash's, which the landing takes the place of. */
+  private dashEnd = 0;
   // the ground's grid
   /** Where on the trail the music starts, and how many meters the chase runs for. */
   origin = 0;
@@ -379,7 +379,7 @@ export class Sound {
   /** Somewhere between the left ear and the right. Made once for each place and kept. */
   private panned(ctx: BaseAudioContext, amount: number, to: AudioNode) {
     if (!amount || !ctx.createStereoPanner) return to;
-    const key = `${amount}${to === this.bows ? 'b' : 'k'}`;
+    const key = `${amount}${to === this.bows ? 'b' : to === this.kit ? 'k' : 'm'}`;
     let node = this.pans.get(key);
     if (!node) {
       const pan = ctx.createStereoPanner();
@@ -551,9 +551,10 @@ export class Sound {
   }
 
   /** The amber's voice: a small bell, gone in a tenth of a second, with a brighter edge that goes sooner still. */
-  private chime(ctx: BaseAudioContext, t: number, midi: number, vol = 0.11, ring = 0.11) {
-    this.thump(ctx, { t, from: hz(midi), len: ring, vol: vol * BELLS });
-    this.thump(ctx, { t, from: hz(midi) * 2.76, len: 0.05, vol: vol * BELLS * 0.3 });
+  private chime(ctx: BaseAudioContext, t: number, midi: number, vol = 0.11, ring = 0.11, pan = 0) {
+    const out = this.panned(ctx, pan, this.music);
+    this.thump(ctx, { t, from: hz(midi), len: ring, vol: vol * BELLS, out });
+    this.thump(ctx, { t, from: hz(midi) * 2.76, len: 0.05, vol: vol * BELLS * 0.3, out });
   }
 
   // ---------------------------------------------------------------- the score
@@ -570,21 +571,20 @@ export class Sound {
 
   /**
    * What every part plays on one sixteenth. `k` is the intensity, 0 to 1. `dur` is how long a
-   * sixteenth is lasting, for the notes that are held. With `dash`, it is the egg's dash for the
-   * edge: everything short and driving, all on the one chord that wants to go home.
+   * sixteenth is lasting, for the notes that are held.
    */
-  step(ctx: BaseAudioContext, n: number, t: number, k: number, dur = STEP, dash = false) {
-    const index = dash ? DOMINANT : ((Math.floor(n / 16) % BARS.length) + BARS.length) % BARS.length;
+  step(ctx: BaseAudioContext, n: number, t: number, k: number, dur = STEP) {
+    const index = ((Math.floor(n / 16) % BARS.length) + BARS.length) % BARS.length;
     const bar = BARS[index];
     const at = stepIn(n);
     const long = dur / STEP;
     if (at === 0 || !this.playing) this.cast(index, k);
-    const on = (part: Part) => dash || this.playing?.[part] === true;
+    const on = (part: Part) => this.playing?.[part] === true;
     // the short string notes, never stopping, leaned on in threes and twos
     this.bow(ctx, { t, midi: bar.root + 12 + OSTINATO[at], attack: 0.01, hold: 0.07, release: 0.04, cut: 1500 + 1200 * k, open: 1.8, detune: 7, vol: ACCENT.includes(at) ? 0.07 : 0.045, pan: at % 2 ? 0.15 : -0.15 });
     if (on('octave')) this.bow(ctx, { t, midi: bar.root + 24 + OSTINATO[at], attack: 0.01, hold: 0.06, release: 0.04, cut: 2600, detune: 7, vol: 0.03, pan: 0.3 });
     // the held strings under everything
-    if (this.bed && at === 0 && !dash) {
+    if (this.bed && at === 0) {
       this.bow(ctx, { t, midi: bar.root + 12, attack: 0.35, hold: 1.95 * long, release: 0.35, cut: 900 + 500 * k, detune: 10, vol: 0.035, pan: -0.2 });
       this.bow(ctx, { t, midi: bar.root + 19, attack: 0.35, hold: 1.95 * long, release: 0.35, cut: 900 + 500 * k, detune: 10, vol: 0.028, pan: 0.2 });
     }
@@ -595,7 +595,6 @@ export class Sound {
     if (on('snare') && at % 8 === 4) this.snare(ctx, t);
     if (on('hats') && (at % 2 === 0 || on('busy'))) this.hat(ctx, t, at % 4 === 2 ? 0.035 : 0.02);
     if (on('push') && index === BARS.length - 1 && at >= 12) this.tom(ctx, t, [180, 155, 130, 105][at - 12]);
-    if (dash) return;
     // the violin's tune
     const tune = TUNE_AT[index].get(at);
     if (on('tune') && tune) this.bow(ctx, { t, midi: tune[0], attack: 0.04, hold: tune[1] * dur * 0.97, release: 0.12, cut: 3200, detune: 6, vol: 0.05, pan: 0.12, vibrato: true });
@@ -605,8 +604,16 @@ export class Sound {
 
   /** The music away from the chase, on the clock. */
   private free(ctx: BaseAudioContext, n: number, t: number) {
-    // the egg's dash for the edge and the leap after it: in time, whatever the slow motion does
-    if (this.mode === 'dash' || this.mode === 'leap') return this.step(ctx, n, t, 1, STEP, true);
+    // The egg's dash for the edge and the leap after it. The track plays on, exactly as it was,
+    // to the end of its bar, kept in time by the clock so the slow motion cannot drag it. (The level
+    // puts the dash on the last bar of the loop, the one that wants to go home, so the build is laid
+    // over the track's own cadence and the catch lands where the loop would begin again. Twice
+    // before this the track was cut off here to make way for the build, and Drew heard that as
+    // the ending interrupting the music.)
+    if (this.mode === 'dash' || this.mode === 'leap') {
+      if (n < this.dashEnd) this.step(ctx, n, t, this.level);
+      return;
+    }
     // the nest: only the held strings, on the home chord, and the wind
     if (this.mode === 'quiet' && stepIn(n) === 0) {
       this.bow(ctx, { t, midi: 49, attack: 0.5, hold: 1.95, release: 0.5, cut: 800, detune: 10, vol: 0.03, pan: -0.2 });
@@ -680,6 +687,7 @@ export class Sound {
       const wait = this.lastV > 0.8 ? ((n - pos) * METERS_PER_STEP) / this.lastV : 0;
       this.t0 = ctx.currentTime + Math.min(0.2, Math.max(0.005, wait)) - n * STEP;
       this.next = n;
+      this.dashEnd = (Math.floor(n / 16) + 1) * 16;
       this.startDash(ctx, ctx.currentTime + 0.01);
     }
     if (mode === 'quiet' || mode === 'chase') {
@@ -739,15 +747,40 @@ export class Sound {
   }
 
   /**
+   * The fans are out, and a row of three pieces is swept in at once. They are not one chord but a
+   * quick run of three inside the row's eighth note: the left piece is the written note, on the
+   * beat, the middle one the next note up the chord, and the right one the note above that. So it
+   * is still a note for each piece, and a line of rows is a cascade climbing through the chords.
+   * (Drew, build 50: the three at once were "the most awkward-sounding notes", and the fan could be
+   * "one of the coolest sections"; the triplets are his idea.)
+   */
+  private sweep(ctx: BaseAudioContext, n: number, t: number, third: number, eighth: number) {
+    const bar = barAt(n);
+    const written = chordFrom(bar, bar.bells[stepIn(n) >> 1]);
+    // (a run that would go over the top of the bells' range is played an octave down, whole)
+    const drop = chordStep(bar, written, 2) > 100 ? 12 : 0;
+    const m = chordStep(bar, written, third) - drop;
+    this.chime(ctx, t + (third * eighth) / 3, m, third ? 0.07 : 0.085, 0.16, (third - 1) * 0.4);
+  }
+
+  /**
    * A piece of amber, lying at `at` meters along the trail and `lift` meters up. It plays the
    * note written for that spot, on the grid: one short bell for one piece. Pieces hung in the
-   * air over a jump play higher the higher they hang, and several at once make a chord.
+   * air over a jump play higher the higher they hang. With `third` (0, 1 or 2: left, middle or
+   * right lane), it is one of a row swept in by the fans: see `sweep`.
    */
-  amber(at?: number, lift = 0) {
+  amber(at?: number, lift = 0, third = -1) {
     const ctx = this.ctx;
     const g = this.onGrid();
     if (!ctx || !g) return;
     let [t, n] = g;
+    if (third >= 0 && at !== undefined && this.mode === 'chase' && this.lastV > 0.8) {
+      // (a swept piece arrives a little before the runner reaches its place: the note waits for the place)
+      const pos = (this.lastS - this.origin) / METERS_PER_STEP;
+      const slot = Math.round((at - this.origin) / METERS_PER_STEP / 2) * 2;
+      const wait = Math.min(0.8, Math.max(0.004, ((slot - pos) * METERS_PER_STEP) / this.lastV));
+      return this.sweep(ctx, slot, ctx.currentTime + wait, third, (2 * METERS_PER_STEP) / this.lastV);
+    }
     if (at !== undefined && this.mode === 'chase' && this.lastV > 0.8) {
       // its own place on the grid, which the runner is just reaching
       const pos = (this.lastS - this.origin) / METERS_PER_STEP;
@@ -771,7 +804,8 @@ export class Sound {
    * With `run`, the earlier version's way, which Drew's clip of it has: that many notes up the
    * chord, the first two pieces of a run on the same note. (The game plays the written line.)
    */
-  ring(ctx: BaseAudioContext, n: number, t: number, run = -1) {
+  ring(ctx: BaseAudioContext, n: number, t: number, run = -1, third = -1) {
+    if (third >= 0) return this.sweep(ctx, n, t, third, 2 * STEP);
     const bar = barAt(n);
     let m = run < 0 ? bar.bells[stepIn(n) >> 1] : chordStep(bar, chordFrom(bar, 76), Math.max(0, run - 1));
     while (m > 100) m = chordStep(bar, m, -1);
@@ -922,13 +956,10 @@ export class Sound {
   }
 
   /**
-   * The egg goes for the edge at `t`. Whatever chord the chase was on is let go, and from here
-   * to the landing everything is on the one chord that wants to go home: the short strings and
-   * the kit driving on (see `step`), that chord swelling under shaking strings, air rushing
-   * upward, and a drum roll that grows.
+   * The egg goes for the edge at `t`. The track plays on; over it come air rushing upward, the
+   * chord of the bar swelling under shaking strings, and a drum roll that grows.
    */
   private startDash(ctx: BaseAudioContext, t: number) {
-    this.letGo(ctx, t, 0.08);
     this.riser(ctx, t);
     const hold = ctx.createGain();
     hold.gain.setValueAtTime(1, t);
@@ -974,10 +1005,11 @@ export class Sound {
     this.thump(ctx, { t, from: 92, to: 36, len: 1.6, vol: 0.2 });
     this.thump(ctx, { t, from: 70.5, to: 68.5, len: 2.2, vol: 0.11, left: 0.01 });
     this.hiss(ctx, { t, len: 1.8, vol: 0.05, cut: 6500, type: 'highpass', attack: 0.01, to: this.music });
-    this.hiss(ctx, { t, len: 0.22, vol: 0.14, cut: 380, q: 0.6, to: this.music });
+    this.hiss(ctx, { t, len: 0.22, vol: 0.17, cut: 380, q: 0.6, to: this.music });
     // C sharp major from the bottom of the cellos to the top of the violins, brighter the higher
     // it goes, the home notes strongest and the third on top the softest
-    const chord = [[37, 0.068], [49, 0.074], [56, 0.054], [61, 0.074], [65, 0.047], [68, 0.047], [73, 0.061], [77, 0.03]];
+    // (loud enough to top the build before it, now that the whole track plays through that)
+    const chord = [[37, 0.082], [49, 0.089], [56, 0.065], [61, 0.089], [65, 0.056], [68, 0.056], [73, 0.073], [77, 0.036]];
     if (home) chord.pop();
     chord.forEach(([midi, vol], i) => {
       const up = i / 7;
@@ -989,7 +1021,7 @@ export class Sound {
   finale(ctx: BaseAudioContext, n: number, t: number, dash: number, dive: number, home = false) {
     this.startDash(ctx, t);
     const land = t + dash + dive;
-    for (let i = 0; t + i * STEP < land - 0.01; i++) this.step(ctx, n + i, t + i * STEP, 1, STEP, true);
+    for (let i = 0; t + i * STEP < land - 0.01; i++) this.step(ctx, n + i, t + i * STEP, 0.95);
     for (let at = t; at < land - 0.01; at += 0.072) this.stroke(ctx, at, at - t);
     this.leapAt(ctx, t + dash, dive);
     this.landAt(ctx, land, home);
