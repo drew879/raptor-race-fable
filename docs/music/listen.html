@@ -1,0 +1,131 @@
+<title>Chase Strings Clips</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap">
+<style>
+/* One column for a phone: four clips to play in order, then the bell line written out, then what was measured and what was guessed. */
+:root {
+  --bg: #eef2ee; --panel: #ffffff; --ink: #18211e; --soft: #55635d; --line: #d3dcd6;
+  --amber: #b86a10; --egg: #1f8176; --pick: #1f6f52; --pick-bg: #dff0e6;
+  --display: 'Space Grotesk', 'Avenir Next', system-ui, sans-serif;
+  --body: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --bg: #121a17; --panel: #1b2622; --ink: #edf2ec; --soft: #a3b3ab; --line: #2e3d37; --amber: #f2a93b; --egg: #58cdbf; --pick: #8fdcb6; --pick-bg: #1d3a2e; color-scheme: dark; }
+}
+:root[data-theme="dark"] { --bg: #121a17; --panel: #1b2622; --ink: #edf2ec; --soft: #a3b3ab; --line: #2e3d37; --amber: #f2a93b; --egg: #58cdbf; --pick: #8fdcb6; --pick-bg: #1d3a2e; color-scheme: dark; }
+
+body { background: var(--bg); color: var(--ink); font: 15px/1.55 var(--body); }
+.page { max-width: 720px; margin: 0 auto; padding-block: 28px 56px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: flex; flex-direction: column; gap: 34px; }
+h1, h2, h3 { font-family: var(--display); margin: 0; text-wrap: balance; line-height: 1.15; }
+h1 { font-size: 30px; }
+h2 { font-size: 21px; }
+h3 { font-size: 17px; }
+p { margin: 0; }
+.eyebrow { font-size: 12px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--amber); }
+.lede { color: var(--soft); max-width: 62ch; }
+.top, .block { display: flex; flex-direction: column; gap: 12px; }
+.block > p { max-width: 65ch; }
+.clips { display: flex; flex-direction: column; gap: 14px; }
+.clip { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.clip.mine { border-color: var(--pick); }
+.clip header { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.num { font: 700 13px var(--display); color: var(--soft); }
+.tag { font-size: 11.5px; font-weight: 600; letter-spacing: 0.04em; padding: 2px 9px; border-radius: 999px; background: var(--pick-bg); color: var(--pick); }
+.clip p { color: var(--soft); }
+.clip p b { color: var(--ink); font-weight: 600; }
+audio { width: 100%; height: 44px; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th, td { text-align: left; padding: 7px 10px 7px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { font-weight: 600; color: var(--soft); font-size: 12px; letter-spacing: 0.04em; }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; padding-right: 14px; }
+td.notes { font-family: var(--mono); font-size: 12.5px; }
+td.notes i { font-style: normal; color: var(--soft); padding: 0 5px; }
+td.chord { font-family: var(--display); font-weight: 600; color: var(--amber); }
+ul.plain { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 7px; max-width: 65ch; }
+ul.plain b { font-weight: 600; }
+.note { font-size: 13px; color: var(--soft); }
+</style>
+
+<div class="page">
+  <section class="top">
+    <span class="eyebrow">Raptor Race &middot; music</span>
+    <h1>Chase Strings, rebuilt</h1>
+    <p class="lede">Four clips. Play the original, then the match, and go back and forth. All four are set to the same loudness. Headphones show the most, but the phone's speaker is what the game will be heard on, so try both.</p>
+  </section>
+
+  <section class="clips">
+    <div class="clip">
+      <header><span class="num">1</span><h3>The original</h3></header>
+      <p>Your clip, as you sent it.</p>
+      <audio id="clip-original" controls preload="metadata" src="clips/original.mp4"></audio>
+    </div>
+    <div class="clip mine">
+      <header><span class="num">2</span><h3>The match</h3><span class="tag">in the game now</span></header>
+      <p>The same 34 seconds from the game's new music code. <b>0 to 16 s:</b> short strings, cellos, kick and wind. <b>16 to 34 s:</b> everything. Amber climbs the chord at 4 s and at 20 s, the way the original's did.</p>
+      <audio id="clip-match" controls preload="metadata" src="clips/match.mp4"></audio>
+    </div>
+    <div class="clip">
+      <header><span class="num">3</span><h3>Fuller strings</h3></header>
+      <p>The same notes with a fuller string sound: more players to each part, the scrape of the bow at the start of each note, the wooden body of the instruments, and a hall. Still made in code. It is not in the game.</p>
+      <audio id="clip-full" controls preload="metadata" src="clips/full.mp4"></audio>
+    </div>
+    <div class="clip mine">
+      <header><span class="num">4</span><h3>The amber's bell line</h3><span class="tag">first draft</span></header>
+      <p>The amber's own part, over the music at middle strength. <b>0 to 16 s:</b> every bell, all 64 notes. <b>16 to 32 s:</b> the same eight bars with lines and gaps, the way a level might lay the amber out.</p>
+      <audio id="clip-bells" controls preload="metadata" src="clips/bells.mp4"></audio>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>The bell line, note by note</h2>
+    <p>One note for each eighth of the bar. Each half of a bar climbs. Tell me which bars to change and I'll change them.</p>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Bar</th><th>Chord</th><th>First half</th><th>Second half</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td class="chord">C&sharp;m</td><td class="notes">C&sharp;6<i>&middot;</i>E6<i>&middot;</i>G&sharp;6<i>&middot;</i>C&sharp;7</td><td class="notes">E6<i>&middot;</i>G&sharp;6<i>&middot;</i>C&sharp;7<i>&middot;</i>E7</td></tr>
+          <tr><td>2</td><td class="chord">A</td><td class="notes">C&sharp;6<i>&middot;</i>E6<i>&middot;</i>A6<i>&middot;</i>C&sharp;7</td><td class="notes">E6<i>&middot;</i>A6<i>&middot;</i>C&sharp;7<i>&middot;</i>E7</td></tr>
+          <tr><td>3</td><td class="chord">F&sharp;m</td><td class="notes">C&sharp;6<i>&middot;</i>F&sharp;6<i>&middot;</i>A6<i>&middot;</i>C&sharp;7</td><td class="notes">F&sharp;6<i>&middot;</i>A6<i>&middot;</i>C&sharp;7<i>&middot;</i>D&sharp;7</td></tr>
+          <tr><td>4</td><td class="chord">G&sharp;</td><td class="notes">D&sharp;6<i>&middot;</i>G&sharp;6<i>&middot;</i>B&sharp;6<i>&middot;</i>D&sharp;7</td><td class="notes">B&sharp;5<i>&middot;</i>D&sharp;6<i>&middot;</i>G&sharp;6<i>&middot;</i>B&sharp;6</td></tr>
+          <tr><td>5</td><td class="chord">C&sharp;m</td><td class="notes">C&sharp;6<i>&middot;</i>E6<i>&middot;</i>G&sharp;6<i>&middot;</i>C&sharp;7</td><td class="notes">E6<i>&middot;</i>G&sharp;6<i>&middot;</i>C&sharp;7<i>&middot;</i>E7</td></tr>
+          <tr><td>6</td><td class="chord">A</td><td class="notes">C&sharp;6<i>&middot;</i>E6<i>&middot;</i>G&sharp;6<i>&middot;</i>C&sharp;7</td><td class="notes">E6<i>&middot;</i>A6<i>&middot;</i>C&sharp;7<i>&middot;</i>E7</td></tr>
+          <tr><td>7</td><td class="chord">D</td><td class="notes">A5<i>&middot;</i>D6<i>&middot;</i>F&sharp;6<i>&middot;</i>A6</td><td class="notes">D6<i>&middot;</i>F&sharp;6<i>&middot;</i>A6<i>&middot;</i>C&sharp;7</td></tr>
+          <tr><td>8</td><td class="chord">G&sharp;</td><td class="notes">D&sharp;6<i>&middot;</i>G&sharp;6<i>&middot;</i>B&sharp;6<i>&middot;</i>D&sharp;7</td><td class="notes">B&sharp;5<i>&middot;</i>D&sharp;6<i>&middot;</i>G&sharp;6<i>&middot;</i>B&sharp;6</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">Three notes sit outside their chord on purpose: the D&sharp;7 that ends bar 3 leans into the G&sharp; chord, bar 6 keeps the G&sharp; the violin passes through, and the C&sharp;7 that ends bar 7 does the same for the violin's last note there. Bar 7 drops lower for the dark turn.</p>
+  </section>
+
+  <section class="block">
+    <h2>How close the match is, by measurement</h2>
+    <p>I can't hear either clip, so I measured them. This is the level in each band of pitch, in decibels, for the quiet half and the full half.</p>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Band</th><th class="n">Original, quiet</th><th class="n">Match, quiet</th><th class="n">Original, full</th><th class="n">Match, full</th></tr></thead>
+        <tbody id="bands"></tbody>
+      </table>
+    </div>
+    <p>I also rendered each part of the band alone and fitted the eleven of them to your clip. That showed my strings 2 dB too quiet against the drums, my hats 3.6 dB too quiet and my bells 1.6 dB too loud, which I corrected. After that, every part I could pin down fits within 1.5 dB.</p>
+  </section>
+
+  <section class="block">
+    <h2>What I couldn't match, or guessed</h2>
+    <ul class="plain">
+      <li><b>The sound itself.</b> Everything above is numbers. Whether it has the same feel is for your ears.</li>
+      <li><b>The tom fill.</b> It is four notes in 34 seconds, too little to measure. It is built to the description and unchecked.</li>
+      <li><b>The wind.</b> It is too quiet in your clip to measure well. Mine is set by the description and a rough fit.</li>
+      <li><b>Levels the description leaves out:</b> the click on the kick and the toms, the bell's brighter edge, and how far right the hats sit.</li>
+      <li><b>How a short string note dies away.</b> I read "exponential release" as fading to nothing within the release time.</li>
+      <li><b>The ending.</b> The riser, the leap and the landing are in the game and not in these clips. Your description gives their notes but not their levels, so those are mine.</li>
+    </ul>
+  </section>
+</div>
+
+<script>
+// The measured levels, quiet half and full half: original first, then the match.
+const BANDS = [["Under 120 Hz", -28.0, -27.7, -27.4, -27.3], ["120 to 300 Hz", -31.2, -31.6, -31.0, -31.6], ["300 to 800 Hz", -34.5, -34.1, -32.8, -33.1], ["800 Hz to 2 kHz", -43.6, -43.6, -34.9, -34.6], ["2 to 5 kHz", -46.8, -48.3, -39.5, -39.7], ["5 to 10 kHz", -64.0, -63.9, -54.3, -54.2]];
+document.getElementById('bands').innerHTML = BANDS.map((row) => `<tr><td>${row[0]}</td>${row.slice(1).map((v) => `<td class="n">${v.toFixed(1)}</td>`).join('')}</tr>`).join('');
+</script>
