@@ -45,7 +45,7 @@ What changed:
 ### The music in Ableton Live, and recorded layers in the game (2026-11-19)
 Drew, going to bed on 2026-11-18: "when the journal is done, please proceed to building the song in Ableton without my approval. Please do a great job with it and really make the production quality AAA for the music. If possible, please save it as an Ableton project as well as generating the sound output you need for the game, so that I could go into Ableton and tweak instruments and effects myself if there's anything I want to change."
 
-**Where it stands (2026-11-19, early afternoon).** The chase music is an Ableton Live project with sampled strings and drums, and the game plays layers exported from it. Nobody has listened to any of it yet: every check so far is a measurement. Screen work is on hold (see "Driving Live" below) until Drew says to go on.
+**Where it stands (2026-11-19, early afternoon).** The chase music is an Ableton Live project with sampled strings and drums, and the game plays layers exported from it. Nobody has listened to any of it yet: every check so far is a measurement. Screen work is on hold again (see "Driving Live" below): each stretch of it needs Drew's word first.
 
 **The project:** `music/ableton/Chase Strings Project/Chase Strings.als`, written by `music/ableton/make_set.py`. 21 MIDI tracks at 120 bpm.
 - Strings: Splice INSTRUMENT (the free plug-in Spitfire's LABS moved into) playing "Short" and "Long" from the free LABS Strings pack. The plug-in as Live saves it is in `music/ableton/devices/` (its README says how it was captured and what its settings do).
@@ -74,8 +74,8 @@ Drew, going to bed on 2026-11-18: "when the journal is done, please proceed to b
 
 **Not done, or not checked:**
 - Nobody has heard it. Not tried on an iPhone (decoding, memory of about 50 MB of sound, the tape's small speed changes).
-- The layers were cut from the second export. The project file has changes made after it (cellos up 3.4 dB, landing up 1 dB and its drum 3 dB more, the landing chord's ring-out, swell and roll up 1 dB). Those were applied to the exported files by the same amounts, so the layers match the project by arithmetic. A last export of the project itself, cut with the plain script, would confirm it.
-- Live still has an older copy of the set in memory and an Export dialog open (hidden). Cancel the dialog and reopen the set, or quit without saving.
+- Confirmed later the same day, with Drew's go: the final project was exported once more and cut with the plain script. Every layer came out within 0.1 dB of the ones made by arithmetic from the second export, with no shift in time, and those are the files in the game now. That export is kept in `music/ableton/exports/final/` (65 MB, not in git).
+- Live was left with `Chase Strings.als` open and unchanged, its transport stopped and its audio engine back on. Its Export dialog now remembers All Individual Tracks at 48 kHz (it was Main at 192 kHz).
 - No dynamics from intensity inside a layer (the synthesized strings got brighter as the chase heated up).
 
 **To change the music in Live and get it into the game:** change it in Live and save; export (File, Export Audio/Video: All Individual Tracks, 1.1.1, 36 bars, 48000) into a new folder; `python3 music/ableton/cut_layers.py <folder>`. If notes change, change `make_set.py` and `sound.ts` too, or the synthesized band and the bells drift from the recording. Running `make_set.py` again overwrites the set, so anything changed by hand in Live has to be carried into the script first.
@@ -86,8 +86,8 @@ Drew, going to bed on 2026-11-18: "when the journal is done, please proceed to b
 - Before every burst it checks for a file named HOLD, for an open Zoom meeting window, and for 4 to 10 quiet seconds on the keyboard and mouse. After the burst it puts the front app and the pointer back.
 - Live hides plug-in windows when it isn't in front, so pictures of them have to be taken inside the burst.
 - Live's audio engine stays off (Options menu) while working. Export works with it off.
-- Two mistakes on 2026-11-19, both told to Drew at the time: Live played the song aloud for up to a minute when a key press reached it during a burst (engine was on); and when the second display went away mid-step, Live and its Export dialog sat in front on the main display for about 20 seconds, with a Zoom meeting window open, because the driver crashed before restoring. The driver now restores on any error. Screen work has been on hold since, at my own call, until Drew says go.
-- Free packs downloaded with Drew's leave ("only get free ones and please just be mindful of hard disk space"): LABS Strings (665 MB) and LABS Strings 2 (312 MB, not used yet). The raw exports are in `music/ableton/exports/` (139 MB, not in git).
+- Two mistakes on 2026-11-19, both told to Drew at the time: Live played the song aloud for up to a minute when a key press reached it during a burst (engine was on); and when the second display went away mid-step, Live and its Export dialog sat in front on the main display for about 20 seconds, with a Zoom meeting window open, because the driver crashed before restoring. The driver now restores on any error. After that, screen work only happens when Drew says go, and the hold goes back on when the job is done.
+- Free packs downloaded with Drew's leave ("only get free ones and please just be mindful of hard disk space"): LABS Strings (665 MB) and LABS Strings 2 (312 MB, not used yet). The final export is in `music/ableton/exports/final/` (65 MB, not in git).
 
 **What this Mac has** (checked 2026-11-19, before any of the above): Ableton Live 12 Standard (12.3.6 by its preferences folder), running; its Core Library only, no Factory Packs (so no orchestral multisamples: the string racks are one sample each, `Ac Strings Orch`, `Ac Strings Pizz ...`); Spitfire LABS (samples in `~/Spitfire/Spitfire Audio - LABS`); Kontakt 7 with only a free guitar; MonoFury and Prism; Max 8 and 9 folders in `/Users/Shared`.
 
