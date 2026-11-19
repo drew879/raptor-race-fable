@@ -17,6 +17,8 @@ The sounds:
   drums    single hits from the Tamuz Kit in Live's Core Library, through one of Live's halls
   bells    the Celeste from the Core Library (the game plays its own bell for each piece of amber;
            this track is here to hear the line against the rest)
+  synth    Drift, Live's own synth, playing the short strings' notes as the game's synthesized band
+           did, under the strings (see PULSE_SYNTH), through Saturator
 
 What is laid out, in Live's Arrangement:
   bars 1-24   the loop, three times over, every part. The game's layers are cut from the middle
@@ -63,6 +65,11 @@ def bar_notes(part, index):
         out = [(i * S, 0.2, bar['root'] + 12 + OSTINATO[i], 112 if i in ACCENT else 84) for i in range(16)]
     elif part == 'short8':
         out = [(i * S, 0.18, bar['root'] + 24 + OSTINATO[i], 72) for i in range(16)]
+    elif part == 'pulse':
+        # the synthesized band's short notes as sound.ts plays them: held 70 ms, the accents about 4 dB harder
+        out = [(i * S, 0.14, bar['root'] + 12 + OSTINATO[i], 127 if i in ACCENT else 81) for i in range(16)]
+    elif part == 'pulse8':
+        out = [(i * S, 0.12, bar['root'] + 24 + OSTINATO[i], 100) for i in range(16)]
     elif part == 'cellos':
         out = [(0, 1.9, bar['root'], 100), (2, 1.9, bar['root'], 94)]
     elif part == 'bed':
@@ -114,12 +121,46 @@ def hit(sample):
     return ('hit', KIT, sample)
 
 
+# The synth pulse (Drew, after build 67: "what's really missing compared to the synth version is that
+# driving, crunchy synth that's going up and down arpeggios the whole time"). He picked it tucked 8 dB
+# under the recorded strings, from clips that used the game's own synthesized notes (2026-11-19).
+# Here it's Drift, which every edition of Live has, set up like the game's `bow`: two sawtooth waves
+# 14 cents apart (Drift's detune is in semitones), through a low-pass filter that snaps shut over
+# 70 ms on every note (envelope 2), the filter not following the keys, and the oscillators starting
+# afresh on each note, as the game's do. It starts from the "Stereo Saw" preset with every other
+# movement in it switched off. Drift's codes: oscillator 1 type 4 and oscillator 2 type 3 are saws,
+# filter source 1 is envelope 2, voice mode 0 is Poly. Its gains and volume are plain multipliers.
+DRIFT = 'Devices/Instruments/Drift/Synth Keys/Stereo Saw.adv'
+PULSE_SYNTH = {
+    'Oscillator1_Type': 4, 'Oscillator1_Shape': 0, 'Oscillator1_ShapeMod': 0, 'Oscillator1_Transpose': 0,
+    'Oscillator2_Type': 3, 'Oscillator2_Detune': 0.14, 'Oscillator2_Transpose': 0,
+    'Mixer_OscillatorGain1': 0.5, 'Mixer_OscillatorGain2': 0.5, 'Mixer_NoiseOn': False, 'Mixer_NoiseLevel': 0,
+    'Filter_Type': 0, 'Filter_Frequency': 2200, 'Filter_Resonance': 0, 'Filter_HiPassFrequency': 10, 'Filter_Tracking': 0,
+    'Filter_OscillatorThrough1': True, 'Filter_OscillatorThrough2': True,
+    # (how far 0.15 opens the filter isn't documented: the game's opens to 1.8 times and closes over 70 ms; check against an export)
+    'Filter_ModSource1': 1, 'Filter_ModAmount1': 0.15, 'Filter_ModAmount2': 0,
+    'Envelope1_Attack': 0.01, 'Envelope1_Decay': 0.6, 'Envelope1_Sustain': 1, 'Envelope1_Release': 0.04,
+    'Envelope2_Attack': 0.001, 'Envelope2_Decay': 0.07, 'Envelope2_Sustain': 0, 'Envelope2_Release': 0.04, 'Global_Envelope2Mode': 0,
+    'Lfo_Amount': 0, 'Lfo_ModAmount': 0, 'PitchModulation_Amount1': 0, 'PitchModulation_Amount2': 0,
+    'ModulationMatrix_Amount1': 0, 'ModulationMatrix_Amount2': 0, 'ModulationMatrix_Amount3': 0,
+    'Global_VolVelMod': 1, 'Global_ResetOscillatorPhase': True, 'Global_VoiceMode': 0, 'Global_PolyVoiceDepth': 0,
+    'Global_DriftDepth': 0.03, 'Global_Glide': 0, 'Global_Volume': 0.5,
+}
+# the octave over it: the game's has a filter fixed at 2600 Hz that doesn't snap
+PULSE8_SYNTH = dict(PULSE_SYNTH, Filter_Frequency=2600, Filter_ModAmount1=0)
+PULSE = ('drift', DRIFT, PULSE_SYNTH, 'Synth pulse')
+PULSE8 = ('drift', DRIFT, PULSE8_SYNTH, 'Synth pulse 8va')
+
+
 # Effects after the sound, each one of Live's own presets with a few of its settings changed.
 HALL = ('Devices/Audio Effects/Reverb/Hall/Concert Hall.adv', {'MixDirect': 0.16})  # (MixDirect is the Dry/Wet knob)
 HALL_LOW = ('Devices/Audio Effects/Reverb/Hall/Concert Hall.adv', {'MixDirect': 0.08})
 HALL_BIG = ('Devices/Audio Effects/Reverb/Hall/Concert Hall.adv', {'MixDirect': 0.3})
 # the high strings shake on their note: the bow going back and forth, about eleven times a second
 SHAKE = ('Devices/Audio Effects/Auto Pan-Tremolo/Trem Fast Vibrations.adv', {'Modulation_Amount': 0.6, 'Modulation_Frequency': 11, 'DynamicFrequencyModulation': 0, 'TremoloWaveformShape': 0})
+# a little grit on the synth pulse: Saturator's analog clip, gently (6 dB in, 6 out). Turn PreDrive up in Live for more.
+# (Saturator is in Live Standard; Roar, Pedal and Amp are Suite only.)
+GRIT = ('Devices/Audio Effects/Saturator/Analog Clip.adv', {'PreDrive': 6, 'PostDrive': -6})
 
 # Where things are, in beats. A bar is four.
 LOOPS = [0, 32, 64]
@@ -158,6 +199,8 @@ BODY_DELAY = -120
 tracks = []
 for name, part, color, gain, sound, fx, delay in [
     ('Short strings', 'short', 16, 0.326, SHORT, [], SHORT_DELAY), ('Short strings 8va', 'short8', 16, 0.115, SHORT, [], SHORT_DELAY),
+    # (the synth pulse's two faders are first guesses, until an export shows how loud Drift comes out)
+    ('Synth pulse', 'pulse', 25, 0.3, PULSE, [GRIT], 0), ('Synth pulse 8va', 'pulse8', 25, 0.12, PULSE8, [GRIT], 0),
     ('Cellos', 'cellos', 17, 0.95, LONG, [], BODY_DELAY), ('Cellos (the start of each note)', 'cellobite', 17, 0.37, SHORT, [], SHORT_DELAY),
     ('Held strings', 'bed', 17, 0.534, LONG, [], LONG_DELAY),
     ('Violin tune', 'violin', 18, 1.3, LONG, [], BODY_DELAY), ('Violin tune (the start of each note)', 'violinbite', 18, 0.3, SHORT, [], SHORT_DELAY),
@@ -277,6 +320,15 @@ def sound_devices(sound, fx):
     """The devices for a track: its sound, copied out of a preset, and its effects after."""
     if sound[0] == 'splice':
         found = [splice_device(sound[1], sound[2] if len(sound) > 2 else {})]
+    elif sound[0] == 'drift':
+        # Drift from one of its presets, with its knobs (`Manual`) and switches (a `Value` of their own) set, and a name of its own
+        device = copy.deepcopy(list(preset(sound[1]))[0])
+        for tag, value in sound[2].items():
+            holder = device.find(tag)
+            knob = holder.find('Manual')
+            (knob if knob is not None else holder).set('Value', str(value).lower() if isinstance(value, bool) else str(value))
+        device.find('UserName').set('Value', sound[3])
+        found = [device]
     elif sound[0] == 'rack':
         # a rack preset keeps its chain's devices one after another; the last is the chain's own mixer, which a track has no use for
         found = [copy.deepcopy(d) for holder in preset(sound[1]).iter('AbletonDevicePreset') for d in holder.find('Device')]

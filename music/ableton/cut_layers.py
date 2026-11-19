@@ -48,6 +48,9 @@ LAYERS = {
     'base': (['Short strings', 'Held strings'], True),
     'kick': (['Kick'], False),
     'octave': (['Short strings 8va'], True),
+    # (the synth pulse under the strings: always on, and its octave, which comes and goes with the strings' octave)
+    'pulse': (['Synth pulse'], True),
+    'pulse8': (['Synth pulse 8va'], True),
     'cello': (['Cellos', 'Cellos (the start of each note)'], True),
     'tune': (['Violin tune', 'Violin tune (the start of each note)'], True),
     'high': (['High strings'], True),
