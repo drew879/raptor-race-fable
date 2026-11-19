@@ -10,3 +10,7 @@ __pycache__
 music/ableton/exports
 Backup
 *.asd
+music/tools/ui/last
+music/tools/ui/shots
+music/tools/shots
+music/tools/out
