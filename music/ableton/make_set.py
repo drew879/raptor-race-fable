@@ -22,7 +22,7 @@ import xml.etree.ElementTree as ET
 HERE = os.path.dirname(os.path.abspath(__file__))
 CORE = '/Applications/Ableton Live 12 Standard.app/Contents/App-Resources/Core Library'
 TEMPLATE = f'{CORE}/MIDI Clips/Tonal/Chord Progression/Dramatic Strings A Minor 111 bpm.alc'
-OUT = f'{HERE}/Chase Strings Project/Chase Strings.als'
+OUT = os.environ.get('CHASE_OUT', f'{HERE}/Chase Strings Project/Chase Strings.als')
 
 # ---------------------------------------------------------------- the score (as in sound.ts)
 BARS = [
@@ -60,17 +60,17 @@ def bar_notes(part, index):
     elif part == 'high':
         out = [(0, 3.8, bar['high'], 76)]
     elif part == 'kick':
-        out = [(0, 0.5, 36, 112), (2, 0.5, 36, 106)]
+        out = [(0, 0.5, 60, 112), (2, 0.5, 60, 106)]
     elif part == 'kickpush':
-        out = [(2.5, 0.4, 36, 96)]
+        out = [(2.5, 0.4, 60, 96)]
     elif part == 'snare':
-        out = [(1, 0.4, 38, 104), (3, 0.4, 38, 104)]
+        out = [(1, 0.4, 60, 104), (3, 0.4, 60, 104)]
     elif part == 'hats8':
-        out = [(i * 0.5, 0.1, 42, 100 if i % 2 else 66) for i in range(8)]
+        out = [(i * 0.5, 0.1, 60, 100 if i % 2 else 66) for i in range(8)]
     elif part == 'hats16':
-        out = [(i * 0.5 + S, 0.1, 42, 60) for i in range(8)]
+        out = [(i * 0.5 + S, 0.1, 60, 60) for i in range(8)]
     elif part == 'toms':
-        out = [(3 + i * S, 0.24, pitch, 104) for i, pitch in enumerate([50, 48, 47, 45])] if index == 7 else []
+        out = [(3 + i * S, 0.24, pitch, 104) for i, pitch in enumerate([63, 61, 59, 57])] if index == 7 else []
     elif part == 'bells':
         out = [(i * 0.5, 0.3, pitch, 100) for i, pitch in enumerate(bar['bells'])]
     return out
@@ -84,27 +84,40 @@ def dash(part):
     return bar_notes(part, 7)
 
 
-# Each track: name, Live color index, mixer gain (1 is 0 dB), and its clips as (name, first beat, length in beats, notes).
+# The stock sounds each track starts with, all from Live's Core Library and all playable in the
+# Standard edition: a rack preset's own chain of devices, or one drum hit from a kit.
+ORCH = ('rack', 'Racks/Instrument Racks/Strings/Ac Strings Orch.adg')
+PIZZ = ('rack', 'Racks/Instrument Racks/Strings/Ac Strings Pizz Stage.adg')
+CELESTE = ('rack', 'Racks/Instrument Racks/Mallets/Celeste.adg')
+KIT = 'Racks/Drum Racks/Acoustic/Tamuz Kit.adg'
+
+
+def hit(sample):
+    return ('hit', KIT, sample)
+
+
+# Each track: name, Live color index, mixer gain (1 is 0 dB), its sound, and its clips as (name, first beat, length in beats, notes).
 LOOP, DASH, LAND = 0, 40, 44
 tracks = []
-for name, part, color, gain in [
-    ('Short strings', 'short', 16, 0.63), ('Short strings 8va', 'short8', 16, 0.4), ('Cellos', 'cellos', 17, 0.7),
-    ('Held strings', 'bed', 17, 0.4), ('Violin tune', 'violin', 18, 0.56), ('High strings', 'high', 18, 0.35),
-    ('Kick', 'kick', 3, 0.7), ('Kick push', 'kickpush', 3, 0.6), ('Snare', 'snare', 4, 0.56),
-    ('Hats eighths', 'hats8', 5, 0.3), ('Hats sixteenths', 'hats16', 5, 0.25), ('Toms', 'toms', 4, 0.5),
-    ('Bells (amber line)', 'bells', 26, 0.56),
+for name, part, color, gain, sound in [
+    ('Short strings', 'short', 16, 0.63, PIZZ), ('Short strings 8va', 'short8', 16, 0.4, PIZZ), ('Cellos', 'cellos', 17, 0.7, ORCH),
+    ('Held strings', 'bed', 17, 0.4, ORCH), ('Violin tune', 'violin', 18, 0.56, ORCH), ('High strings', 'high', 18, 0.35, ORCH),
+    ('Kick', 'kick', 3, 0.7, hit('Kick Tamuz 1.wav')), ('Kick push', 'kickpush', 3, 0.6, hit('Kick Tamuz 1.wav')), ('Snare', 'snare', 4, 0.56, hit('Snare Tamuz 1.wav')),
+    ('Hats eighths', 'hats8', 5, 0.3, hit('Hihat Closed Tamuz Tight.wav')), ('Hats sixteenths', 'hats16', 5, 0.25, hit('Hihat Closed Tamuz Tight.wav')), ('Toms', 'toms', 4, 0.5, hit('Tom Tamuz Mid 1.wav')),
+    ('Bells (amber line)', 'bells', 26, 0.56, CELESTE),
 ]:
     clips = [('Loop', LOOP, 32, loop(part))]
     if part != 'bells':
         clips.append(('Dash bar', DASH, 4, dash(part)))
-    tracks.append((name, color, gain, clips))
+    tracks.append((name, color, gain, sound, clips))
 # the build over the dash bar, and the landing
-roll = [(i * 0.144, 0.12, 44, int(40 + 80 * i / 27)) for i in range(28)]
+roll = [(i * 0.144, 0.12, 60, int(40 + 80 * i / 27)) for i in range(28)]
 tracks += [
-    ('Ending swell', 9, 0.5, [('Swell', DASH, 4, [(0, 4, p, 96) for p in (44, 56, 60, 63, 68)])]),
-    ('Ending roll', 9, 0.6, [('Roll', DASH, 4, roll)]),
-    ('Landing chord', 9, 0.7, [('Landing', LAND, 12, [(0, 7, p, 70 if p == 77 else 110) for p in (37, 49, 56, 61, 65, 68, 73, 77)])]),
-    ('Landing drums', 9, 0.7, [('Landing', LAND, 12, [(0, 2, 36, 120), (0, 4, 37, 110), (0, 4, 49, 96)])]),
+    ('Ending swell', 9, 0.5, ORCH, [('Swell', DASH, 4, [(0, 4, p, 96) for p in (44, 56, 60, 63, 68)])]),
+    ('Ending roll', 9, 0.6, hit('Tom Tamuz Low.wav'), [('Roll', DASH, 4, roll)]),
+    ('Landing chord', 9, 0.7, ORCH, [('Landing', LAND, 12, [(0, 7, p, 70 if p == 77 else 110) for p in (37, 49, 56, 61, 65, 68, 73, 77)])]),
+    ('Landing drum', 9, 0.7, hit('Kick Tamuz 2.wav'), [('Landing', LAND, 12, [(0, 2, 60, 120)])]),
+    ('Landing cymbal', 9, 0.5, hit('Crash Tamuz 1.wav'), [('Landing', LAND, 12, [(0, 4, 60, 100)])]),
 ]
 
 # ---------------------------------------------------------------- the set
@@ -113,6 +126,39 @@ POINTEES = ('AutomationTarget', 'ModulationTarget', 'Pointee')
 
 def is_pointee(tag):
     return tag in POINTEES or tag.startswith('ControllerTargets.') or tag.endswith('ModulationTarget')
+
+
+_presets = {}
+
+
+def preset(path):
+    if path not in _presets:
+        _presets[path] = ET.fromstring(gzip.open(f'{CORE}/{path}', 'rb').read())
+    return _presets[path]
+
+
+def sound_devices(sound):
+    """The devices for a track, copied out of one of Live's presets."""
+    if sound[0] == 'rack':
+        # a rack preset keeps its chain's devices one after another; the last is the chain's own mixer, which a track has no use for
+        found = [copy.deepcopy(d) for holder in preset(sound[1]).iter('AbletonDevicePreset') for d in holder.find('Device')]
+        # (nor for the echo some presets add, which would smear a part in sixteenths)
+        found = [d for d in found if 'BranchMixer' not in d.tag and d.tag != 'Delay']
+    else:
+        found = []
+        for cell in preset(sound[1]).iter('DrumCell'):
+            if any(e.get('Value', '').endswith('/' + sound[2]) for e in cell.iter('Path')):
+                found = [copy.deepcopy(cell)]
+                break
+        assert found, sound
+    for k, device in enumerate(found):
+        device.set('Id', str(k))
+        # (what tied a knob to the rack's macro controls means nothing outside the rack)
+        for parent in device.iter():
+            for child in list(parent):
+                if child.tag == 'KeyMidi':
+                    parent.remove(child)
+    return found
 
 
 def make_clip(template, index, name, start, length, notes, color):
@@ -173,13 +219,16 @@ def main():
         devices.remove(child)
 
     next_pointee = max(int(e.get('Id')) for e in live.iter() if e.get('Id') and is_pointee(e.tag)) + 100
-    for index, (name, color, gain, clips) in enumerate(tracks):
+    for index, (name, color, gain, sound, clips) in enumerate(tracks):
         track = copy.deepcopy(template_track)
         track.set('Id', str(index + 20))
         track.find('Name/EffectiveName').set('Value', name)
         track.find('Name/UserName').set('Value', name)
         track.find('Color').set('Value', str(color))
         track.find('DeviceChain/Mixer/Volume/Manual').set('Value', str(gain))
+        holder_devices = track.find('DeviceChain/DeviceChain/Devices')
+        for device in sound_devices(sound):
+            holder_devices.append(device)
         events = track.find('DeviceChain/MainSequencer/ClipTimeable/ArrangerAutomation/Events')
         for k, (clip_name, start, length, notes) in enumerate(clips):
             if notes:
@@ -207,7 +256,7 @@ def main():
     xml = b'<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding='utf-8')
     with gzip.open(OUT, 'wb') as fh:
         fh.write(xml)
-    notes = sum(len(n) for _, _, _, clips in tracks for _, _, _, n in clips)
+    notes = sum(len(n) for _, _, _, _, clips in tracks for _, _, _, n in clips)
     print(f'{OUT}\n{len(tracks)} tracks, {notes} notes, {len(xml) // 1024} KB of XML')
 
 
