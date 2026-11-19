@@ -17,8 +17,12 @@
 //   ending-home  the same, landing with the home note on top
 //   fan    bars 29 to 33 of the level: a line of amber, then the fans out over three lanes for
 //          two and a half bars (each row a run of three bells), then a line again
+//
+// And `blend` (posted with `sendBlend`): the synthesized band's driving short notes under the
+// recorded layers, at any level, to hear how much of the synth's edge the recorded strings want.
 
 import { Sound } from './sound';
+import type { LayerName } from './layers';
 
 const RATE = 44100;
 const STEP = 0.125;
@@ -83,7 +87,79 @@ export async function clip(kind: Clip, only?: string, recorded = false): Promise
   return [out.getChannelData(0), out.getChannelData(1)];
 }
 
-function wav(channels: Float32Array[]) {
+/**
+ * The synthesized band's short notes (and the octave over them) played under the recorded layers.
+ * Drew, after build 67: "what's really missing compared to the synth version is that driving,
+ * crunchy synth that's going up and down arpeggios the whole time". Eighteen seconds at 48 kHz as
+ * the game mixes it, limiter and all, with the Loud drums and the amber as lines and gaps. Bars 1
+ * to 4 are at the early run's intensity and bars 5 to 8 at full, where the octave joins; then the
+ * first beat of bar 1 again, ringing out.
+ *   pulse  the synthesized notes at this many times their level in the synthesized band (0: none)
+ *   music  everything before the limiter turned by this, to bring each blend to the same loudness
+ *   tape   the recorded layers turned by this (0 leaves them out, to measure the pulse alone)
+ *   only   only these recorded layers
+ *   bells  the amber (on unless false)
+ *   synth  the synthesized band alone, all of it, for comparison (`pulse`, `tape` and `only` are left out)
+ * The pulse is the game's own code: the band's `step` runs a second time on each sixteenth with
+ * the tape left alone, and everything it plays but those two parts is dropped.
+ */
+export async function blend(o: { pulse?: number; music?: number; tape?: number; only?: LayerName[]; bells?: boolean; synth?: boolean } = {}): Promise<Float32Array[]> {
+  const rate = 48000;
+  const ctx = new OfflineAudioContext(2, 18 * rate, rate);
+  const band = new Sound(false);
+  band.build(ctx);
+  band.tryVoice('xylophone', false, 1);
+  if (!o.synth) await band.loadRecorded(ctx);
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  const b = band as any;
+  b.music.gain.value *= o.music ?? 1;
+  const steps = 132;
+  const k = (n: number) => (n < 64 ? 0.45 : 0.9);
+  const bells = (n: number) => o.bells !== false && n % 2 === 0 && LINES[(n >> 4) % 8][(n % 16) >> 1] === '1' && band.ring(ctx, n, n * STEP);
+  if (o.synth) {
+    for (let n = 0; n < steps; n++) {
+      band.step(ctx, n, n * STEP, k(n));
+      bells(n);
+    }
+    const out = await ctx.startRendering();
+    return [out.getChannelData(0), out.getChannelData(1)];
+  }
+  b.tapeBus.gain.value *= o.tape ?? 1;
+  b.bows.gain.value = o.pulse ?? 0;
+  // (the short notes are the bowed notes whose filter opens, `open`; the octave's filter is at 2600)
+  const bow = b.bow.bind(b);
+  b.bow = (c: BaseAudioContext, n: any) => (n.open || n.cut === 2600 ? bow(c, n) : undefined);
+  for (const drum of ['kick', 'snare', 'hat', 'tom']) b[drum] = () => undefined;
+  if (o.only) {
+    const voice = b.tapeVoice.bind(b);
+    b.tapeVoice = (c: BaseAudioContext, name: LayerName, t: number) => (o.only?.includes(name) ? voice(c, name, t) : undefined);
+  }
+  const layers = b.layers;
+  const stop = b.tapeStop;
+  for (let n = 0; n < steps; n++) {
+    const t = n * STEP;
+    band.step(ctx, n, t, k(n));
+    // the synthesized band's turn: with no layers it plays itself, and the tape is not stopped for it
+    Object.assign(b, { layers: null, tapeStop: () => undefined, taped: false });
+    band.step(ctx, n, t, k(n));
+    Object.assign(b, { layers, tapeStop: stop, taped: true });
+    bells(n);
+  }
+  b.tapeStop(ctx, steps * STEP, 1.5);
+  const out = await ctx.startRendering();
+  return [out.getChannelData(0), out.getChannelData(1)];
+}
+
+/** Draw a blend (see `blend`) and post it to the receiver as `<name>.wav`. Says its peak. */
+export async function sendBlend(name: string, o: Parameters<typeof blend>[0] = {}, to = 'http://localhost:8787') {
+  const channels = await blend(o);
+  let peak = 0;
+  for (const ch of channels) for (let i = 0; i < ch.length; i++) peak = Math.max(peak, Math.abs(ch[i]));
+  const reply = await fetch(`${to}/${name}.wav`, { method: 'POST', body: wav(channels, 48000) });
+  return `${name}: peak ${(20 * Math.log10(peak)).toFixed(2)} dB, receiver said ${reply.status}`;
+}
+
+function wav(channels: Float32Array[], rate = RATE) {
   const frames = channels[0].length;
   const bytes = new DataView(new ArrayBuffer(44 + frames * 4));
   const put = (at: number, text: string) => [...text].forEach((ch, i) => bytes.setUint8(at + i, ch.charCodeAt(0)));
@@ -93,8 +169,8 @@ function wav(channels: Float32Array[]) {
   bytes.setUint32(16, 16, true);
   bytes.setUint16(20, 1, true);
   bytes.setUint16(22, 2, true);
-  bytes.setUint32(24, RATE, true);
-  bytes.setUint32(28, RATE * 4, true);
+  bytes.setUint32(24, rate, true);
+  bytes.setUint32(28, rate * 4, true);
   bytes.setUint16(32, 4, true);
   bytes.setUint16(34, 16, true);
   put(36, 'data');

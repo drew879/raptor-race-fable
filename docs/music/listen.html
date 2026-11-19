@@ -2,7 +2,7 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap">
 <style>
-/* One column for a phone: four clips to play in order, then the bell line written out, then what was measured and what was guessed. */
+/* One column for a phone: this round's clips to play in order, then the earlier rounds, the bell line written out, and what was measured and what was guessed. */
 :root {
   --bg: #eef2ee; --panel: #ffffff; --ink: #18211e; --soft: #55635d; --line: #d3dcd6;
   --amber: #b86a10; --egg: #1f8176; --pick: #1f6f52; --pick-bg: #dff0e6;
@@ -51,12 +51,50 @@ ul.plain b { font-weight: 600; }
 <div class="page">
   <section class="top">
     <span class="eyebrow">Raptor Race &middot; music</span>
-    <h1>Chase Strings: your picks</h1>
-    <p class="lede">This round is four things to pick by ear: the strings' timing, the drum mix, the amber's sound and the ending. The phone's speaker is what the game is heard on, so judge there first. Earlier clips are underneath.</p>
+    <h1>Chase Strings: bring back the drive</h1>
+    <p class="lede">One thing to pick by ear this round: how much of the synth version's driving short notes to put back under the recorded strings. Judge on the phone's speaker first. Build 67's round and the earlier clips are underneath.</p>
   </section>
 
   <section class="block">
-    <h2>1. Pick the timing</h2>
+    <h2>How much synth under the strings?</h2>
+    <p>The same 18 seconds five times, as the game mixes it, with the Loud drums and the amber as lines and gaps. Bars 1 to 4 are the early run. From <b>8 s</b> the whole band is in and the synth doubles itself an octave higher, as it did in the synth version. All five are equally loud overall, so if one seems louder on the phone, that's the speaker favoring that sound.</p>
+    <div class="clips">
+      <div class="clip mine">
+        <header><span class="num">A</span><h3>Strings only</h3><span class="tag">in the game now</span></header>
+        <p>The recorded band as it plays now with Drums: Loud.</p>
+        <audio id="clip-pulse-none" controls preload="metadata" src="clips/pulse-none.mp4"></audio>
+      </div>
+      <div class="clip">
+        <header><span class="num">B</span><h3>Synth tucked under</h3></header>
+        <p>The synth's short notes 8 dB under the recorded strings.</p>
+        <audio id="clip-pulse-tucked" controls preload="metadata" src="clips/pulse-tucked.mp4"></audio>
+      </div>
+      <div class="clip">
+        <header><span class="num">C</span><h3>Even</h3></header>
+        <p>The synth as loud as the strings.</p>
+        <audio id="clip-pulse-even" controls preload="metadata" src="clips/pulse-even.mp4"></audio>
+      </div>
+      <div class="clip">
+        <header><span class="num">D</span><h3>Synth leading</h3></header>
+        <p>The synth 5 dB over the strings.</p>
+        <audio id="clip-pulse-lead" controls preload="metadata" src="clips/pulse-lead.mp4"></audio>
+      </div>
+      <div class="clip">
+        <header><span class="num">E</span><h3>The synthesized band</h3><span class="tag">for comparison</span></header>
+        <p>Music: Synth, the same 18 seconds, brought up to the same loudness.</p>
+        <audio id="clip-pulse-synth" controls preload="metadata" src="clips/pulse-synth.mp4"></audio>
+      </div>
+    </div>
+    <ul class="plain">
+      <li><b>What the synth part is.</b> Two sawtooth waves a hair apart, through a filter that snaps shut on each note, running root, fifth and octave in sixteenths the whole way. B to D use the game's own code for it, so it's exactly what plays in Music: Synth.</li>
+      <li><b>What's turned down to make room.</b> To keep the five equally loud, everything else comes down 0.1 dB in B, 0.8 dB in C and 2.2 dB in D, drums included.</li>
+      <li><b>What I measured.</b> At its level in the synth version, the synth part sits 3.5 dB under the recorded strings in the range a phone plays (above about 400 Hz), and it has less top end than they do, not more. So the crunch is the hard, buzzy start of every note, which the sampled strings swell into. And at the same overall loudness, E puts about 1 dB more into the phone's range than A to D.</li>
+      <li><b>After you pick.</b> The part gets rebuilt in Live on Drift, playing the same notes, set to match the blend you choose, and exported as its own layer. Then you can change its sound in Live yourself and the game can set its level.</li>
+    </ul>
+  </section>
+
+  <section class="block">
+    <h2>Build 67: the timing</h2>
     <p>The same 16 seconds three times: the quiet opening parts with a bell on every eighth note. Only one thing changes, how early the short strings are played. Which one has the strings and the bells most together?</p>
     <div class="clips">
       <div class="clip mine">
@@ -72,12 +110,12 @@ ul.plain b { font-weight: 600; }
         <audio id="clip-time-120" controls preload="metadata" src="clips/time-120.mp4"></audio>
       </div>
     </div>
-    <p class="note">In the game the bells now follow the music itself, which they didn't in build 64. That may have been most of what you heard on the phone.</p>
+    <p class="note">You picked A, which is what the game has. The bells now follow the music itself, and you heard them in time on the phone.</p>
   </section>
 
   <section class="block">
-    <h2>2. Two drum mixes</h2>
-    <p>Every part playing, as the game mixes it, with the amber as lines and gaps. You can also switch between these two while playing: Settings, Drums.</p>
+    <h2>Build 67: two drum mixes</h2>
+    <p>Every part playing, as the game mixes it, with the amber as lines and gaps. You can also switch between these two while playing: Settings, Drums. You found D better on the computer and E better on the phone.</p>
     <div class="clips">
       <div class="clip mine">
         <header><span class="num">D</span><h3>Drums: Clear</h3><span class="tag">in the game now</span></header>
@@ -97,7 +135,7 @@ ul.plain b { font-weight: 600; }
   </section>
 
   <section class="block">
-    <h2>3. The amber's new sounds</h2>
+    <h2>Build 67: the amber's new sounds</h2>
     <p>Four sounds, eight seconds each, over the quiet opening parts: <b>bell</b> (the old one) from 0 s, <b>xylophone</b> from 8 s, <b>marimba</b> from 16 s, <b>kalimba</b> from 24 s. In the game: Settings, Amber and Amber pitch, or the pause menu during a run. Each tap there plays a few notes.</p>
     <div class="clips">
       <div class="clip mine">
@@ -112,7 +150,7 @@ ul.plain b { font-weight: 600; }
   </section>
 
   <section class="block">
-    <h2>4. The ending, heavier</h2>
+    <h2>Build 67: the ending, heavier</h2>
     <div class="clips">
       <div class="clip mine">
         <header><span class="num">I</span><h3>The ending, sampled</h3><span class="tag">in the game now</span></header>
