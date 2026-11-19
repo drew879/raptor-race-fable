@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Write "Chase Strings" as an Ableton Live 12 set: every part of the chase music as MIDI on its
-own named track, at 120 beats a minute, so the sounds can be chosen and mixed in Live.
+own named track, at 120 beats a minute, with a sound on every track, so it can be played, changed
+and mixed in Live, and exported for the game.
 
     python3 music/ableton/make_set.py
 
@@ -9,20 +10,34 @@ of Live's own clip files (a whole one-track set, saved by Live 12.3), copies its
 for each part, and puts the notes in. The notes are the same ones the game plays
 (src/audio/sound.ts); if the music changes there, change it here too.
 
+The sounds:
+  strings  Splice INSTRUMENT (the free plug-in LABS moved into), playing "Short" and "Long" from
+           the free LABS Strings pack. The plug-in as Live saves it is in devices/, with what it
+           was set to for each of the two (see devices/README.md for how they were captured).
+  drums    single hits from the Tamuz Kit in Live's Core Library, through one of Live's halls
+  bells    the Celeste from the Core Library (the game plays its own bell for each piece of amber;
+           this track is here to hear the line against the rest)
+
 What is laid out, in Live's Arrangement:
-  bars 1-8    the loop, every part
-  bar 11      the bar of the egg's dash: the loop's last bar, with the build over it
-  bars 12-14  the landing, ringing out
+  bars 1-24   the loop, three times over, every part. The game's layers are cut from the middle
+              time through (bars 9-16), which has the first one's echoes still ringing under it.
+  bar 24      is also the bar of the egg's dash: the loop's last bar, with the build over it
+  bars 25-27  the landing, ringing out
+  bars 33-36  the build again, eight seconds long, for the game to cut from (a dash can last
+              longer than its bar when the runner is slow to it)
 """
 import copy
 import gzip
 import os
+import re
+import struct
 import xml.etree.ElementTree as ET
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CORE = '/Applications/Ableton Live 12 Standard.app/Contents/App-Resources/Core Library'
 TEMPLATE = f'{CORE}/MIDI Clips/Tonal/Chord Progression/Dramatic Strings A Minor 111 bpm.alc'
 OUT = os.environ.get('CHASE_OUT', f'{HERE}/Chase Strings Project/Chase Strings.als')
+DEVICES = f'{HERE}/devices'
 
 # ---------------------------------------------------------------- the score (as in sound.ts)
 BARS = [
@@ -52,23 +67,25 @@ def bar_notes(part, index):
         out = [(0, 1.9, bar['root'], 100), (2, 1.9, bar['root'], 94)]
     elif part == 'bed':
         out = [(0, 3.95, bar['root'] + 12, 72), (0, 3.95, bar['root'] + 19, 64)]
-    elif part == 'violin':
+    elif part == 'cellobite':
+        out = [(0, 0.3, bar['root'], 104), (2, 0.3, bar['root'], 96)]
+    elif part in ('violin', 'violinbite'):
         at = 0
         for pitch, length in bar['tune']:
-            out.append((at * S, length * S * 0.97, pitch, 104))
+            out.append((at * S, 0.3 if part == 'violinbite' else length * S * 0.97, pitch, 104))
             at += length
     elif part == 'high':
         out = [(0, 3.8, bar['high'], 76)]
     elif part == 'kick':
         out = [(0, 0.5, 60, 112), (2, 0.5, 60, 106)]
     elif part == 'kickpush':
-        out = [(2.5, 0.4, 60, 96)]
+        out = [(2.5, 0.4, 60, 112)]
     elif part == 'snare':
         out = [(1, 0.4, 60, 104), (3, 0.4, 60, 104)]
     elif part == 'hats8':
         out = [(i * 0.5, 0.1, 60, 100 if i % 2 else 66) for i in range(8)]
     elif part == 'hats16':
-        out = [(i * 0.5 + S, 0.1, 60, 60) for i in range(8)]
+        out = [(i * 0.5 + S, 0.1, 60, 66) for i in range(8)]
     elif part == 'toms':
         out = [(3 + i * S, 0.24, pitch, 104) for i, pitch in enumerate([63, 61, 59, 57])] if index == 7 else []
     elif part == 'bells':
@@ -84,10 +101,11 @@ def dash(part):
     return bar_notes(part, 7)
 
 
-# The stock sounds each track starts with, all from Live's Core Library and all playable in the
-# Standard edition: a rack preset's own chain of devices, or one drum hit from a kit.
-ORCH = ('rack', 'Racks/Instrument Racks/Strings/Ac Strings Orch.adg')
-PIZZ = ('rack', 'Racks/Instrument Racks/Strings/Ac Strings Pizz Stage.adg')
+# The sound on each track: Splice INSTRUMENT set to one of the LABS Strings presets, a rack preset
+# from Live's Core Library (its own chain of devices), or one drum hit from a Core Library kit.
+# "Short" with its Tightness knob all the way up (the knob is the plug-in's eighth general parameter).
+SHORT = ('splice', 'labs-strings-short.state', {'i_tight': '1.0', 'g_general_param_8': '1.0'})
+LONG = ('splice', 'labs-strings-long.state')
 CELESTE = ('rack', 'Racks/Instrument Racks/Mallets/Celeste.adg')
 KIT = 'Racks/Drum Racks/Acoustic/Tamuz Kit.adg'
 
@@ -96,28 +114,81 @@ def hit(sample):
     return ('hit', KIT, sample)
 
 
-# Each track: name, Live color index, mixer gain (1 is 0 dB), its sound, and its clips as (name, first beat, length in beats, notes).
-LOOP, DASH, LAND = 0, 40, 44
+# Effects after the sound, each one of Live's own presets with a few of its settings changed.
+HALL = ('Devices/Audio Effects/Reverb/Hall/Concert Hall.adv', {'MixDirect': 0.16})  # (MixDirect is the Dry/Wet knob)
+HALL_LOW = ('Devices/Audio Effects/Reverb/Hall/Concert Hall.adv', {'MixDirect': 0.08})
+HALL_BIG = ('Devices/Audio Effects/Reverb/Hall/Concert Hall.adv', {'MixDirect': 0.3})
+# the high strings shake on their note: the bow going back and forth, about eleven times a second
+SHAKE = ('Devices/Audio Effects/Auto Pan-Tremolo/Trem Fast Vibrations.adv', {'Modulation_Amount': 0.6, 'Modulation_Frequency': 11, 'DynamicFrequencyModulation': 0, 'TremoloWaveformShape': 0})
+
+# Where things are, in beats. A bar is four.
+LOOPS = [0, 32, 64]
+DASH, LAND = 92, 96
+LONG_AT, LONG_LEN = 128, 16
+END = 144
+
+# How late the two string sounds speak, measured from single notes exported from Live (2026-11-19):
+# a "Short" note is at its loudest about 110 thousandths of a second after it is played, whatever
+# the Tightness, and the middle of its rise comes at about 70. A "Long" note swells in over half a
+# second. So the short tracks are pulled early by Live's track delay, the long ones by a little,
+# and the parts that need both a clear start and a body (the tune, the cellos, the landing chord)
+# have a short track laid over a long one.
+#
+# Live plays the track delays but its export of single tracks leaves them out (measured: the files
+# of a delayed and an undelayed version line up exactly). cut_layers.py reads these same numbers
+# and moves each file by its track's delay, so the game's layers match what Live plays.
+SHORT_DELAY = -70
+LONG_DELAY = -60
+BODY_DELAY = -120
+
+# Each track: name, Live color index, mixer gain (1 is 0 dB), its sound, its effects, and its clips as (name, first beat, length in beats, notes).
+# `delay` is Live's track delay in milliseconds, and `volume` a list of (beat, gain) for the mixer's volume to follow.
+# The gains are set by measurement, so that each part is as loud against the others as it is in the
+# game's own music (which was matched to Drew's clip of the original), with about 7 dB to spare on the Main track.
 tracks = []
-for name, part, color, gain, sound in [
-    ('Short strings', 'short', 16, 0.63, PIZZ), ('Short strings 8va', 'short8', 16, 0.4, PIZZ), ('Cellos', 'cellos', 17, 0.7, ORCH),
-    ('Held strings', 'bed', 17, 0.4, ORCH), ('Violin tune', 'violin', 18, 0.56, ORCH), ('High strings', 'high', 18, 0.35, ORCH),
-    ('Kick', 'kick', 3, 0.7, hit('Kick Tamuz 1.wav')), ('Kick push', 'kickpush', 3, 0.6, hit('Kick Tamuz 1.wav')), ('Snare', 'snare', 4, 0.56, hit('Snare Tamuz 1.wav')),
-    ('Hats eighths', 'hats8', 5, 0.3, hit('Hihat Closed Tamuz Tight.wav')), ('Hats sixteenths', 'hats16', 5, 0.25, hit('Hihat Closed Tamuz Tight.wav')), ('Toms', 'toms', 4, 0.5, hit('Tom Tamuz Mid 1.wav')),
-    ('Bells (amber line)', 'bells', 26, 0.56, CELESTE),
+for name, part, color, gain, sound, fx, delay in [
+    ('Short strings', 'short', 16, 0.326, SHORT, [], SHORT_DELAY), ('Short strings 8va', 'short8', 16, 0.115, SHORT, [], SHORT_DELAY),
+    ('Cellos', 'cellos', 17, 0.95, LONG, [], BODY_DELAY), ('Cellos (the start of each note)', 'cellobite', 17, 0.37, SHORT, [], SHORT_DELAY),
+    ('Held strings', 'bed', 17, 0.534, LONG, [], LONG_DELAY),
+    ('Violin tune', 'violin', 18, 1.3, LONG, [], BODY_DELAY), ('Violin tune (the start of each note)', 'violinbite', 18, 0.3, SHORT, [], SHORT_DELAY),
+    ('High strings', 'high', 18, 0.46, LONG, [SHAKE], LONG_DELAY),
+    ('Kick', 'kick', 3, 0.398, hit('Kick Tamuz 1.wav'), [HALL_LOW], 0), ('Kick push', 'kickpush', 3, 0.398, hit('Kick Tamuz 1.wav'), [HALL_LOW], 0),
+    ('Snare', 'snare', 4, 0.086, hit('Snare Tamuz 1.wav'), [HALL], 0),
+    ('Hats eighths', 'hats8', 5, 0.204, hit('Hihat Closed Tamuz Tight.wav'), [HALL_LOW], 0), ('Hats sixteenths', 'hats16', 5, 0.204, hit('Hihat Closed Tamuz Tight.wav'), [HALL_LOW], 0),
+    ('Toms', 'toms', 4, 0.106, hit('Tom Tamuz Mid 1.wav'), [HALL], 0),
+    ('Bells (amber line)', 'bells', 26, 0.3, CELESTE, [], 0),
 ]:
-    clips = [('Loop', LOOP, 32, loop(part))]
-    if part != 'bells':
-        clips.append(('Dash bar', DASH, 4, dash(part)))
-    tracks.append((name, color, gain, sound, clips))
+    clips = [(label, at, 32, loop(part)) for label, at in zip(('Loop', 'Loop again (the game\'s layers are cut from here)', 'Loop, ending on the dash bar'), LOOPS)]
+    tracks.append(dict(name=name, color=color, gain=gain, sound=sound, fx=fx, delay=delay, clips=clips))
+
+
 # the build over the dash bar, and the landing
-roll = [(i * 0.144, 0.12, 60, int(40 + 80 * i / 27)) for i in range(28)]
+def roll(beats):
+    """A roll on the low tom, a stroke every 72 thousandths of a second, growing over the first bar."""
+    count = int(beats / 0.144)
+    return [(i * 0.144, 0.12, 60, int(40 + 80 * min(1, i / 27))) for i in range(count)]
+
+
+def swell(beats):
+    return [(0, beats, p, 96) for p in (44, 56, 60, 63, 68)]
+
+
+SWELL_GAIN = 0.9
+LANDING = [(0, 9.6, p, 70 if p == 77 else 110) for p in (37, 49, 56, 61, 65, 68, 73, 77)]
+LANDING_GAIN = 1.12
+# the landing chord holds for a second and a half and then dies away over three more, as the game's own does
+RING = [(LAND, LANDING_GAIN), (LAND + 3.2, LANDING_GAIN)] + [(LAND + 3.2 + 0.4 * i, LANDING_GAIN * 0.012 ** (i / 16)) for i in range(1, 17)]
 tracks += [
-    ('Ending swell', 9, 0.5, ORCH, [('Swell', DASH, 4, [(0, 4, p, 96) for p in (44, 56, 60, 63, 68)])]),
-    ('Ending roll', 9, 0.6, hit('Tom Tamuz Low.wav'), [('Roll', DASH, 4, roll)]),
-    ('Landing chord', 9, 0.7, ORCH, [('Landing', LAND, 12, [(0, 7, p, 70 if p == 77 else 110) for p in (37, 49, 56, 61, 65, 68, 73, 77)])]),
-    ('Landing drum', 9, 0.7, hit('Kick Tamuz 2.wav'), [('Landing', LAND, 12, [(0, 2, 60, 120)])]),
-    ('Landing cymbal', 9, 0.5, hit('Crash Tamuz 1.wav'), [('Landing', LAND, 12, [(0, 4, 60, 100)])]),
+    dict(name='Ending swell', color=9, gain=SWELL_GAIN, sound=LONG, fx=[], delay=LONG_DELAY,
+         clips=[('Swell', DASH, 4, swell(4)), ('For the game: the swell, long', LONG_AT, LONG_LEN, swell(LONG_LEN))],
+         # it grows through its first bar
+         volume=[(DASH, 0.14 * SWELL_GAIN), (LAND, SWELL_GAIN), (LONG_AT - 2, SWELL_GAIN), (LONG_AT - 1, 0.14 * SWELL_GAIN), (LONG_AT, 0.14 * SWELL_GAIN), (LONG_AT + 4, SWELL_GAIN)]),
+    dict(name='Ending roll', color=9, gain=0.22, sound=hit('Tom Tamuz Low.wav'), fx=[HALL], delay=0,
+         clips=[('Roll', DASH, 4, roll(4)), ('For the game: the roll, long', LONG_AT, LONG_LEN, roll(LONG_LEN))]),
+    dict(name='Landing chord', color=9, gain=LANDING_GAIN, sound=LONG, fx=[], delay=BODY_DELAY, clips=[('Landing', LAND, 12, LANDING)], volume=RING),
+    dict(name='Landing chord (the start)', color=9, gain=0.34, sound=SHORT, fx=[], delay=SHORT_DELAY, clips=[('Landing', LAND, 12, [(0, 0.5, p, v) for _, _, p, v in LANDING])]),
+    dict(name='Landing drum', color=9, gain=0.8, sound=hit('Kick Tamuz 2.wav'), fx=[HALL_BIG], delay=0, clips=[('Landing', LAND, 12, [(0, 2, 60, 120)])]),
+    dict(name='Landing cymbal', color=9, gain=0.34, sound=hit('Crash Tamuz 1.wav'), fx=[HALL], delay=0, clips=[('Landing', LAND, 12, [(0, 4, 60, 100)])]),
 ]
 
 # ---------------------------------------------------------------- the set
@@ -137,9 +208,50 @@ def preset(path):
     return _presets[path]
 
 
-def sound_devices(sound):
-    """The devices for a track, copied out of one of Live's presets."""
-    if sound[0] == 'rack':
+def splice_state(name, settings):
+    """
+    What Splice INSTRUMENT was set to, as Live keeps it, with some of its settings changed. Inside
+    the wrapping it is plain XML: a list of ids and values (i_tight, i_reverb and the rest).
+    """
+    data = open(f'{DEVICES}/{name}', 'rb').read()
+    if not settings:
+        return data
+    i = data.find(b'<?xml')
+    j = data.find(b'</SpliceINSTRUMENT>') + len(b'</SpliceINSTRUMENT>')
+    xml = data[i:j].decode()
+    for key, value in settings.items():
+        xml, count = re.subn(r'(id="%s" value=")[^"]*(")' % re.escape(key), r'\g<1>%s\g<2>' % value, xml)
+        assert count == 1, key
+    body = xml.encode()
+    out = bytearray(data[:i] + body + data[j:])
+    # three lengths in the wrapping have to agree with the new text
+    struct.pack_into('>I', out, 20, len(out) - 24)
+    struct.pack_into('>I', out, i - 12, len(out) - (i - 8))
+    struct.pack_into('<I', out, i - 4, len(body))
+    return bytes(out)
+
+
+def splice_device(state, settings):
+    """Splice INSTRUMENT, as Live saved it, set to what `state` holds (a preset of a LABS pack)."""
+    device = ET.fromstring(gzip.open(f'{DEVICES}/splice-instrument.xml.gz', 'rb').read())
+    data = splice_state(state, settings).hex().upper()
+    device.find('.//ProcessorState').text = '\n' + '\n'.join(data[i:i + 80] for i in range(0, len(data), 80)) + '\n'
+    return device
+
+
+def effect(path, settings):
+    """One of Live's effect presets, with some of its knobs set."""
+    device = copy.deepcopy(list(preset(path))[0])
+    for tag, value in settings.items():
+        device.find(f'{tag}/Manual').set('Value', str(value))
+    return device
+
+
+def sound_devices(sound, fx):
+    """The devices for a track: its sound, copied out of a preset, and its effects after."""
+    if sound[0] == 'splice':
+        found = [splice_device(sound[1], sound[2] if len(sound) > 2 else {})]
+    elif sound[0] == 'rack':
         # a rack preset keeps its chain's devices one after another; the last is the chain's own mixer, which a track has no use for
         found = [copy.deepcopy(d) for holder in preset(sound[1]).iter('AbletonDevicePreset') for d in holder.find('Device')]
         # (nor for the echo some presets add, which would smear a part in sixteenths)
@@ -151,6 +263,7 @@ def sound_devices(sound):
                 found = [copy.deepcopy(cell)]
                 break
         assert found, sound
+    found += [effect(path, settings) for path, settings in fx]
     for k, device in enumerate(found):
         device.set('Id', str(k))
         # (what tied a knob to the rack's macro controls means nothing outside the rack)
@@ -159,6 +272,20 @@ def sound_devices(sound):
                 if child.tag == 'KeyMidi':
                     parent.remove(child)
     return found
+
+
+def envelope(target, points):
+    """Automation for one control: `points` are (beat, value), and before the first the value is the first's."""
+    env = ET.Element('AutomationEnvelope', Id='0')
+    ET.SubElement(ET.SubElement(env, 'EnvelopeTarget'), 'PointeeId', Value=str(target))
+    automation = ET.SubElement(env, 'Automation')
+    events = ET.SubElement(automation, 'Events')
+    for k, (time, value) in enumerate([(-63072000, points[0][1])] + list(points)):
+        ET.SubElement(events, 'FloatEvent', Id=str(k + 1), Time=f'{time:.6g}' if k else str(time), Value=f'{value:.6g}')
+    state = ET.SubElement(automation, 'AutomationTransformViewState')
+    ET.SubElement(state, 'IsTransformPending', Value='false')
+    ET.SubElement(state, 'TimeAndValueTransforms')
+    return env
 
 
 def make_clip(template, index, name, start, length, notes, color):
@@ -219,18 +346,20 @@ def main():
         devices.remove(child)
 
     next_pointee = max(int(e.get('Id')) for e in live.iter() if e.get('Id') and is_pointee(e.tag)) + 100
-    for index, (name, color, gain, sound, clips) in enumerate(tracks):
+    for index, t in enumerate(tracks):
+        name, color = t['name'], t['color']
         track = copy.deepcopy(template_track)
         track.set('Id', str(index + 20))
         track.find('Name/EffectiveName').set('Value', name)
         track.find('Name/UserName').set('Value', name)
         track.find('Color').set('Value', str(color))
-        track.find('DeviceChain/Mixer/Volume/Manual').set('Value', str(gain))
+        track.find('DeviceChain/Mixer/Volume/Manual').set('Value', str(t['gain']))
+        track.find('TrackDelay/Value').set('Value', str(t['delay']))
         holder_devices = track.find('DeviceChain/DeviceChain/Devices')
-        for device in sound_devices(sound):
+        for device in sound_devices(t['sound'], t['fx']):
             holder_devices.append(device)
         events = track.find('DeviceChain/MainSequencer/ClipTimeable/ArrangerAutomation/Events')
-        for k, (clip_name, start, length, notes) in enumerate(clips):
+        for k, (clip_name, start, length, notes) in enumerate(t['clips']):
             if notes:
                 events.append(make_clip(template_clip, k, clip_name, start, length, notes, color))
         # every automatable thing in a set has a number of its own
@@ -238,6 +367,9 @@ def main():
             if el.get('Id') and is_pointee(el.tag):
                 el.set('Id', str(next_pointee))
                 next_pointee += 1
+        if t.get('volume'):
+            target = track.find('DeviceChain/Mixer/Volume/AutomationTarget').get('Id')
+            track.find('AutomationEnvelopes/Envelopes').append(envelope(target, t['volume']))
         holder.append(track)
     live.find('NextPointeeId').set('Value', str(next_pointee + 1))
 
@@ -256,7 +388,7 @@ def main():
     xml = b'<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding='utf-8')
     with gzip.open(OUT, 'wb') as fh:
         fh.write(xml)
-    notes = sum(len(n) for _, _, _, _, clips in tracks for _, _, _, n in clips)
+    notes = sum(len(n) for t in tracks for _, _, _, n in t['clips'])
     print(f'{OUT}\n{len(tracks)} tracks, {notes} notes, {len(xml) // 1024} KB of XML')
 
 
