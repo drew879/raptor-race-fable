@@ -41,14 +41,29 @@ export interface RunHooks {
   home?: boolean;
 }
 
+/** How a finished run went: what the results screen shows and scores. */
+export interface RunResult {
+  level: string;
+  amber: number;
+  /** Which of the hidden finds were picked up, in order. */
+  finds: boolean[];
+  /** Obstacles on the way taken, and how many of them were passed without a bump. */
+  obstacles: number;
+  cleared: number;
+}
+
 /** The run, plus a few handles the speed test uses to switch parts of the picture off. */
 export interface RunView extends Lookdev {
   /** Start the level from its beginning: the home screen's PLAY. */
   play(): void;
+  /** Put the level away and go back to the home screen. */
+  home(): void;
   /** The music and the sounds, for the menus' bells. */
   sound: Sound;
   /** Set by the app when there is a home screen: called when the player goes back to it. */
   onHome: (() => void) | null;
+  /** Set by the app when it has a results screen: called when the level is won, in place of the stand-in sheets. */
+  onResults: ((run: RunResult) => void) | null;
   debug: {
     st: { s: number; eggS: number; paused: boolean; started: boolean };
     forest: THREE.Object3D;
@@ -568,6 +583,17 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   if (prow) rows.push(prow);
   rows.sort((a, b) => a.s - b.s);
   const inFork = (s: number) => FORK !== null && s > FORK.from - 0.5 && s < FORK.to;
+  // For the score: every obstacle bumped in this run (a retry at the edge does not wipe them),
+  // and which side of the fork the runner took.
+  const bumped = new Set<Row>();
+  let forkSide = EASY_SIDE;
+  /** The boulders that close the lanes beside a hollow log are part of that log, not an obstacle of their own. */
+  const guards = (row: Row) => rows.find((h) => h.kind === 'hollow' && Math.abs(h.s - 2.2 - row.s) < 0.01) ?? null;
+  const result = (): RunResult => {
+    const route = rows.filter((r) => (r.branch === 0 || r.branch === forkSide) && !guards(r));
+    const missed = (r: Row) => bumped.has(r) || rows.some((g) => guards(g) === r && bumped.has(g));
+    return { level: 'Jehol Forest', amber: st.amber, finds: [...st.found], obstacles: route.length, cleared: route.filter((r) => !missed(r)).length };
+  };
   // The rock tapers to nothing over its last few meters, and from behind the runner it looks
   // passed before the runner is level with its tip. So the way back to the middle opens a little
   // before the tip, and a swipe made a second or so early is kept and answered the moment it does.
@@ -886,6 +912,8 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     eggQ.setFromAxisAngle(v3.set(1, 0, 0), -0.5); // tipped a little forward, about to roll
     for (const o of obstacles) o.hit = false;
     for (const row of rows) row.hit = false;
+    bumped.clear();
+    forkSide = EASY_SIDE;
     collected.fill(false);
     showAmberNear(START_S, true);
     shadowAt = -1e9;
@@ -1178,8 +1206,13 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
       for (const tap of HATCH.taps) crack += (0.5 / HATCH.taps.length) * smoothstep(tap, tap + 0.2, st.endT);
       materialFor('egg').uniforms.uCrack.value = crack;
       if (st.endT > HATCH.card) {
-        st.end = END.card;
-        hud.showJournal();
+        if (view.onResults) {
+          st.end = END.results;
+          view.onResults(result());
+        } else {
+          st.end = END.card;
+          hud.showJournal();
+        }
       }
     } else if (st.end === END.miss) {
       // the runner pulls up at the edge with nothing in its arms, and looks after the egg
@@ -1368,6 +1401,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   function startBump(row: Row, member: (typeof obstacles)[number]) {
     sound.bump();
     row.hit = true;
+    bumped.add(row);
     for (const o of row.members) o.hit = true;
     let toLane = st.lane;
     if (row.around && row.blocked.includes(st.lane)) {
@@ -1402,6 +1436,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   function wade(row: Row) {
     sound.splash();
     row.hit = true;
+    bumped.add(row);
     for (const o of row.members) o.hit = true;
     st.wadeT = 0.75;
     st.safeT = 0.4;
@@ -1416,6 +1451,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   function sideBump(row: Row, member: (typeof obstacles)[number]) {
     sound.bump();
     row.hit = true;
+    bumped.add(row);
     for (const o of row.members) o.hit = true;
     (puff.material as THREE.ShaderMaterial).uniforms.uColor.value.set('#e6d2a8');
     const blockedLane = st.lane;
@@ -1537,6 +1573,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     st.phase += (st.speed * dt) / strideLength(st.speed);
     st.safeT = Math.max(0, st.safeT - dt);
     st.sideT = Math.max(0, st.sideT - dt);
+    if (FORK && st.s > FORK.from + 8 && st.s < FORK.to && st.lane !== 0) forkSide = st.lane;
     st.nudgeT = Math.max(0, st.nudgeT - dt);
     if (st.toMiddle && FORK) {
       if (!besideRock(st.s) && !st.bump && st.s < FORK.to + 6) {
@@ -2200,12 +2237,14 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     camera,
     sound,
     onHome: null,
+    onResults: null,
     play() {
       reset();
       hud.hideFinish();
       hud.hideStart();
       st.started = true;
     },
+    home: () => goHome(),
     debug: {
       st,
       forest: flora.group,

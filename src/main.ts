@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { runBench } from './app/bench';
 import { startUpdates } from './app/build';
 import { makeFront, type Front } from './app/front';
+import { makeResults, type Results } from './app/results';
 import { Quality } from './app/quality';
 import { tickFps, watchViewport } from './app/viewport';
 import { buildCloseup } from './closeup/scene';
@@ -25,12 +26,15 @@ boot.textContent = 'Loading the forest…';
 // The game itself opens on the loading screen and then the home screen. The test views and
 // test runs (the links with a mode, or with nopause) go straight in, as before.
 let front: Front | null = null;
+let results: Results | null = null;
 if ((params.get('mode') ?? 'run') === 'run' && !params.has('nopause')) front = makeFront(document.body);
 else ui.appendChild(boot);
 
 function fail(message: string) {
   document.querySelector('.front')?.remove();
+  document.querySelector('.results')?.remove();
   front = null;
+  results = null;
   boot.textContent = `Something went wrong.\n${message}`;
   if (!boot.isConnected) ui.appendChild(boot);
 }
@@ -153,6 +157,14 @@ async function start() {
     const home = front;
     run.onHome = () => home.showHome();
     run.sound.setMode('home');
+    // the level's end: the results, and from there another go or (there being no second level yet) home
+    const page = makeResults(document.body, {
+      again: () => run.play(),
+      next: () => run.home(),
+      bell: (kind) => run.sound.menu(kind),
+    });
+    results = page;
+    run.onResults = (result) => page.show(result);
     // one frame drawn now, behind the loading screen, so the frame that builds every shader is not the first one after PLAY
     view.update(0, renderer);
     post.render(view.scene, view.camera);
@@ -169,8 +181,8 @@ async function start() {
   let sinceReport = 0;
   renderer.setAnimationLoop(() => {
     const now = performance.now();
-    // nothing is drawn behind the loading screen and the home screen
-    if (front?.up) {
+    // nothing is drawn behind the loading screen, the home screen or the results
+    if (front?.up || results?.up) {
       last = now;
       return;
     }

@@ -690,7 +690,8 @@ body {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: 50% 42%;
+  /* (bottom edge to bottom edge: the sky is what gets cropped, and the lead raptor's foot lands clear of PLAY) */
+  object-position: 50% 100%;
 }
 .f-shade {
   position: absolute;
@@ -745,9 +746,9 @@ body {
 }
 /* (the edges are cut a little rough, like the painted plates in the mock-up) */
 .f-plate {
-  height: clamp(72px, 11.5vh, 104px);
+  height: clamp(64px, 9.8vh, 92px);
   padding-top: 0.08em;
-  font-size: clamp(52px, 8.8vh, 80px);
+  font-size: clamp(46px, 7.6vh, 70px);
   letter-spacing: 0.04em;
   color: #0e3a3a;
   background: radial-gradient(130% 150% at 28% 15%, #ffc963, #f2a93b 52%, #de8e1c);
@@ -849,4 +850,329 @@ body {
 .front .f-about {
   font-size: 12px;
   opacity: 0.6;
+}
+
+/* ---------- the results screen (src/app/results.ts) ---------- */
+.results {
+  --ink: #0e3a3a;
+  --brown: #4a3423;
+  --ui-text: #f6ecd6;
+  position: fixed;
+  inset: 0;
+  z-index: 38;
+  overflow: hidden;
+  background: #e9cf9d;
+  color: var(--ink);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  transition: opacity 0.35s, visibility 0s linear 0s;
+}
+.results.gone {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.3s, visibility 0s linear 0.3s;
+}
+.results [hidden] {
+  display: none;
+}
+.r-page {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 0% 50%;
+}
+.r-body {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 1.2vh;
+  padding: calc(env(safe-area-inset-top, 0px) + 2.4vh) 6% calc(env(safe-area-inset-bottom, 0px) + 2.4vh) 9.5%;
+}
+/* everything arrives in its turn */
+.r-in,
+.r-row,
+.r-total,
+.r-best {
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.3s, transform 0.3s ease-out;
+}
+.r-in.shown,
+.r-row.shown,
+.r-total.shown,
+.r-best.shown {
+  opacity: 1;
+  transform: none;
+}
+.r-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4%;
+  height: 13vh;
+}
+.r-name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.r-name small {
+  font-size: 1.8vh;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--brown);
+  opacity: 0.7;
+}
+.r-name h1 {
+  margin: 0;
+  font: 400 clamp(38px, 6.4vh, 60px) / 0.95 'Bebas Neue', Impact, sans-serif;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  transform: skewX(-9deg);
+  transform-origin: left bottom;
+}
+.r-chick {
+  height: 100%;
+  width: auto;
+  flex: none;
+  margin-right: -2%;
+}
+/* the plain panel: a clean label on the page, so the numbers stand apart from the painting */
+.r-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6vh;
+  padding: 1.6vh 5% 1.2vh;
+  border-radius: 5px;
+  background: rgba(255, 250, 236, 0.86);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset, 0 3px 12px rgba(74, 52, 35, 0.22);
+}
+.r-panel.shown {
+  transform: rotate(-0.7deg);
+}
+.r-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 8.4vh auto auto 1fr;
+  align-items: center;
+  column-gap: 2.6vw;
+  height: 7vh;
+}
+.r-icon {
+  max-width: 100%;
+  max-height: 5.6vh;
+  justify-self: center;
+}
+.r-finds {
+  grid-column: 1 / span 2;
+  display: flex;
+  align-items: center;
+  gap: 1.2vw;
+}
+.r-finds img {
+  height: 4.6vh;
+  width: auto;
+  filter: drop-shadow(0 0 5px rgba(53, 214, 196, 0.55));
+}
+.r-finds img.missing {
+  filter: grayscale(1) brightness(1.5) contrast(0.5);
+  opacity: 0.3;
+}
+.r-earned,
+.r-worth,
+.r-total b {
+  font-family: 'Bebas Neue', Impact, sans-serif;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.r-earned,
+.r-worth {
+  font-size: clamp(30px, 4.7vh, 46px);
+  padding-top: 0.1em;
+}
+.r-times {
+  font-style: normal;
+  font-size: clamp(13px, 1.9vh, 18px);
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--brown);
+  opacity: 0.45;
+}
+.r-worth {
+  justify-self: end;
+}
+.r-stamp {
+  position: absolute;
+  left: 55%;
+  top: 50%;
+  padding: 0.25em 0.45em 0.12em;
+  border: 3px double var(--ink);
+  border-radius: 4px;
+  white-space: nowrap;
+  font: 400 clamp(14px, 2vh, 19px) / 1 'Bebas Neue', Impact, sans-serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink);
+  opacity: 0;
+  transform: translateY(-50%) rotate(-9deg) scale(1.9);
+  transition: opacity 0.16s, transform 0.2s cubic-bezier(0.2, 1.5, 0.4, 1);
+}
+.r-stamp.shown {
+  opacity: 0.82;
+  transform: translateY(-50%) rotate(-9deg) scale(1);
+}
+.r-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-top: 0.4vh;
+  padding-top: 1.1vh;
+  border-top: 2px solid rgba(14, 58, 58, 0.3);
+}
+.r-total span {
+  font: 400 clamp(20px, 3vh, 30px) / 1 'Bebas Neue', Impact, sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+.r-total b {
+  font-size: clamp(54px, 8.6vh, 84px);
+}
+.r-best {
+  align-self: flex-end;
+  font-size: clamp(12px, 1.7vh, 16px);
+  font-weight: 600;
+  color: var(--brown);
+}
+.r-best.shown {
+  opacity: 0.7;
+}
+.r-lower {
+  display: flex;
+  align-items: center;
+  gap: 3%;
+  min-height: 0;
+}
+.r-new {
+  flex: 0 0 27%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6vh;
+}
+.r-new span {
+  position: relative;
+  z-index: 1;
+  align-self: flex-end;
+  margin-bottom: 0.4vh;
+  font-size: clamp(13px, 1.9vh, 18px);
+  font-weight: 700;
+  font-style: italic;
+  white-space: nowrap;
+  color: var(--brown);
+  transform: rotate(-5deg);
+}
+.r-card {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 910 / 1728;
+  padding: 0;
+  background: #fbf3df;
+  box-shadow: 0 3px 8px rgba(74, 52, 35, 0.3);
+  transform: rotate(-4deg);
+}
+.r-card img {
+  position: absolute;
+  inset: 3px;
+  width: calc(100% - 6px);
+  height: calc(100% - 6px);
+  object-fit: cover;
+}
+/* a paper clip, drawn */
+.r-card::before {
+  content: '';
+  position: absolute;
+  left: 16%;
+  top: -6%;
+  z-index: 1;
+  width: 13%;
+  height: 20%;
+  border: 2px solid #8e8a80;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 2px rgba(251, 243, 223, 0.9), inset 0 0 0 4px #8e8a80;
+}
+.r-next {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+.r-next > img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.r-next-text {
+  position: absolute;
+  left: 9%;
+  right: 9%;
+  top: 13%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 0.4em;
+  color: var(--brown);
+}
+.r-next-text small {
+  flex: 0 0 100%;
+  font-size: clamp(10px, 1.5vh, 14px);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+.r-next-text b {
+  font: 400 clamp(20px, 3.1vh, 30px) / 1 'Bebas Neue', Impact, sans-serif;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.r-next-text span {
+  font-size: clamp(11px, 1.6vh, 15px);
+  font-weight: 600;
+}
+.r-next-text em {
+  position: absolute;
+  right: -2%;
+  top: -0.2em;
+  padding: 0.2em 0.6em;
+  border-radius: 999px;
+  font-style: normal;
+  font-size: clamp(9px, 1.3vh, 12px);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #fbf3df;
+  background: var(--brown);
+  opacity: 0.8;
+}
+.r-buttons {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.r-buttons .r-again {
+  flex: 0 0 34%;
+}
+.r-buttons .f-plate {
+  flex: 1;
+  height: clamp(58px, 8.4vh, 80px);
+  font-size: clamp(40px, 6.4vh, 60px);
 }
