@@ -58,7 +58,7 @@ What was checked after that, before any change:
 
 Drew's answers (2026-11-19): the bells felt out of time "mostly on my phone"; amber sounds: "start with the mallets options and ideally let me sample them in-game", an octave lower too, "also ideally something I can toggle in-game"; what annoys him is "mostly its tone... how often it plays doesn't bother me at all since it's critical to the melody"; yes to timing clips, two drum mixes as clips, a heavier landing and bells locked to the music.
 
-**Built from that (build 65):**
+**Built from that (build 66; build 67 is these notes only):**
 - **Bells follow the music.** While the recorded band is rolling, a bell is set by where the tape is (`withTape` in `sound.ts`), no longer by where the runner is. In a pretend run with a 90 ms frame every 3 seconds, the old way put bells up to 57 ms from the music (15 on average); now they are on it exactly. This is my best guess at what he heard on the phone. The tape is also leaned on a little harder (up to 0.8% fast or slow, was 0.4%).
 - **The strings' timing is unchanged in the game** (short strings 70 ms early). I had told Drew the strings' bite sat 35 ms behind the bells. Measured again in the band a phone plays (above 400 Hz), the bright part of the attack is within 5 ms of the beat at 70. So the clips decide: A is 70, B 95, C 120.
 - **Drums.** Kick up 4 dB, snare 14, hats 8, toms 12 from build 64 (`make_set.py`). A second mix, all drums 4 dB more, is Settings, Drums: Loud (a gain on the drum layers in the game, so it needs no second set of files). The kick is its own layer now so that works.
