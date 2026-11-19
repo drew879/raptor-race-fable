@@ -91,7 +91,7 @@ export async function clip(kind: Clip, only?: string, recorded = false): Promise
  * The synthesized band's short notes (and the octave over them) played under the recorded layers.
  * Drew, after build 67: "what's really missing compared to the synth version is that driving,
  * crunchy synth that's going up and down arpeggios the whole time". Eighteen seconds at 48 kHz as
- * the game mixes it, limiter and all, with the Loud drums and the amber as lines and gaps. Bars 1
+ * the game mixes it, limiter and all, with the drums as Drew picked them (Loud) and the amber as lines and gaps. Bars 1
  * to 4 are at the early run's intensity and bars 5 to 8 at full, where the octave joins; then the
  * first beat of bar 1 again, ringing out.
  *   pulse  the synthesized notes at this many times their level in the synthesized band (0: none)
@@ -108,7 +108,7 @@ export async function blend(o: { pulse?: number; music?: number; tape?: number; 
   const ctx = new OfflineAudioContext(2, 18 * rate, rate);
   const band = new Sound(false);
   band.build(ctx);
-  band.tryVoice('xylophone', false, 1);
+  band.tryVoice('xylophone', false);
   if (!o.synth) await band.loadRecorded(ctx);
   /* eslint-disable @typescript-eslint/no-explicit-any */
   const b = band as any;

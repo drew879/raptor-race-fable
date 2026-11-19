@@ -60,9 +60,11 @@ const VOICES = {
 };
 export type Voice = keyof typeof VOICES;
 const VOICE_NAMES = Object.keys(VOICES) as Voice[];
-/** The two drum mixes on trial: how much louder the second is than the first. */
-const DRUMS_LOUD = 1.58;
-const DRUM_LAYERS: LayerName[] = ['kick', 'push', 'snare', 'hats', 'busy'];
+/**
+ * A layer's level in the game against how Live exported it: 1 unless it's set here. (Drew picked
+ * the louder of two drum mixes on 2026-11-19, and that's in Live's faders now, not here.)
+ */
+const LAYER_LEVEL: Partial<Record<LayerName, number>> = {};
 
 /** One thing in Settings that can be switched between a few options, to try them in the game. */
 export interface Choice {
@@ -250,10 +252,9 @@ export class Sound {
   private tape = { rolling: false, timeAt: 0, posAt: 0, rate: 1, until: 0, lean: 0, voices: new Map<LayerName, { src: AudioBufferSourceNode; gain: GainNode; level: GainNode }>() };
   /** The build under the dash is the recorded one (so the synthesized drum roll keeps quiet). */
   private built = false;
-  // ---- on trial (Drew, 2026-11-19): what the amber sounds like, how high, and how loud the recorded drums are
+  // ---- on trial (Drew, 2026-11-19): what the amber sounds like, and how high
   private voice: Voice = 'xylophone';
   private amberLow = false;
-  private drums = 0;
 
   /** `listen` is off for a copy that only draws the music to a file. */
   constructor(listen = true) {
@@ -264,7 +265,6 @@ export class Sound {
       const voice = localStorage.getItem('rr-amber1') as Voice | null;
       if (voice && voice in VOICES) this.voice = voice;
       this.amberLow = localStorage.getItem('rr-amber-low1') === '1';
-      this.drums = localStorage.getItem('rr-drums1') === '1' ? 1 : 0;
     } catch {
       /* private mode */
     }
@@ -323,17 +323,6 @@ export class Sound {
     return [
       { label: 'Music', options: ['Recorded', 'Synth'], get: () => (this.wantRecorded ? 0 : 1), set: (i) => this.setRecorded(i === 0) },
       {
-        label: 'Drums',
-        options: ['Clear', 'Loud'],
-        get: () => this.drums,
-        set: (i) => {
-          this.drums = i;
-          keep('rr-drums1', String(i));
-          const ctx = this.ctx;
-          if (ctx) for (const name of DRUM_LAYERS) this.tape.voices.get(name)?.level.gain.setTargetAtTime(i ? DRUMS_LOUD : 1, ctx.currentTime, 0.05);
-        },
-      },
-      {
         label: 'Amber',
         options: ['Bell', 'Xylophone', 'Marimba', 'Kalimba'],
         get: () => VOICE_NAMES.indexOf(this.voice),
@@ -356,11 +345,10 @@ export class Sound {
     ];
   }
 
-  /** For clips of the music: set the amber's voice and pitch, and the drum mix, without keeping them. */
-  tryVoice(voice: Voice, low: boolean, drums = 0) {
+  /** For clips of the music: set the amber's voice and pitch without keeping them. */
+  tryVoice(voice: Voice, low: boolean) {
     this.voice = voice;
     this.amberLow = low;
-    this.drums = drums;
   }
 
   /** A few notes of the amber's voice, to hear a choice by: the first bar of its line. */
@@ -842,9 +830,9 @@ export class Sound {
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(0, Math.max(0, t - pre));
     gain.gain.linearRampToValueAtTime(1, Math.max(0, t - pre) + (pre > 0.02 ? 0.015 : 0.004));
-    // (`level` is the drums' own knob, for the two drum mixes on trial)
+    // (`level` is the layer's own knob: see LAYER_LEVEL)
     const level = ctx.createGain();
-    level.gain.value = this.drums && DRUM_LAYERS.includes(name) ? DRUMS_LOUD : 1;
+    level.gain.value = LAYER_LEVEL[name] ?? 1;
     src.connect(gain).connect(level).connect(this.tapeBus);
     src.start(Math.max(0, t - pre), Math.max(0, src.loopStart + into - pre * tape.rate));
     tape.voices.set(name, { src, gain, level });

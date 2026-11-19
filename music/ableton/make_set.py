@@ -171,6 +171,14 @@ for name, part, color, gain, sound, fx, delay in [
     clips = [(label, at, 32, loop(part)) for label, at in zip(('Loop', 'Loop again (the game\'s layers are cut from here)', 'Loop, ending on the dash bar'), LOOPS)]
     tracks.append(dict(name=name, color=color, gain=gain, sound=sound, fx=fx, delay=delay, clips=clips))
 
+# Drew tried two drum mixes in the game and picked the louder one (2026-11-19: "D sounded better on
+# my computer, but "Loud" sounds much better on my phone"): the chase's drums 4 dB up again. It was a
+# gain in the game; now it's the faders here, so Live plays what the game does.
+LOUD = 1.58
+for t in tracks:
+    if t['name'] in ('Kick', 'Kick push', 'Snare', 'Hats eighths', 'Hats sixteenths', 'Toms'):
+        t['gain'] *= LOUD
+
 
 # the build over the dash bar, and the landing
 def roll(beats):
