@@ -8,8 +8,8 @@ Run everything from the repo's root. The Python scripts need numpy and scipy: ma
 
 - `loud.py`: K-weighted loudness (BS.1770, no gating), momentary loudness and peak. The others import it.
 - `stems.py <export folder>`: checks what Live exported. Is each track there, how loud is it, and how late do its notes speak.
-- `lag.py <export folder> <file prefix>`: timing of one exported track against another.
-- `v2.py <export folder> <file prefix>`: levels of an export, track by track.
+- `lag.py <export folder> <file prefix>`: when each exported track's notes speak, in milliseconds after their written time.
+- `v2.py <export folder> <file prefix>`: the fuller check of an export: when notes speak, the levels of the game's layers against the synthesized band, and the ending.
 - `checklayers.py`: checks the layer files in `public/music/chase` (lengths, levels, the loop join).
 - `recv.mjs`: `node music/tools/recv.mjs` listens on port 8787 and writes sound files the browser posts to `music/tools/out`. `src/audio/preview.ts` posts to it (`send`), which is how clips of the game's own engine are made.
 
