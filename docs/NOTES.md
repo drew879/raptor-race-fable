@@ -47,6 +47,17 @@ Drew, going to bed on 2026-11-18: "when the journal is done, please proceed to b
 
 **Where it stands (2026-11-19, early afternoon).** The chase music is an Ableton Live project with sampled strings and drums, and the game plays layers exported from it. Nobody has listened to any of it yet: every check so far is a measurement. Screen work is on hold again (see "Driving Live" below): each stretch of it needs Drew's word first.
 
+**Drew's first listen (build 64, on his iPhone's speaker, 2026-11-19).** "The recorded ones sounded cool, but for some reason the timing of the amber clave (or whatever that is) felt pretty off, and the music generally felt more drowned out compared to the synth. The drum beat in particular was almost completely inaudible on my phone speaker." Drums: "Way too quiet". Short strings and bells in time: "Not at all". Landing hard enough: "Not really". Gaps or clicks: none noticed, and it stops and comes back on a bump. The Recorded or Synth choice stays for now ("respond to the above and then let's see"). He also asked to try other sounds for collecting amber: "I just find it kind of annoying. I thought maybe a xylophone-type sound could be interesting... something that registers clearly, but is a bit more mellow and less synthetic-sounding".
+
+What was checked after that, before any change:
+- An iPhone's Safari (iOS 26.3 simulator) decodes the files exactly: 16.500 s, the first snare at 0.750 s. So the encoder's lead-in is not the cause.
+- The recorded and the synthesized music are within 1 dB of each other in every band from 40 Hz to 8 kHz. So "drowned out" is not a level in some band. My reading: soft attacks and no audible drums.
+- A LABS short note peaks about 105 to 110 ms after it is played, and the layers pull it early by 70. That puts the middle of its rise on the beat and its peak about 35 ms after. The bell is instant. So the strings' bite may sit about 35 ms behind every bell.
+- In the game the music may also slip up to 45 ms from the runner before it is pulled back, and the bells follow the runner. In the synthesized band both follow the runner, so they can't slip apart.
+- The balance was copied from the synthesized mix by loudness numbers, which put the snare and hats about 20 dB under where the kit's samples came in. That was the wrong target for real drums on a phone.
+
+Plan put to Drew (waiting on his answers): test clips for the strings' timing so he can pick by ear; tie each bell to the music that is playing; a new balance with the drums clearly audible; a heavier landing; and new sounds for the amber as a choice in Settings. Ableton's and LABS's instruments can't be shipped as single notes (licence), so the amber's choices are synthesized mallets or a public-domain sample set.
+
 **The project:** `music/ableton/Chase Strings Project/Chase Strings.als`, written by `music/ableton/make_set.py`. 21 MIDI tracks at 120 bpm.
 - Strings: Splice INSTRUMENT (the free plug-in Spitfire's LABS moved into) playing "Short" and "Long" from the free LABS Strings pack. The plug-in as Live saves it is in `music/ableton/devices/` (its README says how it was captured and what its settings do).
 - Drums: single hits from the Tamuz Kit in Live's Core Library, each through Live's Concert Hall reverb.
