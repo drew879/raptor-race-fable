@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { runBench } from './app/bench';
 import { startUpdates } from './app/build';
 import { makeFront, type Front } from './app/front';
+import { makeJournal } from './app/journal';
 import { makeResults, type Results } from './app/results';
 import { Quality } from './app/quality';
 import { tickFps, watchViewport } from './app/viewport';
@@ -157,11 +158,13 @@ async function start() {
     const home = front;
     run.onHome = () => home.showHome();
     run.sound.setMode('home');
+    const journal = makeJournal(document.body, { bell: (kind, up) => run.sound.menu(kind, up) });
     // the level's end: the results, and from there another go or (there being no second level yet) home
     const page = makeResults(document.body, {
       again: () => run.play(),
       next: () => run.home(),
-      bell: (kind) => run.sound.menu(kind),
+      page: () => journal.open(),
+      bell: (kind, up) => run.sound.menu(kind, up),
     });
     results = page;
     run.onResults = (result) => page.show(result);
@@ -171,6 +174,7 @@ async function start() {
     void home.ready({
       play: () => run.play(),
       bell: (kind) => run.sound.menu(kind),
+      journal: () => journal.open(),
       soundOn: () => run.sound.on,
       setSound: (on) => run.sound.setOn(on),
     });

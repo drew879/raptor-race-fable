@@ -15,6 +15,7 @@ cwebp -quiet -q 86 -alpha_q 92 -resize 300 0 art/results/amber.png -o public/art
 cwebp -quiet -q 86 -alpha_q 92 -resize 360 0 art/results/log.png -o public/art/results-log.webp
 cwebp -quiet -q 86 -alpha_q 92 -resize 900 0 art/results/next-gobi.png -o public/art/results-next-gobi.webp
 cwebp -quiet -q 84 -resize 360 0 art/journal/jehol-forest-page.png -o public/art/journal-jehol-thumb.webp
+cwebp -quiet -q 86 -resize 900 0 art/journal/jehol-forest-page.png -o public/art/journal-jehol-page.webp
 if [ -f art/results/page.png ] && ! cmp -s art/results/page.png art/home/home-background.png; then
   cwebp -quiet -q 84 art/results/page.png -o public/art/results-page.webp
 fi

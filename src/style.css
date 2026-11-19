@@ -911,6 +911,83 @@ body {
   opacity: 1;
   transform: none;
 }
+/* the rows come in with a bounce: the row from the left, its picture with a hop, its number with a swell */
+.r-row {
+  transition: none;
+}
+.r-row.shown {
+  animation: r-row-in 0.4s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+.r-row.shown .r-icon,
+.r-row.shown .r-finds img {
+  animation: r-hop 0.48s cubic-bezier(0.3, 1.6, 0.5, 1) both;
+}
+.r-row.shown .r-finds img {
+  animation-delay: calc(var(--i) * 80ms);
+}
+.r-row.shown .r-worth {
+  transform-origin: right center;
+  animation: r-swell 0.46s 0.04s cubic-bezier(0.3, 1.5, 0.5, 1) both;
+}
+.r-total b {
+  display: inline-block;
+  transform-origin: right bottom;
+}
+.r-total b.bump {
+  animation: r-bump 0.3s ease-out;
+}
+.r-total.final b {
+  animation: r-final 0.6s cubic-bezier(0.25, 1.6, 0.45, 1) both;
+}
+@keyframes r-row-in {
+  from {
+    opacity: 0;
+    transform: translateX(-22px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes r-hop {
+  0% {
+    transform: scale(0.35) rotate(-16deg);
+  }
+  60% {
+    transform: scale(1.2) rotate(6deg);
+  }
+  100% {
+    transform: none;
+  }
+}
+@keyframes r-swell {
+  0% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  55% {
+    opacity: 1;
+    transform: scale(1.24);
+  }
+  100% {
+    transform: none;
+  }
+}
+@keyframes r-bump {
+  35% {
+    transform: scale(1.1);
+  }
+}
+@keyframes r-final {
+  40% {
+    transform: scale(1.2);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .results * {
+    animation: none !important;
+  }
+}
 .r-top {
   display: flex;
   align-items: center;
@@ -1175,4 +1252,238 @@ body {
   flex: 1;
   height: clamp(58px, 8.4vh, 80px);
   font-size: clamp(40px, 6.4vh, 60px);
+}
+
+/* ---------- the Field Journal (src/app/journal.ts) ---------- */
+.journal-screen {
+  --ink: #0e3a3a;
+  --brown: #4a3423;
+  --ui-text: #f6ecd6;
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  background: #e7cb97;
+  color: var(--brown);
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  transition: opacity 0.3s, visibility 0s linear 0s;
+}
+.journal-screen.gone {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.25s, visibility 0s linear 0.25s;
+}
+.journal-screen [hidden] {
+  display: none;
+}
+.j-under {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 0% 100%;
+}
+.j-scroll {
+  position: absolute;
+  inset: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.j-page,
+.j-locked {
+  position: relative;
+}
+.j-art {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+/* (the page is a little shorter than a tall phone: its foot fades into the blank page behind it) */
+.j-page .j-art {
+  -webkit-mask-image: linear-gradient(to bottom, #000 93%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 93%, transparent 100%);
+}
+/* over the arrow painted in the page's corner */
+.j-back {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 22%;
+  height: 7%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  -webkit-tap-highlight-color: transparent;
+}
+/* the finds, on the blank paper at the foot of the page */
+.j-finds {
+  position: absolute;
+  left: 9%;
+  right: 6%;
+  top: 80.5%;
+  height: 16.5%;
+  display: flex;
+  flex-direction: column;
+  gap: 4%;
+}
+.j-label {
+  font-family: 'Bradley Hand', 'Noteworthy', 'Segoe Print', 'Comic Sans MS', cursive;
+  font-size: clamp(17px, 5vw, 23px);
+  font-weight: 700;
+  transform: rotate(-1.5deg);
+  transform-origin: left center;
+}
+.j-slots {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 3%;
+}
+.j-find {
+  position: relative;
+  flex: 1;
+  height: 100%;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+}
+.j-find img {
+  max-width: 100%;
+  max-height: 100%;
+  filter: drop-shadow(0 0 7px rgba(53, 214, 196, 0.6)) drop-shadow(0 2px 3px rgba(74, 52, 35, 0.35));
+  transition: transform 0.1s;
+}
+.j-find:active img {
+  transform: scale(0.94);
+}
+.j-find i {
+  display: none;
+  position: absolute;
+  font: 400 clamp(22px, 7vw, 32px) / 1 'Bebas Neue', Impact, sans-serif;
+  font-style: normal;
+  color: var(--brown);
+  opacity: 0.55;
+}
+/* not found yet: only its outline, in pencil, and a question mark */
+.j-find.missing img {
+  filter: grayscale(1) brightness(1.7) contrast(0.35);
+  opacity: 0.28;
+}
+.j-find.missing i {
+  display: block;
+}
+.j-find.no {
+  animation: j-no 0.3s;
+}
+@keyframes j-no {
+  25% {
+    transform: translateX(-5px);
+  }
+  75% {
+    transform: translateX(5px);
+  }
+}
+.j-locked-text {
+  position: absolute;
+  left: 12%;
+  right: 9%;
+  top: 30%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+}
+.j-locked-text h1 {
+  margin: 0;
+  font: 400 clamp(40px, 12vw, 58px) / 1 'Bebas Neue', Impact, sans-serif;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--ink);
+  transform: skewX(-9deg);
+}
+.j-locked-text p {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+.j-locked-text .f-chip,
+.j-paper .f-chip {
+  flex: none;
+  width: 60%;
+}
+/* a find's own card */
+.j-card {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(46, 32, 18, 0.5);
+}
+.j-paper {
+  width: min(330px, 84vw);
+  max-height: 86vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 20px 16px;
+  border-radius: 4px;
+  background: #fbf3df;
+  box-shadow: 0 12px 34px rgba(30, 20, 10, 0.45);
+  transform: rotate(-1.2deg);
+  text-align: center;
+  animation: j-card-in 0.28s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+@keyframes j-card-in {
+  from {
+    opacity: 0;
+    transform: rotate(-4deg) scale(0.9);
+  }
+}
+.j-paper img {
+  width: 72%;
+  height: auto;
+  filter: drop-shadow(0 0 10px rgba(53, 214, 196, 0.6));
+}
+.j-paper h2 {
+  margin: 4px 0 0;
+  font: 400 34px / 1 'Bebas Neue', Impact, sans-serif;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+.j-paper p {
+  margin: 0;
+}
+.j-text {
+  font-size: 17px;
+  line-height: 1.4;
+  font-weight: 500;
+  color: #33261a;
+}
+.j-real {
+  font-size: 14px;
+  font-style: italic;
+  opacity: 0.8;
+}
+@media (prefers-reduced-motion: reduce) {
+  .journal-screen * {
+    animation: none !important;
+  }
 }

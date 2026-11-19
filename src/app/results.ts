@@ -10,9 +10,11 @@
 // This belongs to the whole game. What is Jehol Forest's own arrives in `show()`.
 
 import type { RunResult } from '../game/run';
+import { progress } from './progress';
 
 const art = (name: string) => `${import.meta.env.BASE_URL}art/${name}`;
-const FINDS = ['find-feathered-tail.webp', 'find-baby-bird.webp', 'find-spider-web.webp'];
+/** The hidden finds' pictures, in the order the level numbers them. */
+const FINDS = ['find-feathered-tail.webp', 'find-spider-web.webp', 'find-baby-bird.webp'];
 /** What each thing is worth. */
 export const WORTH = { amber: 10, find: 250, cleared: 25 };
 const num = (n: number) => Math.round(n).toLocaleString('en-US');
@@ -20,7 +22,10 @@ const num = (n: number) => Math.round(n).toLocaleString('en-US');
 export interface ResultsHooks {
   again(): void;
   next(): void;
-  bell(kind: 'tap' | 'go' | 'back'): void;
+  /** Open the journal at the page this level earned. */
+  page(): void;
+  /** A bell. `up` raises a tap's note a step or two, so three in a row climb. */
+  bell(kind: 'tap' | 'go' | 'back', up?: number): void;
 }
 
 export interface Results {
@@ -45,7 +50,7 @@ export function makeResults(parent: HTMLElement, hooks: ResultsHooks): Results {
           <b class="r-earned"></b><i class="r-times">&times; ${WORTH.amber}</i><b class="r-worth"></b>
         </div>
         <div class="r-row" data-row="finds">
-          <span class="r-finds" aria-label="Hidden finds">${FINDS.map((f) => `<img src="${art(f)}" alt="">`).join('')}</span>
+          <span class="r-finds" aria-label="Hidden finds">${FINDS.map((f, i) => `<img src="${art(f)}" alt="" style="--i:${i}">`).join('')}</span>
           <i class="r-times">&times; ${WORTH.find}</i><b class="r-worth"></b>
         </div>
         <div class="r-row" data-row="cleared">
@@ -101,6 +106,10 @@ export function makeResults(parent: HTMLElement, hooks: ResultsHooks): Results {
     hooks.bell('back');
     leave(hooks.next);
   });
+  press(q('.r-card'), () => {
+    hooks.bell('tap');
+    hooks.page();
+  });
   // a tap anywhere else while the rows are still landing puts everything in place at once
   root.addEventListener('pointerdown', () => finish?.());
 
@@ -113,20 +122,20 @@ export function makeResults(parent: HTMLElement, hooks: ResultsHooks): Results {
       const worth = [run.amber * WORTH.amber, found * WORTH.find, run.cleared * WORTH.cleared];
       const score = worth[0] + worth[1] + worth[2];
       const clean = run.cleared >= run.obstacles;
-      let best = 0;
-      try {
-        best = Number(localStorage.getItem('rr-best-1')) || 0;
-        if (score > best) localStorage.setItem('rr-best-1', String(score));
-      } catch {
-        /* private mode */
-      }
+      const best = progress.best(1);
+      if (score > best) progress.setBest(1, score);
+      // the page is earned by finishing, and the finds stay found
+      const firstTime = !progress.page(1);
+      progress.earnPage(1);
+      progress.addFinds(1, run.finds);
+      q('.r-new span').textContent = firstTime ? 'New page!' : 'Your page';
 
       q('.r-name h1').textContent = run.level;
       rows[0].querySelector('.r-earned')!.textContent = num(run.amber);
       rows[2].querySelector('.r-earned')!.textContent = num(run.cleared);
       [...q('.r-finds').children].forEach((el, i) => el.classList.toggle('missing', !run.finds[i]));
       q('.r-best').textContent = score > best ? (best > 0 ? `New best! It was ${num(best)}` : 'Your first score') : `Best ${num(best)}`;
-      for (const el of root.querySelectorAll('.shown')) el.classList.remove('shown');
+      for (const el of root.querySelectorAll('.shown, .final, .bump')) el.classList.remove('shown', 'final', 'bump');
       rows.forEach((row) => (row.querySelector('.r-worth')!.textContent = ''));
       total.textContent = '0';
       q('.r-stamp').hidden = !clean;
@@ -153,29 +162,34 @@ export function makeResults(parent: HTMLElement, hooks: ResultsHooks): Results {
       };
       const land = (i: number) => {
         rows[i].classList.add('shown');
-        hooks.bell('tap');
+        hooks.bell('tap', i);
         const before = shown;
         shown += worth[i];
-        count(rows[i].querySelector('.r-worth')!, 0, worth[i], 420, (v) => (total.textContent = num(before + v)));
+        count(rows[i].querySelector('.r-worth')!, 0, worth[i], 340, (v) => (total.textContent = num(before + v)));
+        // the score jumps a little as each row is added to it
+        total.classList.remove('bump');
+        void total.offsetWidth;
+        total.classList.add('bump');
       };
+      // (Drew, build 53: "slightly livelier animation when the rows populate", and "a tad faster")
       const steps: [number, () => void][] = [
-        [150, () => root.querySelectorAll('.r-top, .r-panel').forEach((el) => el.classList.add('shown'))],
-        [750, () => land(0)],
-        [1500, () => land(1)],
-        [2250, () => land(2)],
-        [3050, () => {
-          q('.r-total').classList.add('shown');
+        [120, () => root.querySelectorAll('.r-top, .r-panel').forEach((el) => el.classList.add('shown'))],
+        [560, () => land(0)],
+        [1160, () => land(1)],
+        [1760, () => land(2)],
+        [2400, () => {
+          q('.r-total').classList.add('shown', 'final');
           q('.r-best').classList.add('shown');
           if (clean) q('.r-stamp').classList.add('shown');
           hooks.bell('go');
         }],
-        [3650, () => q('.r-new').classList.add('shown')],
-        [4050, () => q('.r-next').classList.add('shown')],
-        [4450, () => q('.r-buttons').classList.add('shown')],
+        [2900, () => q('.r-new').classList.add('shown')],
+        [3200, () => q('.r-next').classList.add('shown')],
+        [3500, () => q('.r-buttons').classList.add('shown')],
       ];
       for (const t of timers) clearTimeout(t);
       timers = steps.map(([at, fn]) => window.setTimeout(fn, at));
-      timers.push(window.setTimeout(() => (finish = null), 4500));
+      timers.push(window.setTimeout(() => (finish = null), 3600));
       finish = () => {
         finish = null;
         for (const t of timers) clearTimeout(t);

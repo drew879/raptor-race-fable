@@ -823,12 +823,13 @@ export class Sound {
    * `back` one that closes something, `tap` any other. (The home screen has only these and the
    * wind until the game has a theme of its own.)
    */
-  menu(kind: 'tap' | 'go' | 'back' = 'tap') {
+  menu(kind: 'tap' | 'go' | 'back' = 'tap', up = 0) {
     this.unlock();
     const ctx = this.ctx;
     if (!ctx) return;
     const t = ctx.currentTime + 0.03;
-    const notes = kind === 'go' ? [85, 88, 92, 97] : kind === 'back' ? [85] : [88];
+    // (`up` lifts a tap a step or two up the home chord: three taps in a row can climb)
+    const notes = kind === 'go' ? [85, 88, 92, 97] : kind === 'back' ? [85] : [[88, 92, 97, 100][Math.min(3, Math.max(0, up))]];
     notes.forEach((m, i) => this.chime(ctx, t + i * 0.07, m, 0.11, kind === 'go' ? 0.3 : 0.2));
   }
 

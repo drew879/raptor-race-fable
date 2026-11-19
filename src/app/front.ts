@@ -16,6 +16,8 @@ export interface FrontHooks {
   play(): void;
   /** A bell for a tap: `go` starts a run, `back` closes something. */
   bell(kind: 'tap' | 'go' | 'back'): void;
+  /** Open the Field Journal. */
+  journal(): void;
   soundOn(): boolean;
   setSound(on: boolean): void;
 }
@@ -65,12 +67,6 @@ export function makeFront(parent: HTMLElement): Front {
         </div>
         <button class="big ghost f-close">Back</button>
       </div>
-      <div class="sheet f-journal-sheet" hidden>
-        <h2>Field Journal</h2>
-        <p>The pages you unlock will be kept here.</p>
-        <p class="f-quiet">The journal opens in a coming build.</p>
-        <button class="big ghost f-close">Back</button>
-      </div>
       <div class="sheet f-settings-sheet" hidden>
         <h2>Settings</h2>
         <div class="setting"><span>Sound</span><div class="tabs words sound-tabs"><button>On</button><button>Off</button></div></div>
@@ -108,7 +104,7 @@ export function makeFront(parent: HTMLElement): Front {
       fn();
     });
   };
-  const sheets = [q('.f-levels-sheet'), q('.f-journal-sheet'), q('.f-settings-sheet')];
+  const sheets = [q('.f-levels-sheet'), q('.f-settings-sheet')];
   const open = (sheet: HTMLElement | null) => {
     for (const s of sheets) s.hidden = s !== sheet;
     home.classList.toggle('behind', sheet !== null);
@@ -122,7 +118,11 @@ export function makeFront(parent: HTMLElement): Front {
   };
   press(q('.f-play'), play);
   press(q('.f-level:not(.locked)'), play);
-  for (const [button, sheet] of [['.f-levels', sheets[0]], ['.f-journal', sheets[1]], ['.f-gear', sheets[2]]] as const) {
+  press(q('.f-journal'), () => {
+    hooks?.bell('tap');
+    hooks?.journal();
+  });
+  for (const [button, sheet] of [['.f-levels', sheets[0]], ['.f-gear', sheets[1]]] as const) {
     press(q(button), () => {
       hooks?.bell('tap');
       open(sheet);
