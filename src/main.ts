@@ -177,8 +177,7 @@ async function start() {
       journal: () => journal.open(),
       soundOn: () => run.sound.on,
       setSound: (on) => run.sound.setOn(on),
-      recorded: () => run.sound.recorded,
-      setRecorded: (on) => run.sound.setRecorded(on),
+      choices: () => run.sound.choices(),
     });
   }
 

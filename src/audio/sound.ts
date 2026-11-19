@@ -40,6 +40,37 @@ const MUSIC = 1.4;
 const BOWED = 1.26;
 const HATS = 1.5;
 const BELLS = 0.83;
+/**
+ * What a piece of amber sounds like. The bell is the first one: a sine, gone in a tenth of a
+ * second. The others are struck bars and tines, each built from the few pure tones such a thing
+ * really rings with, dying away at their own speeds, and the knock of what struck it.
+ * `tones` are [how many times the note's pitch, how loud, seconds to die away]; `knock` is the
+ * strike: [where its noise is centred in Hz, how loud, how long, 'lowpass' for a soft mallet].
+ * `level` evens the voices out: each one's strike measures about 1.5 dB over the bell's (its
+ * loudest twentieth of a second, K-weighted), since a mellower sound needs a little more to be noticed.
+ */
+const VOICES = {
+  bell: { level: 1, tones: [] as number[][], knock: null as null | [number, number, number, BiquadFilterType] },
+  // a rosewood bar and a hard mallet: the second tone of a xylophone's bar is tuned a twelfth up
+  xylophone: { level: 0.84, tones: [[1, 1, 0.26], [3, 0.34, 0.1], [6, 0.1, 0.045]], knock: [4200, 0.22, 0.012, 'bandpass'] as [number, number, number, BiquadFilterType] },
+  // a longer bar over a tube, and a soft mallet: warmer, the second tone two octaves up and faint
+  marimba: { level: 0.76, tones: [[1, 1, 0.42], [4, 0.15, 0.09], [9.2, 0.035, 0.03]], knock: [1300, 0.2, 0.022, 'lowpass'] as [number, number, number, BiquadFilterType] },
+  // a steel tine over a small wooden box: round, with the box's octave under a high faint ping
+  kalimba: { level: 0.73, tones: [[1, 1, 0.5], [2, 0.16, 0.2], [6.27, 0.1, 0.06]], knock: [2600, 0.16, 0.008, 'bandpass'] as [number, number, number, BiquadFilterType] },
+};
+export type Voice = keyof typeof VOICES;
+const VOICE_NAMES = Object.keys(VOICES) as Voice[];
+/** The two drum mixes on trial: how much louder the second is than the first. */
+const DRUMS_LOUD = 1.58;
+const DRUM_LAYERS: LayerName[] = ['kick', 'push', 'snare', 'hats', 'busy'];
+
+/** One thing in Settings that can be switched between a few options, to try them in the game. */
+export interface Choice {
+  label: string;
+  options: string[];
+  get(): number;
+  set(index: number): void;
+}
 
 interface Bar {
   /** The bass note. */
@@ -216,9 +247,13 @@ export class Sound {
    * The layers all play as one tape. `posAt` seconds of the music are at the play head at the
    * context's time `timeAt`, and it runs at `rate`; `until` is how far the runner has let it play.
    */
-  private tape = { rolling: false, timeAt: 0, posAt: 0, rate: 1, until: 0, lean: 0, voices: new Map<LayerName, { src: AudioBufferSourceNode; gain: GainNode }>() };
+  private tape = { rolling: false, timeAt: 0, posAt: 0, rate: 1, until: 0, lean: 0, voices: new Map<LayerName, { src: AudioBufferSourceNode; gain: GainNode; level: GainNode }>() };
   /** The build under the dash is the recorded one (so the synthesized drum roll keeps quiet). */
   private built = false;
+  // ---- on trial (Drew, 2026-11-19): what the amber sounds like, how high, and how loud the recorded drums are
+  private voice: Voice = 'xylophone';
+  private amberLow = false;
+  private drums = 0;
 
   /** `listen` is off for a copy that only draws the music to a file. */
   constructor(listen = true) {
@@ -226,6 +261,10 @@ export class Sound {
     try {
       this.muted = localStorage.getItem('rr-sound1') === '0';
       this.wantRecorded = localStorage.getItem('rr-music1') !== 'synth';
+      const voice = localStorage.getItem('rr-amber1') as Voice | null;
+      if (voice && voice in VOICES) this.voice = voice;
+      this.amberLow = localStorage.getItem('rr-amber-low1') === '1';
+      this.drums = localStorage.getItem('rr-drums1') === '1' ? 1 : 0;
     } catch {
       /* private mode */
     }
@@ -269,9 +308,72 @@ export class Sound {
     }
   }
 
+  /**
+   * The sounds on trial, for Settings and the pause sheet to offer. Picking one keeps it (on this
+   * phone) and, for the amber's, plays a few notes of it.
+   */
+  choices(): Choice[] {
+    const keep = (key: string, value: string) => {
+      try {
+        localStorage.setItem(key, value);
+      } catch {
+        /* private mode */
+      }
+    };
+    return [
+      { label: 'Music', options: ['Recorded', 'Synth'], get: () => (this.wantRecorded ? 0 : 1), set: (i) => this.setRecorded(i === 0) },
+      {
+        label: 'Drums',
+        options: ['Clear', 'Loud'],
+        get: () => this.drums,
+        set: (i) => {
+          this.drums = i;
+          keep('rr-drums1', String(i));
+          const ctx = this.ctx;
+          if (ctx) for (const name of DRUM_LAYERS) this.tape.voices.get(name)?.level.gain.setTargetAtTime(i ? DRUMS_LOUD : 1, ctx.currentTime, 0.05);
+        },
+      },
+      {
+        label: 'Amber',
+        options: ['Bell', 'Xylophone', 'Marimba', 'Kalimba'],
+        get: () => VOICE_NAMES.indexOf(this.voice),
+        set: (i) => {
+          this.voice = VOICE_NAMES[i] ?? 'bell';
+          keep('rr-amber1', this.voice);
+          this.sample();
+        },
+      },
+      {
+        label: 'Amber pitch',
+        options: ['High', 'Low'],
+        get: () => (this.amberLow ? 1 : 0),
+        set: (i) => {
+          this.amberLow = i === 1;
+          keep('rr-amber-low1', i === 1 ? '1' : '0');
+          this.sample();
+        },
+      },
+    ];
+  }
+
+  /** For clips of the music: set the amber's voice and pitch, and the drum mix, without keeping them. */
+  tryVoice(voice: Voice, low: boolean, drums = 0) {
+    this.voice = voice;
+    this.amberLow = low;
+    this.drums = drums;
+  }
+
+  /** A few notes of the amber's voice, to hear a choice by: the first bar of its line. */
+  private sample() {
+    this.unlock();
+    const ctx = this.ctx;
+    if (!ctx) return;
+    BARS[0].bells.forEach((m, i) => this.chime(ctx, ctx.currentTime + 0.05 + i * 0.25, m));
+  }
+
   /** For clips of the music (see preview.ts): have the recorded layers ready before drawing. */
-  async loadRecorded(ctx: BaseAudioContext) {
-    this.layers = await fetchLayers(`${import.meta.env.BASE_URL}music/chase/`).decode(ctx);
+  async loadRecorded(ctx: BaseAudioContext, folder = 'music/chase/') {
+    this.layers = await fetchLayers(`${import.meta.env.BASE_URL}${folder}`).decode(ctx);
     if (this.layers) this.tapeBus.gain.value = this.layers.gain;
     return this.layers !== null;
   }
@@ -609,8 +711,26 @@ export class Sound {
   /** The amber's voice: a small bell, gone in a tenth of a second, with a brighter edge that goes sooner still. */
   private chime(ctx: BaseAudioContext, t: number, midi: number, vol = 0.11, ring = 0.11, pan = 0) {
     const out = this.panned(ctx, pan, this.music);
-    this.thump(ctx, { t, from: hz(midi), len: ring, vol: vol * BELLS, out });
-    this.thump(ctx, { t, from: hz(midi) * 2.76, len: 0.05, vol: vol * BELLS * 0.3, out });
+    const f = hz(midi - (this.amberLow ? 12 : 0));
+    const voice = VOICES[this.voice];
+    if (this.voice === 'bell') {
+      this.thump(ctx, { t, from: f, len: ring, vol: vol * BELLS, out });
+      this.thump(ctx, { t, from: f * 2.76, len: 0.05, vol: vol * BELLS * 0.3, out });
+      return;
+    }
+    // A struck bar or tine. No two strikes are quite alike: a hair of pitch and of strength either way.
+    const v = vol * BELLS * voice.level * (0.94 + 0.12 * Math.random());
+    const bend = 1 + (Math.random() - 0.5) * 0.003;
+    // (a caller that wants a long ring, like the hidden find's, gets a longer one, within what the thing could do)
+    const longer = Math.min(1.8, Math.max(1, ring / 0.2));
+    for (const [times, loud, len] of voice.tones) {
+      if (f * times > 13000) continue;
+      this.thump(ctx, { t, from: f * times * bend, len: len * (times === 1 ? longer : 1), vol: v * loud, out });
+    }
+    if (voice.knock) {
+      const [cut, loud, len, type] = voice.knock;
+      this.hiss(ctx, { t, len, vol: v * loud, cut, q: 0.9, type, attack: 0.001, to: out });
+    }
   }
 
   // ---------------------------------------------------------------- the score
@@ -685,7 +805,7 @@ export class Sound {
       if (Math.abs(ahead) > 0.045) this.tapeStop(ctx, t, 0.02);
       else {
         tape.lean += (ahead - tape.lean) * 0.2;
-        const rate = 1 - Math.max(-0.004, Math.min(0.004, tape.lean * 0.3));
+        const rate = 1 - Math.max(-0.008, Math.min(0.008, tape.lean * 0.4));
         if (Math.abs(rate - tape.rate) > 0.0004) this.tapeLean(ctx, rate);
       }
     }
@@ -693,7 +813,7 @@ export class Sound {
     tape.until = song + STEP;
     // who is playing: the same parts the synthesized band would have, a layer for each
     const on = (part: Part) => this.playing?.[part] === true;
-    const want: Record<LayerName, boolean> = { base: true, octave: on('octave'), cello: on('cello'), tune: on('tune'), high: on('high'), push: on('push'), snare: on('snare'), hats: on('hats'), busy: on('hats') && on('busy') };
+    const want: Record<LayerName, boolean> = { base: true, kick: true, octave: on('octave'), cello: on('cello'), tune: on('tune'), high: on('high'), push: on('push'), snare: on('snare'), hats: on('hats'), busy: on('hats') && on('busy') };
     for (const name of LAYER_NAMES) {
       const voice = tape.voices.get(name);
       if (want[name] && !voice) this.tapeVoice(ctx, name, t);
@@ -722,13 +842,16 @@ export class Sound {
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(0, Math.max(0, t - pre));
     gain.gain.linearRampToValueAtTime(1, Math.max(0, t - pre) + (pre > 0.02 ? 0.015 : 0.004));
-    src.connect(gain).connect(this.tapeBus);
+    // (`level` is the drums' own knob, for the two drum mixes on trial)
+    const level = ctx.createGain();
+    level.gain.value = this.drums && DRUM_LAYERS.includes(name) ? DRUMS_LOUD : 1;
+    src.connect(gain).connect(level).connect(this.tapeBus);
     src.start(Math.max(0, t - pre), Math.max(0, src.loopStart + into - pre * tape.rate));
-    tape.voices.set(name, { src, gain });
+    tape.voices.set(name, { src, gain, level });
   }
 
   /** One layer leaves from time `t`, over about `time` seconds. */
-  private tapeDrop(voice: { src: AudioBufferSourceNode; gain: GainNode }, t: number, time: number) {
+  private tapeDrop(voice: { src: AudioBufferSourceNode; gain: GainNode; level: GainNode }, t: number, time: number) {
     if (voice.gain.gain.cancelAndHoldAtTime) voice.gain.gain.cancelAndHoldAtTime(t);
     voice.gain.gain.setTargetAtTime(0, t, time / 3);
     voice.src.stop(t + time * 2 + 0.05);
@@ -916,6 +1039,23 @@ export class Sound {
   }
 
   /**
+   * When the sixteenth `n` falls, for a bell. `t` is when the runner reaches it. But while the
+   * recorded band is rolling, the bell goes with the music that is really playing: the tape may be
+   * a few hundredths of a second off the runner (it is only leaned on, never jerked), and a bell
+   * that far from the strings is heard as out of time, where one that far from the picture is not
+   * seen at all. (Drew, build 64: bells and short strings "not at all" in time, mostly on the phone.)
+   */
+  private withTape(ctx: BaseAudioContext, n: number, t: number) {
+    const tape = this.tape;
+    if (!this.taped || !tape.rolling) return t;
+    const now = ctx.currentTime;
+    const when = tape.timeAt + (n * STEP - tape.posAt) / tape.rate;
+    // (only if the two agree roughly: if not, the tape is about to be started again anyway)
+    if (Math.abs(when - t) > 0.08) return t;
+    return Math.max(when, now + 0.003);
+  }
+
+  /**
    * The fans are out, and a row of three pieces is swept in at once. They are not one chord but a
    * quick run of three inside the row's eighth note: the left piece is the written note, on the
    * beat, the middle one the next note up the chord, and the right one the note above that. So it
@@ -948,13 +1088,14 @@ export class Sound {
       const pos = (this.lastS - this.origin) / METERS_PER_STEP;
       const slot = Math.round((at - this.origin) / METERS_PER_STEP / 2) * 2;
       const wait = Math.min(0.8, Math.max(0.004, ((slot - pos) * METERS_PER_STEP) / this.lastV));
-      return this.sweep(ctx, slot, ctx.currentTime + wait, third, (2 * METERS_PER_STEP) / this.lastV);
+      const rolling = this.taped && this.tape.rolling;
+      return this.sweep(ctx, slot, this.withTape(ctx, slot, ctx.currentTime + wait), third, rolling ? (2 * STEP) / this.tape.rate : (2 * METERS_PER_STEP) / this.lastV);
     }
     if (at !== undefined && this.mode === 'chase' && this.lastV > 0.8) {
       // its own place on the grid, which the runner is just reaching
       const pos = (this.lastS - this.origin) / METERS_PER_STEP;
       n = Math.round((at - this.origin) / METERS_PER_STEP);
-      t = ctx.currentTime + Math.min(0.2, Math.max(0.004, ((n - pos) * METERS_PER_STEP) / this.lastV));
+      t = this.withTape(ctx, n, ctx.currentTime + Math.min(0.2, Math.max(0.004, ((n - pos) * METERS_PER_STEP) / this.lastV)));
     }
     const bar = barAt(n);
     const same = n === this.amberStep;

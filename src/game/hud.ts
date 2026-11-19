@@ -5,6 +5,8 @@
 import { BUILD } from '../app/build';
 import { currentFps, fitLine, isStandalone, lateFrames } from '../app/viewport';
 import type { Style } from '../render/styles';
+import type { Choice } from '../audio/sound';
+import { choiceRows } from '../app/choices';
 
 export interface HudHooks {
   styles: Style[];
@@ -14,6 +16,8 @@ export interface HudHooks {
   eggMode: number;
   soundOn: boolean;
   onSound(on: boolean): void;
+  /** Sounds on trial that can be switched from the pause sheet (the amber's voice and pitch). */
+  choices?: Choice[];
   /** "Try again" on the sheet that says the egg got away. */
   onRetry(): void;
   /** "Next" on the Field Journal card that closes the level. */
@@ -91,6 +95,7 @@ export function makeHud(root: HTMLElement, hooks: HudHooks): Hud {
       </div>
       <div class="setting"><span>Egg</span><div class="tabs words egg-tabs"></div></div>
       <div class="setting"><span>Sound</span><div class="tabs words sound-tabs"></div></div>
+      <div class="choices"></div>
       <div class="links"><a class="link" href="?mode=close">Close-up</a><a class="link" href="?mode=bench">Speed test</a></div>
       <small class="about">Rough test run &middot; build ${BUILD}</small>
     </div>
@@ -182,6 +187,7 @@ export function makeHud(root: HTMLElement, hooks: HudHooks): Hud {
     });
     soundTabs.appendChild(b);
   });
+  choiceRows(q<HTMLElement>('.choices'), hooks.choices ?? [], press);
   const forkEls = [q<HTMLElement>('.fork-label.left'), q<HTMLElement>('.fork-label.right')];
   let forkShown = false;
 

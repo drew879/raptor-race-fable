@@ -134,6 +134,12 @@ END = 144
 # and the parts that need both a clear start and a body (the tune, the cellos, the landing chord)
 # have a short track laid over a long one.
 #
+# Whether 70 is right for the short strings is open. It puts the middle of a note's rise on the
+# beat; its loudest moment is then 35 ms late, but the bright part of its attack (what a phone's
+# speaker plays) is on the beat to within 5 ms. Drew heard the amber's bells as out of time with
+# the strings in build 64, mostly in play, where the cause was more likely the tape's slack against
+# the runner (see sound.ts, withTape). He has clips at 70, 95 and 120 to choose from by ear.
+#
 # Live plays the track delays but its export of single tracks leaves them out (measured: the files
 # of a delayed and an undelayed version line up exactly). cut_layers.py reads these same numbers
 # and moves each file by its track's delay, so the game's layers match what Live plays.
@@ -143,8 +149,12 @@ BODY_DELAY = -120
 
 # Each track: name, Live color index, mixer gain (1 is 0 dB), its sound, its effects, and its clips as (name, first beat, length in beats, notes).
 # `delay` is Live's track delay in milliseconds, and `volume` a list of (beat, gain) for the mixer's volume to follow.
-# The gains are set by measurement, so that each part is as loud against the others as it is in the
-# game's own music (which was matched to Drew's clip of the original), with about 7 dB to spare on the Main track.
+# The strings' gains are set by measurement, so that each is as loud against the others as it is in
+# the game's synthesized band (which was matched to Drew's clip of the original). The drums were set
+# the same way at first, and on a phone's speaker they could hardly be heard (Drew, build 64: "way
+# too quiet"): a real drum needs far more level than a synthesized click to be heard there. They are
+# now 4 to 14 dB up from that, by judgment, for Drew to check by ear. (The kick least: a phone can't
+# play its weight, only its click, and its weight uses up room the rest needs.)
 tracks = []
 for name, part, color, gain, sound, fx, delay in [
     ('Short strings', 'short', 16, 0.326, SHORT, [], SHORT_DELAY), ('Short strings 8va', 'short8', 16, 0.115, SHORT, [], SHORT_DELAY),
@@ -152,10 +162,10 @@ for name, part, color, gain, sound, fx, delay in [
     ('Held strings', 'bed', 17, 0.534, LONG, [], LONG_DELAY),
     ('Violin tune', 'violin', 18, 1.3, LONG, [], BODY_DELAY), ('Violin tune (the start of each note)', 'violinbite', 18, 0.3, SHORT, [], SHORT_DELAY),
     ('High strings', 'high', 18, 0.46, LONG, [SHAKE], LONG_DELAY),
-    ('Kick', 'kick', 3, 0.398, hit('Kick Tamuz 1.wav'), [HALL_LOW], 0), ('Kick push', 'kickpush', 3, 0.398, hit('Kick Tamuz 1.wav'), [HALL_LOW], 0),
-    ('Snare', 'snare', 4, 0.086, hit('Snare Tamuz 1.wav'), [HALL], 0),
-    ('Hats eighths', 'hats8', 5, 0.204, hit('Hihat Closed Tamuz Tight.wav'), [HALL_LOW], 0), ('Hats sixteenths', 'hats16', 5, 0.204, hit('Hihat Closed Tamuz Tight.wav'), [HALL_LOW], 0),
-    ('Toms', 'toms', 4, 0.106, hit('Tom Tamuz Mid 1.wav'), [HALL], 0),
+    ('Kick', 'kick', 3, 0.63, hit('Kick Tamuz 1.wav'), [HALL_LOW], 0), ('Kick push', 'kickpush', 3, 0.63, hit('Kick Tamuz 1.wav'), [HALL_LOW], 0),
+    ('Snare', 'snare', 4, 0.43, hit('Snare Tamuz 1.wav'), [HALL], 0),
+    ('Hats eighths', 'hats8', 5, 0.5, hit('Hihat Closed Tamuz Tight.wav'), [HALL_LOW], 0), ('Hats sixteenths', 'hats16', 5, 0.5, hit('Hihat Closed Tamuz Tight.wav'), [HALL_LOW], 0),
+    ('Toms', 'toms', 4, 0.42, hit('Tom Tamuz Mid 1.wav'), [HALL], 0),
     ('Bells (amber line)', 'bells', 26, 0.3, CELESTE, [], 0),
 ]:
     clips = [(label, at, 32, loop(part)) for label, at in zip(('Loop', 'Loop again (the game\'s layers are cut from here)', 'Loop, ending on the dash bar'), LOOPS)]
@@ -183,13 +193,21 @@ tracks += [
          clips=[('Swell', DASH, 4, swell(4)), ('For the game: the swell, long', LONG_AT, LONG_LEN, swell(LONG_LEN))],
          # it grows through its first bar
          volume=[(DASH, 0.14 * SWELL_GAIN), (LAND, SWELL_GAIN), (LONG_AT - 2, SWELL_GAIN), (LONG_AT - 1, 0.14 * SWELL_GAIN), (LONG_AT, 0.14 * SWELL_GAIN), (LONG_AT + 4, SWELL_GAIN)]),
-    dict(name='Ending roll', color=9, gain=0.22, sound=hit('Tom Tamuz Low.wav'), fx=[HALL], delay=0,
+    dict(name='Ending roll', color=9, gain=0.35, sound=hit('Tom Tamuz Low.wav'), fx=[HALL], delay=0,
          clips=[('Roll', DASH, 4, roll(4)), ('For the game: the roll, long', LONG_AT, LONG_LEN, roll(LONG_LEN))]),
     dict(name='Landing chord', color=9, gain=LANDING_GAIN, sound=LONG, fx=[], delay=BODY_DELAY, clips=[('Landing', LAND, 12, LANDING)], volume=RING),
-    dict(name='Landing chord (the start)', color=9, gain=0.34, sound=SHORT, fx=[], delay=SHORT_DELAY, clips=[('Landing', LAND, 12, [(0, 0.5, p, v) for _, _, p, v in LANDING])]),
+    dict(name='Landing chord (the start)', color=9, gain=0.5, sound=SHORT, fx=[], delay=SHORT_DELAY, clips=[('Landing', LAND, 12, [(0, 0.5, p, v) for _, _, p, v in LANDING])]),
     dict(name='Landing drum', color=9, gain=0.8, sound=hit('Kick Tamuz 2.wav'), fx=[HALL_BIG], delay=0, clips=[('Landing', LAND, 12, [(0, 2, 60, 120)])]),
-    dict(name='Landing cymbal', color=9, gain=0.34, sound=hit('Crash Tamuz 1.wav'), fx=[HALL], delay=0, clips=[('Landing', LAND, 12, [(0, 4, 60, 100)])]),
+    dict(name='Landing cymbal', color=9, gain=1.99, sound=hit('Crash Tamuz 1.wav'), fx=[HALL], delay=0, clips=[('Landing', LAND, 12, [(0, 4, 60, 100)])]),
 ]
+
+# Every fader 3 dB down, to keep Live's Main track clear of full scale at the landing, which is the
+# loudest moment. (The game turns its layers back up by the same.)
+TRIM = 0.708
+for t in tracks:
+    t['gain'] = round(t['gain'] * TRIM, 4)
+    if t.get('volume'):
+        t['volume'] = [(beat, value * TRIM) for beat, value in t['volume']]
 
 # ---------------------------------------------------------------- the set
 POINTEES = ('AutomationTarget', 'ModulationTarget', 'Pointee')

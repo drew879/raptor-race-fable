@@ -51,38 +51,83 @@ ul.plain b { font-weight: 600; }
 <div class="page">
   <section class="top">
     <span class="eyebrow">Raptor Race &middot; music</span>
-    <h1>Chase Strings, rebuilt</h1>
-    <p class="lede">New this round: the same music played by sampled strings and drums, made in Ableton Live. Each new clip sits next to the synthesized one it replaces. Headphones show the most, but the phone's speaker is what the game will be heard on, so try both.</p>
+    <h1>Chase Strings: your picks</h1>
+    <p class="lede">This round is four things to pick by ear: the strings' timing, the drum mix, the amber's sound and the ending. The phone's speaker is what the game is heard on, so judge there first. Earlier clips are underneath.</p>
   </section>
 
   <section class="block">
-    <h2>New in build 62: sampled strings and drums</h2>
+    <h2>1. Pick the timing</h2>
+    <p>The same 16 seconds three times: the quiet opening parts with a bell on every eighth note. Only one thing changes, how early the short strings are played. Which one has the strings and the bells most together?</p>
     <div class="clips">
       <div class="clip mine">
-        <header><span class="num">A</span><h3>The chase, sampled</h3><span class="tag">in the game now</span></header>
-        <p>The same 34 seconds as the earlier match clip: quiet for <b>16 s</b>, then every part. The strings are the free LABS Strings (a real section, recorded), the drums are an acoustic kit from Ableton, and the amber bells are the game's own, unchanged.</p>
-        <audio id="clip-match-recorded" controls preload="metadata" src="clips/match-recorded.mp4"></audio>
+        <header><span class="num">A</span><h3>Strings as they are</h3><span class="tag">in the game now</span></header>
+        <audio id="clip-time-70" controls preload="metadata" src="clips/time-70.mp4"></audio>
       </div>
       <div class="clip">
-        <header><span class="num">B</span><h3>The chase, synthesized</h3><span class="tag">before</span></header>
-        <p>The same 34 seconds from the synthesized band, at the same loudness. This is still in the game as Music: Synth in Settings.</p>
-        <audio id="clip-match-again" controls preload="metadata" src="clips/match.mp4"></audio>
+        <header><span class="num">B</span><h3>Strings 25 ms earlier</h3></header>
+        <audio id="clip-time-95" controls preload="metadata" src="clips/time-95.mp4"></audio>
       </div>
+      <div class="clip">
+        <header><span class="num">C</span><h3>Strings 50 ms earlier</h3></header>
+        <audio id="clip-time-120" controls preload="metadata" src="clips/time-120.mp4"></audio>
+      </div>
+    </div>
+    <p class="note">In the game the bells now follow the music itself, which they didn't in build 64. That may have been most of what you heard on the phone.</p>
+  </section>
+
+  <section class="block">
+    <h2>2. Two drum mixes</h2>
+    <p>Every part playing, as the game mixes it, with the amber as lines and gaps. You can also switch between these two while playing: Settings, Drums.</p>
+    <div class="clips">
       <div class="clip mine">
-        <header><span class="num">C</span><h3>The ending, sampled</h3><span class="tag">in the game now</span></header>
-        <p>Two bars of the chase, the dash at <b>4 s</b>, the dive at <b>5.4 s</b> and the catch at <b>6 s</b>. The swell, the drum roll and the landing chord are recorded too. The rising air and the low hit on the leap are still synthesized.</p>
+        <header><span class="num">D</span><h3>Drums: Clear</h3><span class="tag">in the game now</span></header>
+        <p>Snare 14 dB up from build 64, hats 8, toms 12, kick 4.</p>
+        <audio id="clip-mix-clear" controls preload="metadata" src="clips/mixclip-clear.mp4"></audio>
+      </div>
+      <div class="clip">
+        <header><span class="num">E</span><h3>Drums: Loud</h3></header>
+        <p>All the drums 4 dB louder again.</p>
+        <audio id="clip-mix-loud" controls preload="metadata" src="clips/mixclip-loud.mp4"></audio>
+      </div>
+      <div class="clip">
+        <header><span class="num">F</span><h3>The synthesized band</h3><span class="tag">for comparison</span></header>
+        <audio id="clip-mix-synth" controls preload="metadata" src="clips/mixclip-synth.mp4"></audio>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>3. The amber's new sounds</h2>
+    <p>Four sounds, eight seconds each, over the quiet opening parts: <b>bell</b> (the old one) from 0 s, <b>xylophone</b> from 8 s, <b>marimba</b> from 16 s, <b>kalimba</b> from 24 s. In the game: Settings, Amber and Amber pitch, or the pause menu during a run. Each tap there plays a few notes.</p>
+    <div class="clips">
+      <div class="clip mine">
+        <header><span class="num">G</span><h3>At the written pitch</h3></header>
+        <audio id="clip-voices-high" controls preload="metadata" src="clips/voices-high.mp4"></audio>
+      </div>
+      <div class="clip">
+        <header><span class="num">H</span><h3>An octave lower</h3></header>
+        <audio id="clip-voices-low" controls preload="metadata" src="clips/voices-low.mp4"></audio>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>4. The ending, heavier</h2>
+    <div class="clips">
+      <div class="clip mine">
+        <header><span class="num">I</span><h3>The ending, sampled</h3><span class="tag">in the game now</span></header>
+        <p>The dash at <b>4 s</b>, the dive at <b>5.4 s</b>, the catch at <b>6 s</b>. Against build 64: the cymbal is 15 dB up, the chord's attack 3 dB up, the drum roll 4 dB up.</p>
         <audio id="clip-ending-recorded" controls preload="metadata" src="clips/ending-recorded.mp4"></audio>
       </div>
       <div class="clip">
-        <header><span class="num">D</span><h3>The ending, synthesized</h3><span class="tag">before</span></header>
-        <p>The same ending from the synthesized band.</p>
+        <header><span class="num">J</span><h3>The ending, synthesized</h3><span class="tag">for comparison</span></header>
         <audio id="clip-ending-again" controls preload="metadata" src="clips/ending.mp4"></audio>
       </div>
     </div>
   </section>
 
   <section class="block">
-    <h2>New in build 51</h2>
+    <h2>Earlier: build 51</h2>
     <div class="clips">
       <div class="clip mine">
         <header><span class="num">A</span><h3>The ending</h3><span class="tag">in the game now</span></header>

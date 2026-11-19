@@ -5,7 +5,9 @@
 // This belongs to the whole game, not to any one level: nothing here is Jehol Forest's.
 
 import '@fontsource/bebas-neue/400.css';
+import type { Choice } from '../audio/sound';
 import { BUILD } from './build';
+import { choiceRows } from './choices';
 
 const art = (name: string) => `${import.meta.env.BASE_URL}art/${name}`;
 /** The hidden finds. One of them, picked at random, is the loading screen. */
@@ -20,9 +22,8 @@ export interface FrontHooks {
   journal(): void;
   soundOn(): boolean;
   setSound(on: boolean): void;
-  /** The chase music: the recorded strings and drums, or the synthesized band they were made from. */
-  recorded(): boolean;
-  setRecorded(on: boolean): void;
+  /** Sounds on trial, to switch between here: the band, the drum mix, the amber's voice. */
+  choices(): Choice[];
 }
 
 export interface Front {
@@ -73,7 +74,7 @@ export function makeFront(parent: HTMLElement): Front {
       <div class="sheet f-settings-sheet" hidden>
         <h2>Settings</h2>
         <div class="setting"><span>Sound</span><div class="tabs words sound-tabs"><button>On</button><button>Off</button></div></div>
-        <div class="setting"><span>Music</span><div class="tabs words music-tabs"><button>Recorded</button><button>Synth</button></div></div>
+        <div class="f-choices"></div>
         <small class="f-about">Raptor Race &middot; build ${BUILD}</small>
         <button class="big ghost f-close">Back</button>
       </div>
@@ -148,16 +149,6 @@ export function makeFront(parent: HTMLElement): Front {
     }),
   );
 
-  const musicTabs = [...q('.music-tabs').children] as HTMLElement[];
-  const markMusic = (on: boolean) => musicTabs.forEach((el, i) => el.classList.toggle('on', (i === 0) === on));
-  musicTabs.forEach((el, i) =>
-    press(el, () => {
-      hooks?.setRecorded(i === 0);
-      markMusic(i === 0);
-      hooks?.bell('tap');
-    }),
-  );
-
   const loaded = (src: string) =>
     new Promise<void>((resolve) => {
       const img = new Image();
@@ -173,7 +164,10 @@ export function makeFront(parent: HTMLElement): Front {
     async ready(h) {
       hooks = h;
       markSound(h.soundOn());
-      markMusic(h.recorded());
+      // (the amber's choices play a few notes of themselves; the others get the tap's bell)
+      choiceRows(q('.f-choices'), h.choices(), press, (choice) => {
+        if (!choice.label.startsWith('Amber')) h.bell('tap');
+      });
       // the home screen's own pictures have to be in hand before it is shown (but not for ever)
       await Promise.race([Promise.all([loaded(art('home-background.webp')), loaded(art('home-title.webp'))]), wait(4000)]);
       done = true;

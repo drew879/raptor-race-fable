@@ -831,6 +831,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     },
     soundOn: sound.on,
     onSound: (on) => sound.setOn(on),
+    choices: sound.choices().filter((c) => c.label.startsWith('Amber')),
     // (a miss at the edge is tried again from a little way back; losing the egg on the way down starts the level over)
     onRetry: () => (st.end === END.miss ? tryAgain(RETRY_S) : LOST_RESTART === 'checkpoint' ? tryAgain() : reset()),
     onJournalNext: () => {

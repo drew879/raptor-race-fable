@@ -10,7 +10,7 @@
 // The files are fetched as soon as the game starts and decoded when sound is first allowed.
 // Until they are ready, or if they never arrive, the game plays the synthesized band.
 
-export const LAYER_NAMES = ['base', 'octave', 'cello', 'tune', 'high', 'push', 'snare', 'hats', 'busy'] as const;
+export const LAYER_NAMES = ['base', 'kick', 'octave', 'cello', 'tune', 'high', 'push', 'snare', 'hats', 'busy'] as const;
 export type LayerName = (typeof LAYER_NAMES)[number];
 
 export interface Layers {
