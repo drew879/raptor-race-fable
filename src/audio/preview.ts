@@ -44,12 +44,14 @@ function solo(band: Sound, part: string) {
   if (part !== 'wind') b.wind.gain.value = 0;
 }
 
-export async function clip(kind: Clip, only?: string): Promise<Float32Array[]> {
+export async function clip(kind: Clip, only?: string, recorded = false): Promise<Float32Array[]> {
   const ending = kind === 'ending' || kind === 'ending-home';
   const seconds = kind === 'game' ? 16 : ending || kind === 'fan' ? 12 : 34;
   const ctx = new OfflineAudioContext(2, seconds * RATE, RATE);
   const band = new Sound(false);
   band.build(ctx, kind === 'full');
+  // (`recorded`: the layers from Ableton in place of the synthesized band)
+  if (recorded) await band.loadRecorded(ctx);
   if (only) solo(band, only);
   band.bed = kind === 'bells' || kind === 'game' || ending || kind === 'fan';
   // (quiet enough that the limiter never touches it: the clip is brought up to level afterwards)
@@ -102,10 +104,10 @@ function wav(channels: Float32Array[]) {
 }
 
 /** Draw a clip and post it to the receiver. Says how loud it came out. */
-export async function send(kind: Clip, only?: string, to = 'http://localhost:8787') {
-  const channels = await clip(kind, only);
+export async function send(kind: Clip, only?: string, to = 'http://localhost:8787', recorded = false) {
+  const channels = await clip(kind, only, recorded);
   let peak = 0;
   for (const ch of channels) for (let i = 0; i < ch.length; i += 7) peak = Math.max(peak, Math.abs(ch[i]));
-  const reply = await fetch(`${to}/${kind}${only ? `-${only}` : ''}.wav`, { method: 'POST', body: wav(channels) });
+  const reply = await fetch(`${to}/${kind}${only ? `-${only}` : ''}${recorded ? '-recorded' : ''}.wav`, { method: 'POST', body: wav(channels) });
   return `${kind}: peak ${peak.toFixed(3)}, receiver said ${reply.status}`;
 }

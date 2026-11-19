@@ -20,6 +20,9 @@ export interface FrontHooks {
   journal(): void;
   soundOn(): boolean;
   setSound(on: boolean): void;
+  /** The chase music: the recorded strings and drums, or the synthesized band they were made from. */
+  recorded(): boolean;
+  setRecorded(on: boolean): void;
 }
 
 export interface Front {
@@ -70,6 +73,7 @@ export function makeFront(parent: HTMLElement): Front {
       <div class="sheet f-settings-sheet" hidden>
         <h2>Settings</h2>
         <div class="setting"><span>Sound</span><div class="tabs words sound-tabs"><button>On</button><button>Off</button></div></div>
+        <div class="setting"><span>Music</span><div class="tabs words music-tabs"><button>Recorded</button><button>Synth</button></div></div>
         <small class="f-about">Raptor Race &middot; build ${BUILD}</small>
         <button class="big ghost f-close">Back</button>
       </div>
@@ -144,6 +148,16 @@ export function makeFront(parent: HTMLElement): Front {
     }),
   );
 
+  const musicTabs = [...q('.music-tabs').children] as HTMLElement[];
+  const markMusic = (on: boolean) => musicTabs.forEach((el, i) => el.classList.toggle('on', (i === 0) === on));
+  musicTabs.forEach((el, i) =>
+    press(el, () => {
+      hooks?.setRecorded(i === 0);
+      markMusic(i === 0);
+      hooks?.bell('tap');
+    }),
+  );
+
   const loaded = (src: string) =>
     new Promise<void>((resolve) => {
       const img = new Image();
@@ -159,6 +173,7 @@ export function makeFront(parent: HTMLElement): Front {
     async ready(h) {
       hooks = h;
       markSound(h.soundOn());
+      markMusic(h.recorded());
       // the home screen's own pictures have to be in hand before it is shown (but not for ever)
       await Promise.race([Promise.all([loaded(art('home-background.webp')), loaded(art('home-title.webp'))]), wait(4000)]);
       done = true;

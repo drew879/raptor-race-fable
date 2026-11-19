@@ -23,6 +23,8 @@
 // is a phrase, the same one every time, and a missed piece is a missing note. The level, not
 // the line, decides where the rests are.
 
+import { fetchLayers, LAYER_NAMES, type LayerFiles, type LayerName, type Layers } from './layers';
+
 const hz = (midi: number) => 440 * 2 ** ((midi - 69) / 12);
 /** Meters of trail to a sixteenth note in the chase. */
 const METERS_PER_STEP = 1;
@@ -196,15 +198,38 @@ export class Sound {
   /** The riser before the leap and the chord held through it, kept so they can be cut off. */
   private rise: GainNode | null = null;
   private hold: GainNode | null = null;
+  // ---- the recorded layers (layers.ts), which play in place of the synthesized band when they can
+  private files: LayerFiles | null = null;
+  private layers: Layers | null = null;
+  /** The player's choice: the recorded band, or the synthesized one. */
+  private wantRecorded = true;
+  /**
+   * The runner's cruising speed, in meters a second. The recorded layers are a performance at one
+   * tempo, the one the level is laid out to at 8 meters a second; at any other speed the
+   * synthesized band plays, which can play at any tempo.
+   */
+  pace = 8;
+  /** Whether this bar is the recorded band's: decided at each bar line. */
+  private taped = false;
+  private tapeBus!: GainNode;
+  /**
+   * The layers all play as one tape. `posAt` seconds of the music are at the play head at the
+   * context's time `timeAt`, and it runs at `rate`; `until` is how far the runner has let it play.
+   */
+  private tape = { rolling: false, timeAt: 0, posAt: 0, rate: 1, until: 0, lean: 0, voices: new Map<LayerName, { src: AudioBufferSourceNode; gain: GainNode }>() };
+  /** The build under the dash is the recorded one (so the synthesized drum roll keeps quiet). */
+  private built = false;
 
   /** `listen` is off for a copy that only draws the music to a file. */
   constructor(listen = true) {
     if (!listen) return;
     try {
       this.muted = localStorage.getItem('rr-sound1') === '0';
+      this.wantRecorded = localStorage.getItem('rr-music1') !== 'synth';
     } catch {
       /* private mode */
     }
+    this.files = fetchLayers(`${import.meta.env.BASE_URL}music/chase/`);
     // Browsers only let sound start from a tap, and on an iPhone only from the end of one.
     const unlock = () => this.unlock();
     for (const type of ['pointerup', 'touchend', 'click', 'keydown']) document.addEventListener(type, unlock, { passive: true });
@@ -230,6 +255,27 @@ export class Sound {
     if (this.ctx) this.out.gain.setTargetAtTime(on ? 0.85 : 0, this.ctx.currentTime, 0.05);
   }
 
+  /** Which band plays the chase: the recorded strings and drums, or the synthesized ones. */
+  get recorded() {
+    return this.wantRecorded;
+  }
+
+  setRecorded(on: boolean) {
+    this.wantRecorded = on;
+    try {
+      localStorage.setItem('rr-music1', on ? 'recorded' : 'synth');
+    } catch {
+      /* private mode */
+    }
+  }
+
+  /** For clips of the music (see preview.ts): have the recorded layers ready before drawing. */
+  async loadRecorded(ctx: BaseAudioContext) {
+    this.layers = await fetchLayers(`${import.meta.env.BASE_URL}music/chase/`).decode(ctx);
+    if (this.layers) this.tapeBus.gain.value = this.layers.gain;
+    return this.layers !== null;
+  }
+
   /** Start the sound, or start it again after time away. Called at the end of every tap. */
   private unlock() {
     const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
@@ -248,6 +294,11 @@ export class Sound {
       this.rise = this.hold = null;
       this.playing = null;
       this.timer = window.setInterval(() => this.schedule(), 30);
+      // the recorded layers become sound the first time there is something to play them (they stay sound after that)
+      void this.files?.decode(this.ctx).then((layers) => {
+        this.layers = layers;
+        if (layers && this.ctx) this.tapeBus.gain.value = layers.gain;
+      });
     }
     if (!this.silent) {
       // An iPhone with its ring switch off silences this kind of sound unless ordinary audio
@@ -329,6 +380,11 @@ export class Sound {
     this.kit = ctx.createGain();
     this.kit.connect(this.music);
     this.playing = null;
+    this.tapeBus = ctx.createGain();
+    this.tapeBus.gain.value = this.layers?.gain ?? 1;
+    this.tapeBus.connect(this.music);
+    this.tape = { rolling: false, timeAt: 0, posAt: 0, rate: 1, until: 0, lean: 0, voices: new Map() };
+    this.taped = this.built = false;
     if (!full) this.strings.connect(this.music);
     else {
       // the wooden body of the instruments: a few fixed resonances, and the very top rolled off
@@ -578,7 +634,14 @@ export class Sound {
     const bar = BARS[index];
     const at = stepIn(n);
     const long = dur / STEP;
-    if (at === 0 || !this.playing) this.cast(index, k);
+    if (at === 0 || !this.playing) {
+      this.cast(index, k);
+      // (and which band plays this bar: the recorded one if it is here, wanted, and at its own tempo)
+      const taped = this.layers !== null && this.wantRecorded && Math.abs(this.pace - 8) < 0.01;
+      if (this.taped && !taped) this.tapeStop(ctx, t, 0.05);
+      this.taped = taped;
+    }
+    if (this.taped) return this.tapeStep(ctx, n, t);
     const on = (part: Part) => this.playing?.[part] === true;
     // the short string notes, never stopping, leaned on in threes and twos
     this.bow(ctx, { t, midi: bar.root + 12 + OSTINATO[at], attack: 0.01, hold: 0.07, release: 0.04, cut: 1500 + 1200 * k, open: 1.8, detune: 7, vol: ACCENT.includes(at) ? 0.07 : 0.045, pan: at % 2 ? 0.15 : -0.15 });
@@ -600,6 +663,107 @@ export class Sound {
     if (on('tune') && tune) this.bow(ctx, { t, midi: tune[0], attack: 0.04, hold: tune[1] * dur * 0.97, release: 0.12, cut: 3200, detune: 6, vol: 0.05, pan: 0.12, vibrato: true });
     // and at the top of the chase, high strings shaking on one note a bar
     if (on('high') && at === 0) this.bow(ctx, { t, midi: bar.high, attack: 0.2, hold: 1.9 * long, release: 0.2, cut: 4000, detune: 7, vol: 0.025, pan: -0.3, tremolo: true });
+  }
+
+  // ---------------------------------------------------------------- the recorded band
+  /**
+   * The sixteenth `n` at time `t`, from the recorded layers. They are not played a sixteenth at a
+   * time: they roll like a tape, and each sixteenth only checks that the tape is where the runner
+   * is. While the runner keeps its pace nothing is touched, and the sound is the recording
+   * exactly. If the tape has drifted a little it is leaned on, by too little to hear; if it is far
+   * out, or was stopped, it is started again from this sixteenth. And it is only ever allowed to
+   * play to the end of the sixteenth the runner has reached (`tapeWatch`), so a runner that
+   * stumbles stops the music, and one getting back up to speed brings it back a note at a time,
+   * as the synthesized band does.
+   */
+  private tapeStep(ctx: BaseAudioContext, n: number, t: number) {
+    const tape = this.tape;
+    const song = n * STEP;
+    if (tape.rolling) {
+      // how far ahead of the runner the tape is
+      const ahead = tape.posAt + (t - tape.timeAt) * tape.rate - song;
+      if (Math.abs(ahead) > 0.045) this.tapeStop(ctx, t, 0.02);
+      else {
+        tape.lean += (ahead - tape.lean) * 0.2;
+        const rate = 1 - Math.max(-0.004, Math.min(0.004, tape.lean * 0.3));
+        if (Math.abs(rate - tape.rate) > 0.0004) this.tapeLean(ctx, rate);
+      }
+    }
+    if (!tape.rolling) Object.assign(tape, { rolling: true, timeAt: t, posAt: song, rate: 1, lean: 0 });
+    tape.until = song + STEP;
+    // who is playing: the same parts the synthesized band would have, a layer for each
+    const on = (part: Part) => this.playing?.[part] === true;
+    const want: Record<LayerName, boolean> = { base: true, octave: on('octave'), cello: on('cello'), tune: on('tune'), high: on('high'), push: on('push'), snare: on('snare'), hats: on('hats'), busy: on('hats') && on('busy') };
+    for (const name of LAYER_NAMES) {
+      const voice = tape.voices.get(name);
+      if (want[name] && !voice) this.tapeVoice(ctx, name, t);
+      else if (!want[name] && voice) {
+        this.tapeDrop(voice, t, 0.06);
+        tape.voices.delete(name);
+      }
+    }
+  }
+
+  /** One layer joins the tape at time `t`, in step with the rest. */
+  private tapeVoice(ctx: BaseAudioContext, name: LayerName, t: number) {
+    const layers = this.layers;
+    if (!layers) return;
+    const tape = this.tape;
+    const src = ctx.createBufferSource();
+    src.buffer = layers.loops[name];
+    src.loop = true;
+    src.loopStart = layers.lead + layers.pad;
+    src.loopEnd = src.loopStart + layers.length;
+    src.playbackRate.value = tape.rate;
+    // It comes in a little before `t` if there is time: a bowed note starts before its beat.
+    const pre = Math.max(0, Math.min(0.06, t - ctx.currentTime - 0.003));
+    const pos = tape.posAt + (t - tape.timeAt) * tape.rate;
+    const into = ((pos % layers.length) + layers.length) % layers.length;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, Math.max(0, t - pre));
+    gain.gain.linearRampToValueAtTime(1, Math.max(0, t - pre) + (pre > 0.02 ? 0.015 : 0.004));
+    src.connect(gain).connect(this.tapeBus);
+    src.start(Math.max(0, t - pre), Math.max(0, src.loopStart + into - pre * tape.rate));
+    tape.voices.set(name, { src, gain });
+  }
+
+  /** One layer leaves from time `t`, over about `time` seconds. */
+  private tapeDrop(voice: { src: AudioBufferSourceNode; gain: GainNode }, t: number, time: number) {
+    if (voice.gain.gain.cancelAndHoldAtTime) voice.gain.gain.cancelAndHoldAtTime(t);
+    voice.gain.gain.setTargetAtTime(0, t, time / 3);
+    voice.src.stop(t + time * 2 + 0.05);
+  }
+
+  /** Stop the tape from time `t`. */
+  private tapeStop(ctx: BaseAudioContext, t: number, time: number) {
+    const tape = this.tape;
+    const at = Math.max(t, ctx.currentTime);
+    for (const voice of tape.voices.values()) this.tapeDrop(voice, at, time);
+    tape.voices.clear();
+    tape.rolling = false;
+  }
+
+  /** Run the tape a touch faster or slower from now on: every layer at once, so they stay together. */
+  private tapeLean(ctx: BaseAudioContext, rate: number) {
+    const tape = this.tape;
+    const at = ctx.currentTime + 0.005;
+    if (at <= tape.timeAt) return;
+    tape.posAt += (at - tape.timeAt) * tape.rate;
+    tape.timeAt = at;
+    tape.rate = rate;
+    for (const voice of tape.voices.values()) voice.src.playbackRate.setValueAtTime(rate, at);
+  }
+
+  /** The tape may not play past what the runner has reached. Called every frame, and by the clock. */
+  private tapeWatch(ctx: BaseAudioContext) {
+    const tape = this.tape;
+    if (!tape.rolling) return;
+    const now = ctx.currentTime;
+    if (tape.posAt + (now + 0.03 - tape.timeAt) * tape.rate <= tape.until) return;
+    // (in the chase it stops as short as a bowed note does; at the end of the dash's bar it is let ring a little)
+    const end = tape.timeAt + (tape.until - tape.posAt) / tape.rate;
+    const time = this.mode === 'chase' ? 0.03 : 0.3;
+    this.tapeStop(ctx, end - 0.02, time);
   }
 
   /** The music away from the chase, on the clock. */
@@ -632,8 +796,9 @@ export class Sound {
       this.free(ctx, this.next, this.t0 + this.next * STEP);
       this.next++;
     }
+    this.tapeWatch(ctx);
     // the drum roll under the dash and the leap, for as long as they last (within reason)
-    if ((this.mode === 'dash' || this.mode === 'leap') && this.hold) {
+    if ((this.mode === 'dash' || this.mode === 'leap') && this.hold && !this.built) {
       if (this.rollNext < ctx.currentTime) this.rollNext = ctx.currentTime + 0.005;
       while (this.rollNext < ctx.currentTime + 0.16 && this.rollNext - this.dashAt < 5) {
         this.stroke(ctx, this.rollNext, this.rollNext - this.dashAt);
@@ -673,6 +838,7 @@ export class Sound {
       this.step(ctx, this.groundNext, ctx.currentTime + Math.max(wait, 0.005), this.level, Math.min(0.3, METERS_PER_STEP / v));
       this.groundNext++;
     }
+    this.tapeWatch(ctx);
   }
 
   // ---------------------------------------------------------------- what the game tells it
@@ -695,9 +861,11 @@ export class Sound {
       if (ctx) {
         this.cut(this.rise, ctx.currentTime, 0.03);
         this.cut(this.hold, ctx.currentTime, 0.05);
+        this.tapeStop(ctx, ctx.currentTime, 0.05);
       }
       this.rise = this.hold = null;
       this.playing = null;
+      this.built = false;
     }
     this.mode = mode;
     this.groundNext = -1;
@@ -717,6 +885,7 @@ export class Sound {
    * way must not fall after the music has landed.
    */
   private letGo(ctx: BaseAudioContext, t: number, time: number, drums = false) {
+    this.tapeStop(ctx, t, time);
     this.bows.gain.setTargetAtTime(0, t, time);
     this.bows = ctx.createGain();
     this.bows.connect(this.strings);
@@ -888,6 +1057,8 @@ export class Sound {
   bump() {
     const c = this.now();
     if (!c) return;
+    // (the recorded band stops with the runner, there and then: left to itself it would play out the sixteenth it had been promised)
+    if (this.tape.rolling && this.mode === 'chase') this.tapeStop(c[0], c[1], 0.09);
     this.note(c[0], { t: c[1], f: 150, bend: 48, len: 0.2, vol: 0.55, release: 0.1 });
     this.hiss(c[0], { t: c[1], len: 0.16, vol: 0.24, cut: 700, q: 0.6, rev: 0.3 });
   }
@@ -980,15 +1151,28 @@ export class Sound {
     hold.gain.setValueAtTime(1, t);
     hold.connect(this.music);
     this.hold = hold;
-    // G sharp major, low to high, the top three shaking
-    for (const [midi, vol, cut] of [[44, 0.06, 600], [56, 0.05, 1200], [60, 0.04, 2400], [63, 0.04, 2800], [68, 0.035, 3200]]) {
-      this.bow(ctx, { t, midi, attack: 1.6, hold: 8, release: 0.4, cut, detune: 7, vol, tremolo: midi >= 60, to: hold });
+    const layers = this.taped ? this.layers : null;
+    this.built = layers !== null;
+    if (layers) {
+      // the recorded build: the same chord swelling, and its own drum roll
+      const src = ctx.createBufferSource();
+      src.buffer = layers.build;
+      const level = ctx.createGain();
+      level.gain.value = layers.gain;
+      src.connect(level).connect(hold);
+      src.start(t, layers.lead);
+    } else {
+      // G sharp major, low to high, the top three shaking
+      for (const [midi, vol, cut] of [[44, 0.06, 600], [56, 0.05, 1200], [60, 0.04, 2400], [63, 0.04, 2800], [68, 0.035, 3200]]) {
+        this.bow(ctx, { t, midi, attack: 1.6, hold: 8, release: 0.4, cut, detune: 7, vol, tremolo: midi >= 60, to: hold });
+      }
     }
     this.dashAt = this.rollNext = t;
   }
 
   /** One stroke of the drum roll, louder the longer the roll has gone on. */
   private stroke(ctx: BaseAudioContext, t: number, since: number) {
+    if (this.built) return;
     const vol = 0.03 + 0.13 * Math.min(1, since / 2);
     const out = this.hold ?? this.music;
     this.thump(ctx, { t, from: 108, to: 100, len: 0.2, vol, left: 0.02, out });
@@ -1015,6 +1199,18 @@ export class Sound {
     this.cut(this.hold, t, 0.04);
     this.rise = this.hold = null;
     this.letGo(ctx, t, 0.04, true);
+    const layers = this.taped && !home ? this.layers : null;
+    this.built = false;
+    if (layers) {
+      // the recorded landing: the same chord, a drum and a cymbal under it, ringing out
+      const src = ctx.createBufferSource();
+      src.buffer = layers.landing;
+      const level = ctx.createGain();
+      level.gain.value = layers.gain;
+      src.connect(level).connect(this.music);
+      src.start(t, layers.lead);
+      return;
+    }
     // a big drum, a timpani on the home note, a wash of cymbal, and a knock a small speaker can play
     // (the two drums are kept modest: a phone cannot play them, and at full weight they only use up room the chord needs)
     this.thump(ctx, { t, from: 92, to: 36, len: 1.6, vol: 0.2 });

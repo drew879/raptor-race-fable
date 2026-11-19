@@ -697,6 +697,8 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
   scene.add(puff);
   const collected: boolean[] = AMBER.map(() => false);
   let baseSpeed = Number(localStorage.getItem('rr-speed2')) || DEFAULT_SPEED;
+  // (the recorded music is a performance at this level's own tempo: at any other pace the synthesized band plays)
+  sound.pace = baseSpeed;
   // (a new key: the list changed when Wild came in, and everyone should meet Wild first)
   const savedEgg = localStorage.getItem('rr-egg3');
   let eggMode = savedEgg === null ? 1 : THREE.MathUtils.clamp(Number(savedEgg) || 0, 0, 2);
@@ -851,6 +853,7 @@ export async function buildRun(ui: HTMLElement, stage: HTMLElement, hooks: RunHo
     },
     onSpeed: (v) => {
       baseSpeed = v;
+      sound.pace = v;
       try {
         localStorage.setItem('rr-speed2', String(v));
       } catch {
