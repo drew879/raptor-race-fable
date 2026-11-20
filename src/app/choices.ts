@@ -1,5 +1,5 @@
 // Rows of Settings for things on trial: each a label and a few options to switch between while
-// playing (the music's band, the drum mix, what the amber sounds like). What the options are and
+// playing (the music's band; the drum mix and the amber's voice were here until Drew picked). What the options are and
 // what they do is the sound's business (Sound.choices); this only draws them.
 
 import type { Choice } from '../audio/sound';

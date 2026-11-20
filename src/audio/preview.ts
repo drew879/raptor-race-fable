@@ -108,7 +108,6 @@ export async function blend(o: { pulse?: number; music?: number; tape?: number; 
   const ctx = new OfflineAudioContext(2, 18 * rate, rate);
   const band = new Sound(false);
   band.build(ctx);
-  band.tryVoice('xylophone', false);
   if (!o.synth) await band.loadRecorded(ctx);
   /* eslint-disable @typescript-eslint/no-explicit-any */
   const b = band as any;

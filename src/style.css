@@ -1489,13 +1489,11 @@ body {
 }
 
 /* ---------- sounds on trial (choices.ts): rows like the settings round them ---------- */
-.choices,
 .f-choices {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
-.choices:empty,
 .f-choices:empty {
   display: none;
 }

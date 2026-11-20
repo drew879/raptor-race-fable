@@ -22,7 +22,7 @@ export interface FrontHooks {
   journal(): void;
   soundOn(): boolean;
   setSound(on: boolean): void;
-  /** Sounds on trial, to switch between here: the band, the drum mix, the amber's voice. */
+  /** Sounds on trial, to switch between here (the band). */
   choices(): Choice[];
 }
 
@@ -164,10 +164,7 @@ export function makeFront(parent: HTMLElement): Front {
     async ready(h) {
       hooks = h;
       markSound(h.soundOn());
-      // (the amber's choices play a few notes of themselves; the others get the tap's bell)
-      choiceRows(q('.f-choices'), h.choices(), press, (choice) => {
-        if (!choice.label.startsWith('Amber')) h.bell('tap');
-      });
+      choiceRows(q('.f-choices'), h.choices(), press, () => h.bell('tap'));
       // the home screen's own pictures have to be in hand before it is shown (but not for ever)
       await Promise.race([Promise.all([loaded(art('home-background.webp')), loaded(art('home-title.webp'))]), wait(4000)]);
       done = true;

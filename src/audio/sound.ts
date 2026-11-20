@@ -41,25 +41,24 @@ const BOWED = 1.26;
 const HATS = 1.5;
 const BELLS = 0.83;
 /**
- * What a piece of amber sounds like. The bell is the first one: a sine, gone in a tenth of a
- * second. The others are struck bars and tines, each built from the few pure tones such a thing
- * really rings with, dying away at their own speeds, and the knock of what struck it.
+ * What a piece of amber sounds like (Drew picked it from a sound bench on 2026-11-19: "musically
+ * coherent and isn't annoying"): a soft vibraphone, an octave under the written notes. It is a
+ * struck bar built from the few pure tones such a thing rings with, each dying away at its own
+ * speed, and the soft knock of the mallet. A bar that rings for nearly two seconds, so the notes
+ * of a line of amber overlap and run together, which is what made the earlier bell and the
+ * xylophone (a quarter of a second) read as too short and too bright.
  * `tones` are [how many times the note's pitch, how loud, seconds to die away]; `knock` is the
  * strike: [where its noise is centred in Hz, how loud, how long, 'lowpass' for a soft mallet].
- * `level` evens the voices out: each one's strike measures about 1.5 dB over the bell's (its
- * loudest twentieth of a second, K-weighted), since a mellower sound needs a little more to be noticed.
+ * `level` is measured: the strike comes out 1.5 dB over the old bell's (its loudest twentieth of
+ * a second, K-weighted), since a mellower sound needs a little more to be noticed.
  */
-const VOICES = {
-  bell: { level: 1, tones: [] as number[][], knock: null as null | [number, number, number, BiquadFilterType] },
-  // a rosewood bar and a hard mallet: the second tone of a xylophone's bar is tuned a twelfth up
-  xylophone: { level: 0.84, tones: [[1, 1, 0.26], [3, 0.34, 0.1], [6, 0.1, 0.045]], knock: [4200, 0.22, 0.012, 'bandpass'] as [number, number, number, BiquadFilterType] },
-  // a longer bar over a tube, and a soft mallet: warmer, the second tone two octaves up and faint
-  marimba: { level: 0.76, tones: [[1, 1, 0.42], [4, 0.15, 0.09], [9.2, 0.035, 0.03]], knock: [1300, 0.2, 0.022, 'lowpass'] as [number, number, number, BiquadFilterType] },
-  // a steel tine over a small wooden box: round, with the box's octave under a high faint ping
-  kalimba: { level: 0.73, tones: [[1, 1, 0.5], [2, 0.16, 0.2], [6.27, 0.1, 0.06]], knock: [2600, 0.16, 0.008, 'bandpass'] as [number, number, number, BiquadFilterType] },
+const AMBER = {
+  level: 0.736,
+  tones: [[1, 1, 1.834], [4, 0.24, 0.816], [10, 0.07, 0.196]],
+  knock: [1238, 0.07, 0.03, 'lowpass'] as [number, number, number, BiquadFilterType],
 };
-export type Voice = keyof typeof VOICES;
-const VOICE_NAMES = Object.keys(VOICES) as Voice[];
+/** How far under the written pitch the amber plays, in semitones. */
+const AMBER_DOWN = 12;
 /**
  * A layer's level in the game against how Live exported it: 1 unless it's set here. (Drew picked
  * the louder of two drum mixes on 2026-11-19, and that's in Live's faders now, not here.)
@@ -252,19 +251,12 @@ export class Sound {
   private tape = { rolling: false, timeAt: 0, posAt: 0, rate: 1, until: 0, lean: 0, voices: new Map<LayerName, { src: AudioBufferSourceNode; gain: GainNode; level: GainNode }>() };
   /** The build under the dash is the recorded one (so the synthesized drum roll keeps quiet). */
   private built = false;
-  // ---- on trial (Drew, 2026-11-19): what the amber sounds like, and how high
-  private voice: Voice = 'xylophone';
-  private amberLow = false;
-
   /** `listen` is off for a copy that only draws the music to a file. */
   constructor(listen = true) {
     if (!listen) return;
     try {
       this.muted = localStorage.getItem('rr-sound1') === '0';
       this.wantRecorded = localStorage.getItem('rr-music1') !== 'synth';
-      const voice = localStorage.getItem('rr-amber1') as Voice | null;
-      if (voice && voice in VOICES) this.voice = voice;
-      this.amberLow = localStorage.getItem('rr-amber-low1') === '1';
     } catch {
       /* private mode */
     }
@@ -308,55 +300,9 @@ export class Sound {
     }
   }
 
-  /**
-   * The sounds on trial, for Settings and the pause sheet to offer. Picking one keeps it (on this
-   * phone) and, for the amber's, plays a few notes of it.
-   */
+  /** The sounds still on trial, for Settings to offer. Picking one keeps it (on this phone). */
   choices(): Choice[] {
-    const keep = (key: string, value: string) => {
-      try {
-        localStorage.setItem(key, value);
-      } catch {
-        /* private mode */
-      }
-    };
-    return [
-      { label: 'Music', options: ['Recorded', 'Synth'], get: () => (this.wantRecorded ? 0 : 1), set: (i) => this.setRecorded(i === 0) },
-      {
-        label: 'Amber',
-        options: ['Bell', 'Xylophone', 'Marimba', 'Kalimba'],
-        get: () => VOICE_NAMES.indexOf(this.voice),
-        set: (i) => {
-          this.voice = VOICE_NAMES[i] ?? 'bell';
-          keep('rr-amber1', this.voice);
-          this.sample();
-        },
-      },
-      {
-        label: 'Amber pitch',
-        options: ['High', 'Low'],
-        get: () => (this.amberLow ? 1 : 0),
-        set: (i) => {
-          this.amberLow = i === 1;
-          keep('rr-amber-low1', i === 1 ? '1' : '0');
-          this.sample();
-        },
-      },
-    ];
-  }
-
-  /** For clips of the music: set the amber's voice and pitch without keeping them. */
-  tryVoice(voice: Voice, low: boolean) {
-    this.voice = voice;
-    this.amberLow = low;
-  }
-
-  /** A few notes of the amber's voice, to hear a choice by: the first bar of its line. */
-  private sample() {
-    this.unlock();
-    const ctx = this.ctx;
-    if (!ctx) return;
-    BARS[0].bells.forEach((m, i) => this.chime(ctx, ctx.currentTime + 0.05 + i * 0.25, m));
+    return [{ label: 'Music', options: ['Recorded', 'Synth'], get: () => (this.wantRecorded ? 0 : 1), set: (i) => this.setRecorded(i === 0) }];
   }
 
   /** For clips of the music (see preview.ts): have the recorded layers ready before drawing. */
@@ -696,29 +642,21 @@ export class Sound {
     this.hiss(ctx, { t, len: 0.012, vol: 0.03, cut: 900, q: 1, to: this.kit });
   }
 
-  /** The amber's voice: a small bell, gone in a tenth of a second, with a brighter edge that goes sooner still. */
+  /** The amber's voice (see `AMBER`): a soft vibraphone bar, an octave under the written note, ringing on. */
   private chime(ctx: BaseAudioContext, t: number, midi: number, vol = 0.11, ring = 0.11, pan = 0) {
     const out = this.panned(ctx, pan, this.music);
-    const f = hz(midi - (this.amberLow ? 12 : 0));
-    const voice = VOICES[this.voice];
-    if (this.voice === 'bell') {
-      this.thump(ctx, { t, from: f, len: ring, vol: vol * BELLS, out });
-      this.thump(ctx, { t, from: f * 2.76, len: 0.05, vol: vol * BELLS * 0.3, out });
-      return;
-    }
-    // A struck bar or tine. No two strikes are quite alike: a hair of pitch and of strength either way.
-    const v = vol * BELLS * voice.level * (0.94 + 0.12 * Math.random());
+    const f = hz(midi - AMBER_DOWN);
+    // No two strikes are quite alike: a hair of pitch and of strength either way.
+    const v = vol * BELLS * AMBER.level * (0.94 + 0.12 * Math.random());
     const bend = 1 + (Math.random() - 0.5) * 0.003;
     // (a caller that wants a long ring, like the hidden find's, gets a longer one, within what the thing could do)
     const longer = Math.min(1.8, Math.max(1, ring / 0.2));
-    for (const [times, loud, len] of voice.tones) {
+    for (const [times, loud, len] of AMBER.tones) {
       if (f * times > 13000) continue;
       this.thump(ctx, { t, from: f * times * bend, len: len * (times === 1 ? longer : 1), vol: v * loud, out });
     }
-    if (voice.knock) {
-      const [cut, loud, len, type] = voice.knock;
-      this.hiss(ctx, { t, len, vol: v * loud, cut, q: 0.9, type, attack: 0.001, to: out });
-    }
+    const [cut, loud, len, type] = AMBER.knock;
+    this.hiss(ctx, { t, len, vol: v * loud, cut, q: 0.9, type, attack: 0.001, to: out });
   }
 
   // ---------------------------------------------------------------- the score
